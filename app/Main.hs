@@ -7,6 +7,8 @@ import Data.Vector ((!), (//))
 import qualified Data.Vector as V
 import qualified Data.Map as M 
 import Control.Monad.State
+import Assembler (assemble)
+import Text.Printf (printf)
 
 data CPU = CPU 
     { pc    :: Word32 
@@ -43,7 +45,7 @@ getBits :: Int -> Int -> Word32 -> Word32
 getBits lo hi word = undefined
 
 -- decodes a word into the correct instruction
-decode :: Word32 -> Instruction
+decode :: Word32 -> SomeInstruction 
 decode = undefined
 
 execute = undefined
@@ -70,8 +72,10 @@ main = do
     let program = "add sp, sp, ra     # this is a test\n \
     \ addi sp, sp, -0xdeadbeef"
     case parse program of
-        Left inst -> print inst
-        Right err -> print err
+        Right inst -> do
+            let assembled = assemble inst
+            mapM_ (putStrLn . printf "%032b") assembled 
+        Left err -> print err
 
 
 
