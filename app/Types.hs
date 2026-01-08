@@ -7,8 +7,8 @@ module Types where
 type Register = Int
 type Immediate = Int 
 
-data ROp = ADD | SUB | XOR deriving (Show, Eq)
-data IOp = ADDI | SUBI        deriving (Show, Eq)
+data ROp = ADD | SUB | XOR  deriving (Show, Eq)
+data IOp = ADDI             deriving (Show, Eq)
 
 data RTypeArgs = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
     deriving (Show, Eq)
@@ -32,14 +32,6 @@ instance Eq SomeInstruction where
   (SomeInstruction (RType o1 a1))  == (SomeInstruction (RType o2 a2))  = o1 == o2 && a1 == a2
   (SomeInstruction (IType o1 a1))  == (SomeInstruction (IType o2 a2))  = o1 == o2 && a1 == a2
   _ == _ = False
-
--- data Instruction
---     = ADD RTypeArgs  -- rd, rs1, rs2
---     | SUB RTypeArgs
---     | XOR RTypeArgs
---     | ADDI ITypeArgs -- rd, rs1, imm 
---     | SUBI ITypeArgs
---     deriving (Show, Eq)
 
 data AssemblyError
     = UnknownInstruction String
