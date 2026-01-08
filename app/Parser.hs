@@ -183,8 +183,7 @@ parseInstruction = choice [
         rType "sub" (RType SUB),
         rType "xor" (RType XOR),
 
-        iType "addi" (IType ADDI),
-        iType "subi" (IType SUBI)
+        iType "addi" (IType ADDI)
     ] 
 
 parseLine :: Parser (Maybe SomeInstruction)
