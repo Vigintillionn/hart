@@ -8,6 +8,7 @@ import qualified Data.Vector as V
 import qualified Data.Map as M 
 import Control.Monad.State
 import Assembler (assemble)
+import qualified Decoder as D 
 import Text.Printf (printf)
 
 data CPU = CPU 
@@ -40,9 +41,7 @@ readByte addr = gets (M.findWithDefault 0 addr . mem)
 fetch :: Simulator Word32 
 fetch = undefined
 
--- Extracts bits from 'lo' to 'hi'
-getBits :: Int -> Int -> Word32 -> Word32
-getBits lo hi word = undefined
+
 
 -- decodes a word into the correct instruction
 decode :: Word32 -> SomeInstruction 
@@ -70,11 +69,14 @@ runUntilHalt = do
 main :: IO ()
 main = do
     let program = "add sp, sp, ra     # this is a test\n \
-    \ addi sp, sp, -0xdeadbeef"
+    \ addi sp, sp, -0x4"
     case parse program of
         Right inst -> do
+            print inst
             let assembled = assemble inst
             mapM_ (putStrLn . printf "%032b") assembled 
+            let decoded = D.decode assembled
+            print decoded
         Left err -> print err
 
 
