@@ -1,5 +1,3 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
 module Assembler where
 import Types 
 import Data.Word

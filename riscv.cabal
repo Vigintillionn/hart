@@ -63,6 +63,7 @@ executable riscv
     other-modules:    Types
                       Parser
                       Assembler
+                      Decoder
 
     -- Modules included in this executable, other than Main.
     -- other-modules:
@@ -76,6 +77,12 @@ executable riscv
         mtl >= 2.3,
         containers >= 0.6,
         vector >= 0.13
+
+    default-extensions:
+        GADTs
+        DataKinds
+        KindSignatures
+        StandaloneDeriving
 
     -- Directories containing source files.
     hs-source-dirs:   app

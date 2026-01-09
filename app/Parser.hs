@@ -1,5 +1,3 @@
-{-# LANGUAGE GADTs #-}
-{-# LANGUAGE DataKinds #-}
 module Parser where
 
 import Types
