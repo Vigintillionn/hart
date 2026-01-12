@@ -1,95 +1,36 @@
 module Main where
 
-import Types
 import Parser (parse)
 import Data.Word
-import Data.Vector ((!), (//))
 import qualified Data.Vector as V
-import qualified Data.Map as M 
 import Control.Monad.State
 import Assembler (assemble)
-import qualified Decoder as D 
 import Text.Printf (printf)
+import CPU (runProgram, emptyCPU, regs)
+import Data.Int (Int32)
 
-data CPU = CPU 
-    { pc    :: Word32 
-    , regs  :: V.Vector Word32 
-    , mem   :: M.Map Word32 Word8 
-    } deriving (Show)
+viewRegisters :: V.Vector Word32 -> [Int32]
+viewRegisters regs = map fromIntegral (V.toList regs)
 
-type Simulator a = State CPU a
-
--- Helper to read a register
-getReg :: Register -> Simulator Word32
-getReg 0 = return 0                     -- x0 is hardwired to be 0
-getReg r = do
-    cpuRegs <- gets regs
-    return (cpuRegs ! r)
-
--- Helper to write to a register
-setReg :: Register -> Word32 -> Simulator ()
-setReg 0 _      = return ()             -- writes to x0 are ignored
-setReg r val    = modify $ \cpu ->
-    let newRegs = regs cpu // [(r, val)]
-    in cpu { regs = newRegs }
-
--- Fetch a single byte, defaulting to 0 if not found
-readByte :: Word32 -> Simulator Word8
-readByte addr = gets (M.findWithDefault 0 addr . mem)
-
--- Fetch a 4-byte instruction (little endian)
-fetch :: Simulator Word32 
-fetch = undefined
-
-
-
--- decodes a word into the correct instruction
-decode :: Word32 -> SomeInstruction 
-decode = undefined
-
-execute = undefined
-
-step :: Simulator ()
-step = do
-    rawInstr <- fetch                   -- fetch instruction
-    let instr = decode rawInstr         -- decode
-    _ <- execute instr                       -- execute
-    modify (\c -> c { pc = pc c + 4 })  -- increment PC
-
-runUntilHalt :: Simulator ()
-runUntilHalt = do
-    currentPC <- gets pc
-    if currentPC == 0xFFFFFFFF 
-        then return ()
-        else do
-            step
-            runUntilHalt
-    
+program :: String
+program = "addi x1, x0, 5     # x1 = 5\n \
+          \ addi x2, x0, 1    # x2 = 0\n \
+          \ # Loop start (offset -8 from the beq below?)\n \
+          \ addi x1, x1, -1   # Decrement\n \
+          \ bne  x1, x2, -4   # If x1 != 0, jump back 4 bytes (to the addi)"
 
 main :: IO ()
-main = do
-    let program = "add sp, sp, ra     # this is a test\n \
-    \ addi sp, sp, -0x4"
+main = do 
     case parse program of
+        Left err -> print err
         Right inst -> do
+            putStrLn "---- AST PARSED ---"
             print inst
+
+            putStrLn "---- ASSEMBLED ---"
             let assembled = assemble inst
             mapM_ (putStrLn . printf "%032b") assembled 
-            let decoded = D.decode assembled
-            print decoded
-        Left err -> print err
 
-
-
-comment :: IO ()
-comment = do
-    let initialCPU = CPU { pc = 0, regs = V.replicate 32 0, mem = M.empty }
-
-    let program = do
-            setReg 1 20
-            setReg 2 20
-            modify (\c -> c { pc = 0xFFFFFFFF })
-
-    let finalCPU = execState program initialCPU
-
-    print (regs finalCPU ! 2)
+            let cpu = execState (runProgram inst) emptyCPU
+            putStrLn "---- FINAL CPU ----"
+            print (viewRegisters $ regs cpu)
