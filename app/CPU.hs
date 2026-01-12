@@ -124,9 +124,8 @@ executeBType (BType op args) = do
     if shouldBranch
         then do 
             currentPC <- gets pc
-            let instructionPC = currentPC - 4
             let off = fromIntegral $ b_imm args
-            let target = instructionPC + off
+            let target = currentPC + off
             return (Jump target)
         else return Advance
 
