@@ -1,0 +1,151 @@
+module CPU where
+import Data.Word
+import qualified Data.Vector as V
+import qualified Data.Map.Strict as M
+import Types
+import Control.Monad.State 
+import Data.Vector ((!), (//))
+import Data.Bits (Bits(..))
+import Assembler (assembleSome)
+import Data.Foldable (traverse_)
+import Decoder (decodeWord)
+import Control.Monad
+
+data CPU = CPU 
+    { pc    :: Word32 
+    , regs  :: V.Vector Word32 
+    , mem   :: M.Map Word32 Word8 
+    }
+
+entryPoint :: Word32
+entryPoint = 0x0
+
+emptyCPU :: CPU
+emptyCPU = CPU 
+    { pc    = entryPoint 
+    , regs  = V.replicate 32 0
+    , mem   = M.empty
+    }
+
+type Emulator a = State CPU a 
+
+getReg :: Register -> Emulator Word32 
+getReg (Reg 0) = return 0
+getReg r = do
+    file <- gets regs
+    return (file ! unReg r)
+
+setReg :: Register -> Word32 -> Emulator ()
+setReg (Reg 0) _ = return ()
+setReg r v = modify $ \cpu ->
+    cpu { regs = regs cpu // [(unReg r, v)]  } 
+
+extractByte :: Word32 -> Int -> Word8
+extractByte w n = fromIntegral $ (w `shiftR` (n * 8)) .&. 0xFF 
+
+store :: Word32 -> Word32 -> Emulator ()
+store a w = modify $ \cpu ->
+    let n = M.fromList [ (a,     extractByte w 0),
+            (a + 1, extractByte w 1),
+            (a + 2, extractByte w 2),
+            (a + 3, extractByte w 3)]
+    in cpu { mem = n `M.union` mem cpu  } 
+    
+readByte :: Word32 -> Emulator Word8 
+readByte a = gets $ M.findWithDefault 0 a . mem
+
+incr :: Word32 -> Int -> Word32
+incr w o = fromIntegral $ fromIntegral w + o
+
+fetch :: Emulator Word32
+fetch = do
+    p   <- gets pc
+    b0  <- readByte p          -- LSB
+    b1  <- readByte (p + 1)
+    b2  <- readByte (p + 2)
+    b3  <- readByte (p + 3)    -- MSB
+    return $
+        fromIntegral b0 .|.
+        (fromIntegral b1 `shiftL` 8) .|.
+        (fromIntegral b2 `shiftL` 16) .|.
+        (fromIntegral b3 `shiftL` 24)
+
+loadProgram :: Program -> Emulator ()
+loadProgram instr = do
+    modify $ \cpu -> cpu { pc = entryPoint }
+    let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
+    traverse_ (uncurry store) assembled 
+
+runBinaryOp :: (Word32 -> Word32 -> Word32) -> RTypeArgs -> Emulator ()
+runBinaryOp op args = do
+    l <- getReg $ r_rs1 args 
+    r <- getReg $ r_rs2 args 
+    setReg (r_rd args) (l `op` r)
+
+executeRType :: Instruction 'R -> Emulator ()
+executeRType (RType op args) = case op of
+    ADD -> runBinaryOp (+) args
+    SUB -> runBinaryOp (-) args
+    XOR -> runBinaryOp xor args
+    OR  -> runBinaryOp (.|.) args
+    AND -> runBinaryOp (.&.) args
+
+runImmediateOp :: (Word32 -> Word32 -> Word32) -> ITypeArgs -> Emulator ()
+runImmediateOp op args = do
+    r <- getReg $ i_rs1 args
+    let imm = fromIntegral (i_imm args)
+    setReg (i_rd args) (r `op` imm) 
+
+executeIType :: Instruction 'I -> Emulator ()
+executeIType (IType op args) = case op of
+    ADDI -> runImmediateOp (+) args
+    XORI -> runImmediateOp xor args
+    ORI  -> runImmediateOp (.|.) args
+    ANDI -> runImmediateOp (.&.) args
+
+executeBType :: Instruction 'B -> Emulator ()
+executeBType (BType op args) = do
+    l <- getReg (b_rs1 args)
+    r <- getReg (b_rs2 args)
+    currentPC <- gets pc
+
+    let instructionPC = currentPC - 4
+    let off = fromIntegral (b_imm args)
+    let target = instructionPC + off
+
+    let shouldBranch = case op of
+            BEQ -> l == r
+            BNE -> l /= r
+
+    when shouldBranch $
+        modify $ \cpu -> cpu { pc = target }
+
+
+
+execute :: SomeInstruction -> Emulator ()
+execute (SomeInstruction inst@(RType _ _)) = executeRType inst 
+execute (SomeInstruction inst@(IType _ _)) = executeIType inst 
+execute (SomeInstruction inst@(BType _ _)) = executeBType inst
+
+incrPC :: Emulator ()
+incrPC = modify $ \cpu -> cpu { pc = pc cpu + 4 }
+
+-- One clock cycle
+step :: Emulator ()
+step = do
+    w <- fetch
+    incrPC
+    case decodeWord w of
+        Left _  -> return () 
+        Right i -> execute i
+
+run :: Emulator ()
+run = do
+    step
+    w <- fetch
+    unless (w == 0x0) run
+
+runProgram :: Program -> Emulator ()
+runProgram p = do
+    loadProgram p
+    run
