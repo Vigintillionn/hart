@@ -45,10 +45,6 @@ setReg r v
         modify $ \cpu ->
             cpu { regs = regs cpu // [(unReg r, v)]  } 
 
-getImmediate :: Operand -> Int
-getImmediate (Label _)     = error "CPU execution hit unresolved label"
-getImmediate (Immediate v) = v
-
 extractByte :: Word32 -> Int -> Word8
 extractByte w n = fromIntegral $ (w `shiftR` (n * 8)) .&. 0xFF 
 
@@ -91,7 +87,7 @@ runBinaryOp op args = do
     r <- getReg $ r_rs2 args 
     setReg (r_rd args) (l `op` r)
 
-executeRType :: Instruction 'R -> Emulator PCUpdate 
+executeRType :: Instruction 'R Int -> Emulator PCUpdate 
 executeRType (RType op args) = do
     case op of
         ADD -> runBinaryOp (+) args
@@ -101,13 +97,13 @@ executeRType (RType op args) = do
         AND -> runBinaryOp (.&.) args
     return Advance
 
-runImmediateOp :: (Word32 -> Word32 -> Word32) -> ITypeArgs -> Emulator ()
+runImmediateOp :: (Word32 -> Word32 -> Word32) -> ITypeArgs Int -> Emulator ()
 runImmediateOp op args = do
     r <- getReg $ i_rs1 args
-    let imm = fromIntegral (getImmediate $ i_imm args)
+    let imm = fromIntegral $ i_imm args
     setReg (i_rd args) (r `op` imm) 
 
-executeIType :: Instruction 'I -> Emulator PCUpdate 
+executeIType :: Instruction 'I Int -> Emulator PCUpdate 
 executeIType (IType op args) = do 
     case op of
         ADDI -> runImmediateOp (+) args
@@ -116,7 +112,7 @@ executeIType (IType op args) = do
         ANDI -> runImmediateOp (.&.) args
     return Advance
 
-executeBType :: Instruction 'B -> Emulator PCUpdate 
+executeBType :: Instruction 'B Int -> Emulator PCUpdate 
 executeBType (BType op args) = do
     l <- getReg (b_rs1 args)
     r <- getReg (b_rs2 args)
@@ -129,14 +125,12 @@ executeBType (BType op args) = do
         then do 
             currentPC <- gets pc
             let instructionPC = currentPC - 4
-            let off = fromIntegral (getImmediate $ b_imm args)
+            let off = fromIntegral $ b_imm args
             let target = instructionPC + off
             return (Jump target)
         else return Advance
 
-
-
-execute :: SomeInstruction -> Emulator PCUpdate 
+execute :: SomeInstruction Int -> Emulator PCUpdate 
 execute (SomeInstruction inst@(RType _ _)) = executeRType inst 
 execute (SomeInstruction inst@(IType _ _)) = executeIType inst 
 execute (SomeInstruction inst@(BType _ _)) = executeBType inst

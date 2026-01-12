@@ -21,8 +21,6 @@ abiMap = M.fromList [
     ("t3", 28), ("t4", 29), ("t5", 30), ("t6", 31)
     ]
 
-
-
 newtype Parser a = Parser { runParser :: String -> Either AssemblyError (a, String) }
 
 instance Functor Parser where
@@ -136,7 +134,7 @@ register = lexeme $ choice [abiName, xName]
 
 operand :: Parser Operand
 operand = choice 
-    [ Immediate <$> immediate
+    [ ImmVal <$> immediate
     , Label <$> identifier
     ]
 
@@ -165,28 +163,28 @@ parseRTypeOperands = RTypeArgs
     <*> register <* comma 
     <*> register 
 
-parseITypeOperands :: Parser ITypeArgs
+parseITypeOperands :: Parser (ITypeArgs Operand)
 parseITypeOperands = ITypeArgs 
     <$> register <* comma
     <*> register <* comma
     <*> operand 
 
-parseBTypeOperands :: Parser BTypeArgs
+parseBTypeOperands :: Parser (BTypeArgs Operand)
 parseBTypeOperands = BTypeArgs
     <$> register <* comma
     <*> register <* comma
     <*> operand
 
-rType :: String -> (RTypeArgs -> Instruction 'R) -> Parser SomeInstruction 
+rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (SomeInstruction Operand) 
 rType n c = SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
-iType :: String -> (ITypeArgs -> Instruction 'I) -> Parser SomeInstruction
+iType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (SomeInstruction Operand)
 iType n c = SomeInstruction . c <$ lexeme (string n) <*> parseITypeOperands
 
-bType :: String -> (BTypeArgs -> Instruction 'B) -> Parser SomeInstruction
+bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (SomeInstruction Operand)
 bType n c = SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
 
-parseInstruction :: Parser SomeInstruction 
+parseInstruction :: Parser (SomeInstruction Operand) 
 parseInstruction = choice $ concat 
     [ map (\(n, op) -> rType n (RType op)) rOps
     , map (\(n, op) -> iType n (IType op)) iOps

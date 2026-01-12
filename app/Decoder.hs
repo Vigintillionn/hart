@@ -28,7 +28,7 @@ signExtend bits x =
     in fromIntegral ((fromIntegral x :: Int32) `shiftL` shift `shiftR` shift)
 
 
-decodeRType :: Word32 -> Maybe (Instruction 'R)
+decodeRType :: Word32 -> Maybe (Instruction 'R Int)
 decodeRType w = do
     op <- case (getF3 w, slice 31 25 w) of
             (0x0, 0x0)  -> Just ADD
@@ -42,7 +42,7 @@ decodeRType w = do
     rs2 <- mkRegister (getRs2 w)
     return $ RType op (RTypeArgs rd rs1 rs2)
 
-decodeIType :: Word32 -> Maybe (Instruction 'I)
+decodeIType :: Word32 -> Maybe (Instruction 'I Int)
 decodeIType w = do
     op <- case getF3 w of
         0x0 -> Just ADDI
@@ -53,7 +53,7 @@ decodeIType w = do
 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
-    let imm = Immediate $ signExtend 12 $ slice 31 20 w
+    let imm = signExtend 12 $ slice 31 20 w
     return $ IType op (ITypeArgs rd rs1 imm)
 
 unpackBImm :: Word32 -> Int
@@ -70,7 +70,7 @@ unpackBImm w =
                    (bits4_1 `shiftL` 1) 
                    
 
-decodeBType :: Word32 -> Maybe (Instruction 'B)
+decodeBType :: Word32 -> Maybe (Instruction 'B Int)
 decodeBType w = do
     op <- case getF3 w of
         0x0 -> Just BEQ
@@ -78,10 +78,10 @@ decodeBType w = do
         _   -> Nothing
     rs1 <- mkRegister (getRs1 w)
     rs2 <- mkRegister (getRs2 w)
-    let imm = Immediate $ unpackBImm w
+    let imm = unpackBImm w
     return $ BType op (BTypeArgs rs1 rs2 imm)
 
-decodeSome :: Word32 -> Maybe SomeInstruction
+decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
     let opcode = slice 6 0 w
         instr = case opcode of
@@ -91,11 +91,11 @@ decodeSome w =
             _       -> Nothing
     in instr
 
-decodeWord :: Word32 -> Either String SomeInstruction 
+decodeWord :: Word32 -> Either String (SomeInstruction Int)
 decodeWord w =
     case decodeSome w of
         Just instr  -> Right instr
         Nothing     -> Left "Invalid instruction" 
 
-decode :: [Word32] -> Either String [SomeInstruction]
+decode :: [Word32] -> Either String Program 
 decode = traverse decodeWord

@@ -3,10 +3,6 @@ import Types
 import Data.Word
 import Data.Bits (Bits(..))
 
-getImmediate :: Operand -> Int
-getImmediate (Label _)     = error "Assembler received unresolved label"
-getImmediate (Immediate v) = v
-
 getRFmt :: ROp -> (Word32, Word32, Word32)
 getRFmt op = (opc, f3, f7)
     where
@@ -20,7 +16,7 @@ getRFmt op = (opc, f3, f7)
             SUB -> 0x20
             _   -> 0x0
 
-assembleRType :: Instruction 'R -> Word32
+assembleRType :: Instruction 'R Int -> Word32
 assembleRType (RType op args) =
     opc .|.
     (rd `shiftL` 7) .|.
@@ -44,7 +40,7 @@ getIFmt op = (opc, f3)
             ANDI -> 0x7
             _    -> 0x0
 
-assembleIType :: Instruction 'I -> Word32
+assembleIType :: Instruction 'I Int -> Word32
 assembleIType (IType op args) =
     opc .|.
     (rd `shiftL` 7) .|.
@@ -55,7 +51,7 @@ assembleIType (IType op args) =
         (opc, f3)   = getIFmt op
         rd          = fromIntegral $ unReg $ i_rd args
         rs1         = fromIntegral $ unReg $ i_rs1 args
-        imm         = fromIntegral (getImmediate $ i_imm args) .&. 0xFFF
+        imm         = fromIntegral (i_imm args) .&. 0xFFF
 
 packBImm :: Int -> Word32
 packBImm v =
@@ -77,9 +73,9 @@ getBFmt op = (opc, f3)
             BEQ -> 0x0
             BNE -> 0x1
 
-assembleBType :: Instruction 'B -> Word32
+assembleBType :: Instruction 'B Int -> Word32
 assembleBType (BType op args) =
-    packBImm  (getImmediate $ b_imm args) .|.
+    packBImm  (b_imm args) .|.
     (rs2 `shiftL` 20) .|.
     (rs1 `shiftL` 15) .|.
     (f3 `shiftL` 12) .|.
@@ -89,10 +85,10 @@ assembleBType (BType op args) =
         rs1 = fromIntegral $ unReg $ b_rs1 args
         rs2 = fromIntegral $ unReg $ b_rs2 args
 
-assembleSome :: SomeInstruction -> Word32
+assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
 assembleSome (SomeInstruction instr@(IType _ _)) = assembleIType instr
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
 
-assemble :: [SomeInstruction] -> [Word32]
+assemble :: Program -> [Word32]
 assemble = map assembleSome
