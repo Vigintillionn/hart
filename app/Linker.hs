@@ -1,26 +1,28 @@
 module Linker where
 import Types 
 import qualified Data.Map.Strict as M
+import Control.Monad (foldM)
 
 resolve :: [SourceLine] -> Either String [SomeInstruction]
 resolve l = do
-    symbolTable <- buildSymTable l 0 M.empty
+    symbolTable <- buildSymTable l 
     resolveInstructions l 0 symbolTable
 
-buildSymTable :: [SourceLine] -> Int -> M.Map String Int -> Either String (M.Map String Int)
-buildSymTable [] _ table = Right table
-buildSymTable ((l, i) : xs) pc table = do
-    newTable <- case l of
-        Just name -> if M.member name table
-                     then Left $ "Duplicate label: " ++ name
-                     else Right $ M.insert name pc table
-        Nothing   -> Right table
+buildSymTable :: [SourceLine] -> Either String (M.Map String Int)
+buildSymTable l = snd <$> foldM step (0, M.empty) l
+    where
+        step (pc, table) (ml, mi) = do
+            newTable <- case ml of
+                Nothing -> Right table
+                Just n  -> if M.member n table
+                           then Left $ "Duplicate label: " ++ n
+                           else Right $ M.insert n pc table
 
-    let nextPC = case i of
-            Just _  -> pc + 4
-            Nothing -> pc
+            let nextPC = case mi of
+                    Nothing -> pc
+                    Just _  -> pc + 4
 
-    buildSymTable xs nextPC newTable
+            return (nextPC, newTable)
 
 resolveInstructions :: [SourceLine] -> Int -> M.Map String Int -> Either String [SomeInstruction]
 resolveInstructions [] _ _  = Right []

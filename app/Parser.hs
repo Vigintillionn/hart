@@ -188,21 +188,15 @@ bType :: String -> (BTypeArgs -> Instruction 'B) -> Parser SomeInstruction
 bType n c = SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
 
 parseInstruction :: Parser SomeInstruction 
-parseInstruction = choice [
-        rType "add"  (RType ADD),   
-        rType "sub"  (RType SUB),
-        rType "xor"  (RType XOR),
-        rType "or"   (RType OR),
-        rType "and"  (RType AND),
-
-        iType "addi" (IType ADDI),
-        iType "xori" (IType XORI),
-        iType "ori"  (IType ORI),
-        iType "andi" (IType ANDI),
-
-        bType "beq"  (BType BEQ),
-        bType "bne"  (BType BNE)
-    ] 
+parseInstruction = choice $ concat 
+    [ map (\(n, op) -> rType n (RType op)) rOps
+    , map (\(n, op) -> iType n (IType op)) iOps
+    , map (\(n, op) -> bType n (BType op)) bOps 
+    ]
+    where
+        rOps = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
+        iOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
+        bOps = [("beq", BEQ), ("bne", BNE)]
 
 parseLine :: Parser SourceLine 
 parseLine = do

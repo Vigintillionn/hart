@@ -1,4 +1,20 @@
-module Types where
+module Types (Register
+             , mkRegister
+             , unReg
+             , Instruction(..)
+             , InstrKind(..)
+             , SourceLine
+             , Program
+             , SomeInstruction(..)
+             , Operand(..)
+             , ROp(..)
+             , IOp(..)
+             , BOp(..)
+             , RTypeArgs(..)
+             , ITypeArgs(..)
+             , BTypeArgs(..)
+             , AssemblyError(..)
+             ) where
 
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 

@@ -11,6 +11,8 @@ import Data.Foldable (traverse_)
 import Decoder (decodeWord)
 import Control.Monad
 
+data PCUpdate = Advance | Jump Word32
+
 data CPU = CPU 
     { pc    :: Word32 
     , regs  :: V.Vector Word32 
@@ -30,15 +32,18 @@ emptyCPU = CPU
 type Emulator a = State CPU a 
 
 getReg :: Register -> Emulator Word32 
-getReg (Reg 0) = return 0
-getReg r = do
-    file <- gets regs
-    return (file ! unReg r)
+getReg r  
+    | unReg r == 0 = return 0
+    | otherwise = do
+        file <- gets regs
+        return (file ! unReg r)
 
 setReg :: Register -> Word32 -> Emulator ()
-setReg (Reg 0) _ = return ()
-setReg r v = modify $ \cpu ->
-    cpu { regs = regs cpu // [(unReg r, v)]  } 
+setReg r v
+    | unReg r == 0 = return ()
+    | otherwise = do
+        modify $ \cpu ->
+            cpu { regs = regs cpu // [(unReg r, v)]  } 
 
 getImmediate :: Operand -> Int
 getImmediate (Label _)     = error "CPU execution hit unresolved label"
@@ -86,13 +91,15 @@ runBinaryOp op args = do
     r <- getReg $ r_rs2 args 
     setReg (r_rd args) (l `op` r)
 
-executeRType :: Instruction 'R -> Emulator ()
-executeRType (RType op args) = case op of
-    ADD -> runBinaryOp (+) args
-    SUB -> runBinaryOp (-) args
-    XOR -> runBinaryOp xor args
-    OR  -> runBinaryOp (.|.) args
-    AND -> runBinaryOp (.&.) args
+executeRType :: Instruction 'R -> Emulator PCUpdate 
+executeRType (RType op args) = do
+    case op of
+        ADD -> runBinaryOp (+) args
+        SUB -> runBinaryOp (-) args
+        XOR -> runBinaryOp xor args
+        OR  -> runBinaryOp (.|.) args
+        AND -> runBinaryOp (.&.) args
+    return Advance
 
 runImmediateOp :: (Word32 -> Word32 -> Word32) -> ITypeArgs -> Emulator ()
 runImmediateOp op args = do
@@ -100,36 +107,43 @@ runImmediateOp op args = do
     let imm = fromIntegral (getImmediate $ i_imm args)
     setReg (i_rd args) (r `op` imm) 
 
-executeIType :: Instruction 'I -> Emulator ()
-executeIType (IType op args) = case op of
-    ADDI -> runImmediateOp (+) args
-    XORI -> runImmediateOp xor args
-    ORI  -> runImmediateOp (.|.) args
-    ANDI -> runImmediateOp (.&.) args
+executeIType :: Instruction 'I -> Emulator PCUpdate 
+executeIType (IType op args) = do 
+    case op of
+        ADDI -> runImmediateOp (+) args
+        XORI -> runImmediateOp xor args
+        ORI  -> runImmediateOp (.|.) args
+        ANDI -> runImmediateOp (.&.) args
+    return Advance
 
-executeBType :: Instruction 'B -> Emulator ()
+executeBType :: Instruction 'B -> Emulator PCUpdate 
 executeBType (BType op args) = do
     l <- getReg (b_rs1 args)
     r <- getReg (b_rs2 args)
-    currentPC <- gets pc
-
-    let instructionPC = currentPC - 4
-    let off = fromIntegral (getImmediate $ b_imm args)
-    let target = instructionPC + off
 
     let shouldBranch = case op of
             BEQ -> l == r
             BNE -> l /= r
 
-    when shouldBranch $
-        modify $ \cpu -> cpu { pc = target }
+    if shouldBranch
+        then do 
+            currentPC <- gets pc
+            let instructionPC = currentPC - 4
+            let off = fromIntegral (getImmediate $ b_imm args)
+            let target = instructionPC + off
+            return (Jump target)
+        else return Advance
 
 
 
-execute :: SomeInstruction -> Emulator ()
+execute :: SomeInstruction -> Emulator PCUpdate 
 execute (SomeInstruction inst@(RType _ _)) = executeRType inst 
 execute (SomeInstruction inst@(IType _ _)) = executeIType inst 
 execute (SomeInstruction inst@(BType _ _)) = executeBType inst
+
+
+setPC :: Word32 -> Emulator ()
+setPC t = modify $ \cpu -> cpu { pc = t }
 
 incrPC :: Emulator ()
 incrPC = modify $ \cpu -> cpu { pc = pc cpu + 4 }
@@ -138,10 +152,13 @@ incrPC = modify $ \cpu -> cpu { pc = pc cpu + 4 }
 step :: Emulator ()
 step = do
     w <- fetch
-    incrPC
     case decodeWord w of
         Left _  -> return () 
-        Right i -> execute i
+        Right i -> do
+            update <- execute i
+            case update of
+                Advance -> incrPC
+                Jump t  -> setPC t
 
 run :: Emulator ()
 run = do
