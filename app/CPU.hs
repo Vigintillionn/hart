@@ -1,7 +1,7 @@
 module CPU where
 import Data.Word
 import qualified Data.Vector as V
-import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as M
 import Types
 import Control.Monad.State 
 import Data.Vector ((!), (//))
@@ -16,7 +16,7 @@ data PCUpdate = Advance | Jump Word32
 data CPU = CPU 
     { pc    :: Word32 
     , regs  :: V.Vector Word32 
-    , mem   :: M.Map Word32 Word8 
+    , mem   :: M.IntMap Word8 
     }
 
 entryPoint :: Word32
@@ -50,14 +50,15 @@ extractByte w n = fromIntegral $ (w `shiftR` (n * 8)) .&. 0xFF
 
 store :: Word32 -> Word32 -> Emulator ()
 store a w = modify $ \cpu ->
-    let n = M.fromList [ (a,     extractByte w 0),
-            (a + 1, extractByte w 1),
-            (a + 2, extractByte w 2),
-            (a + 3, extractByte w 3)]
+    let addr = fromIntegral a
+        n = M.fromList [ (addr, extractByte w 0),
+            (addr + 1, extractByte w 1),
+            (addr + 2, extractByte w 2),
+            (addr + 3, extractByte w 3)]
     in cpu { mem = n `M.union` mem cpu  } 
     
 readByte :: Word32 -> Emulator Word8 
-readByte a = gets $ M.findWithDefault 0 a . mem
+readByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
 
 incr :: Word32 -> Int -> Word32
 incr w o = fromIntegral $ fromIntegral w + o
