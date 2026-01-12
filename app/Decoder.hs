@@ -1,7 +1,7 @@
 module Decoder where
 import Types 
 import Data.Word (Word32)
-import Data.Bits (Bits(shiftR, shiftL, (.&.)))
+import Data.Bits (Bits(shiftR, shiftL, (.&.), (.|.)))
 import Data.Int (Int32)
 
 -- Extracts bits from 'lo' to 'hi'
@@ -29,37 +29,57 @@ signExtend bits x =
 
 
 decodeRType :: Word32 -> Maybe (Instruction 'R)
-decodeRType w =
-    let rd  = getRd w 
-        rs1 = getRs1 w 
-        rs2 = getRs2 w 
-        f3  = getF3 w 
-        f7  = slice 31 25 w
-        op  = case (f3, f7) of
+decodeRType w = do
+    op <- case (getF3 w, slice 31 25 w) of
             (0x0, 0x0)  -> Just ADD
             (0x0, 0x20) -> Just SUB
             (0x4, 0x0)  -> Just XOR
+            (0x6, 0x0)  -> Just OR
+            (0x7, 0x0)  -> Just AND
             _           -> Nothing
-    in RType <$> op <*> pure RTypeArgs 
-        { r_rs2 = rs2
-        , r_rs1 = rs1
-        , r_rd  = rd
-        } 
+    rd  <- mkRegister (getRd w)
+    rs1 <- mkRegister (getRs1 w)
+    rs2 <- mkRegister (getRs2 w)
+    return $ RType op (RTypeArgs rd rs1 rs2)
 
 decodeIType :: Word32 -> Maybe (Instruction 'I)
-decodeIType w = 
-    let rd  = getRd w 
-        rs1 = getRs1 w 
-        f3  = getF3 w
-        imm = signExtend 12 $ slice 31 20 w
-        op  = case f3 of
-            0x0 -> Just ADDI
-            _   -> Nothing
-    in IType <$> op <*> pure ITypeArgs 
-        { i_rs1 = rs1
-        , i_rd  = rd
-        , i_imm = imm
-        }
+decodeIType w = do
+    op <- case getF3 w of
+        0x0 -> Just ADDI
+        0x4 -> Just XORI
+        0x6 -> Just ORI
+        0x7 -> Just ANDI
+        _   -> Nothing 
+
+    rd  <- mkRegister (getRd w)
+    rs1 <- mkRegister (getRs1 w)
+    let imm = signExtend 12 $ slice 31 20 w
+    return $ IType op (ITypeArgs rd rs1 imm)
+
+unpackBImm :: Word32 -> Immediate
+unpackBImm w =
+    signExtend 13 unpacked
+    where
+        bit12 = slice 31 31 w
+        bit11 = slice 7 7 w 
+        bits10_5 = slice 30 25 w 
+        bits4_1  = slice 11 8 w 
+        unpacked = (bit12 `shiftL` 12) .|.
+                   (bit11 `shiftL` 11) .|.
+                   (bits10_5 `shiftL` 5) .|.
+                   (bits4_1 `shiftL` 1) 
+                   
+
+decodeBType :: Word32 -> Maybe (Instruction 'B)
+decodeBType w = do
+    op <- case getF3 w of
+        0x0 -> Just BEQ
+        0x1 -> Just BNE
+        _   -> Nothing
+    rs1 <- mkRegister (getRs1 w)
+    rs2 <- mkRegister (getRs2 w)
+    let imm = unpackBImm w
+    return $ BType op (BTypeArgs rs1 rs2 imm)
 
 decodeSome :: Word32 -> Maybe SomeInstruction
 decodeSome w =
@@ -67,6 +87,7 @@ decodeSome w =
         instr = case opcode of
             0x33    -> SomeInstruction <$> decodeRType w
             0x13    -> SomeInstruction <$> decodeIType w
+            0x63    -> SomeInstruction <$> decodeBType w
             _       -> Nothing
     in instr
 

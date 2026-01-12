@@ -131,14 +131,16 @@ eof = Parser $ \s ->
         []  -> Right((), s)
         _   -> Left (ParserFail $ "Expected end of file, but got: " ++ s)
 
-register :: Parser Int
+register :: Parser Register 
 register = lexeme $ choice [abiName, xName]
     where
-        xName = char 'x' *> integer 
+        xName = char 'x' *> integer >>= \n -> maybe (fail "Invalid register name") return (mkRegister n)
         abiName = do
             name <- some (satisfy isAlpha)
             case M.lookup name abiMap of
-                Just reg -> return reg
+                Just n -> case mkRegister n of
+                    Nothing  -> fail "Invalid register name"
+                    Just reg -> return reg
                 Nothing -> fail "Invalid register name"
 
 immediate :: Parser Int
@@ -169,19 +171,36 @@ parseITypeOperands = ITypeArgs
     <*> register <* comma
     <*> immediate
 
+parseBTypeOperands :: Parser BTypeArgs
+parseBTypeOperands = BTypeArgs
+    <$> register <* comma
+    <*> register <* comma
+    <*> immediate
+
 rType :: String -> (RTypeArgs -> Instruction 'R) -> Parser SomeInstruction 
 rType n c = SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
 iType :: String -> (ITypeArgs -> Instruction 'I) -> Parser SomeInstruction
 iType n c = SomeInstruction . c <$ lexeme (string n) <*> parseITypeOperands
 
+bType :: String -> (BTypeArgs -> Instruction 'B) -> Parser SomeInstruction
+bType n c = SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
+
 parseInstruction :: Parser SomeInstruction 
 parseInstruction = choice [
-        rType "add" (RType ADD),   
-        rType "sub" (RType SUB),
-        rType "xor" (RType XOR),
+        rType "add"  (RType ADD),   
+        rType "sub"  (RType SUB),
+        rType "xor"  (RType XOR),
+        rType "or"   (RType OR),
+        rType "and"  (RType AND),
 
-        iType "addi" (IType ADDI)
+        iType "addi" (IType ADDI),
+        iType "xori" (IType XORI),
+        iType "ori"  (IType ORI),
+        iType "andi" (IType ANDI),
+
+        bType "beq"  (BType BEQ),
+        bType "bne"  (BType BNE)
     ] 
 
 parseLine :: Parser (Maybe SomeInstruction)
