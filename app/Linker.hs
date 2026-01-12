@@ -2,13 +2,17 @@ module Linker where
 import Types 
 import qualified Data.Map.Strict as M
 import Control.Monad (foldM)
+import Control.Monad.State
+
+type SymbolTable = M.Map String Int
 
 resolve :: ParsedProgram -> Either String Program 
 resolve l = do
     symbolTable <- buildSymTable l 
-    resolveInstructions l 0 symbolTable
+    let instructions = [i | (_, Just i) <- l] -- Keep only the instructions
+    evalStateT (mapM (resolveInstruction symbolTable) instructions) 0 
 
-buildSymTable :: ParsedProgram -> Either String (M.Map String Int)
+buildSymTable :: ParsedProgram -> Either String SymbolTable 
 buildSymTable l = snd <$> foldM step (0, M.empty) l
     where
         step (pc, table) (ml, mi) = do
@@ -24,15 +28,14 @@ buildSymTable l = snd <$> foldM step (0, M.empty) l
 
             return (nextPC, newTable)
 
-resolveInstructions :: ParsedProgram -> Int -> M.Map String Int -> Either String Program 
-resolveInstructions [] _ _  = Right []
-resolveInstructions ((_, Nothing) : xs) pc table = resolveInstructions xs pc table
-resolveInstructions ((_, Just i) : xs) pc table = do
-    resolved <- resolveOperand pc table i
-    rest <- resolveInstructions xs (pc + 4) table
-    return (resolved : rest)
+resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either String) (SomeInstruction Int)
+resolveInstruction table instr = do
+    pc <- get
+    resolved <- lift $ resolveOperand pc table instr
+    modify (+4)
+    return resolved
 
-resolveOperand :: Int -> M.Map String Int -> SomeInstruction Operand -> Either String (SomeInstruction Int)
+resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
 resolveOperand pc table (SomeInstruction (BType op args)) = do
     off <- case b_imm args of
         ImmVal v -> Right v
