@@ -85,6 +85,7 @@ executable riscv
         DataKinds
         KindSignatures
         StandaloneDeriving
+        LambdaCase
 
     -- Directories containing source files.
     hs-source-dirs:   app

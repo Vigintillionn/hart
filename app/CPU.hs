@@ -150,13 +150,11 @@ incrPC = modify $ \cpu -> cpu { pc = pc cpu + 4 }
 
 -- One clock cycle
 step :: Emulator ()
-step = do
-    w <- fetch
-    case decodeWord w of
-        Left _  -> return () 
-        Right i -> do
-            update <- execute i
-            case update of
+step = 
+    fetch >>= either (const $ pure ()) execInstr . decodeWord
+    where
+        execInstr i =
+            execute i >>= \case
                 Advance -> incrPC
                 Jump t  -> setPC t
 

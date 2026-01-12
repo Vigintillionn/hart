@@ -82,8 +82,7 @@ lookAhead (Parser p) = Parser $ \input ->
         Right (a, _) -> Right (a, input)
 
 satisfy :: (Char -> Bool) -> Parser Char 
-satisfy predicate = Parser $ \input ->
-    case input of
+satisfy predicate = Parser $ \case 
         (c:cs) | predicate c -> Right (c, cs)
         (c:_)           -> Left (UnexpectedChar c)
         []              -> Left EOF 
