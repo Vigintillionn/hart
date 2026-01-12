@@ -3,6 +3,10 @@ import Types
 import Data.Word
 import Data.Bits (Bits(..))
 
+getImmediate :: Operand -> Int
+getImmediate (Label _)     = error "Assembler received unresolved label"
+getImmediate (Immediate v) = v
+
 getRFmt :: ROp -> (Word32, Word32, Word32)
 getRFmt op = (opc, f3, f7)
     where
@@ -51,7 +55,7 @@ assembleIType (IType op args) =
         (opc, f3)   = getIFmt op
         rd          = fromIntegral $ unReg $ i_rd args
         rs1         = fromIntegral $ unReg $ i_rs1 args
-        imm         = fromIntegral (i_imm args) .&. 0xFFF
+        imm         = fromIntegral (getImmediate $ i_imm args) .&. 0xFFF
 
 packBImm :: Int -> Word32
 packBImm v =
@@ -75,7 +79,7 @@ getBFmt op = (opc, f3)
 
 assembleBType :: Instruction 'B -> Word32
 assembleBType (BType op args) =
-    packBImm (b_imm args) .|.
+    packBImm  (getImmediate $ b_imm args) .|.
     (rs2 `shiftL` 20) .|.
     (rs1 `shiftL` 15) .|.
     (f3 `shiftL` 12) .|.

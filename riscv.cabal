@@ -62,6 +62,7 @@ executable riscv
 
     other-modules:    Types
                       Parser
+                      Linker
                       Assembler
                       Decoder
                       CPU

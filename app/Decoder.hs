@@ -53,10 +53,10 @@ decodeIType w = do
 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
-    let imm = signExtend 12 $ slice 31 20 w
+    let imm = Immediate $ signExtend 12 $ slice 31 20 w
     return $ IType op (ITypeArgs rd rs1 imm)
 
-unpackBImm :: Word32 -> Immediate
+unpackBImm :: Word32 -> Int
 unpackBImm w =
     signExtend 13 unpacked
     where
@@ -78,7 +78,7 @@ decodeBType w = do
         _   -> Nothing
     rs1 <- mkRegister (getRs1 w)
     rs2 <- mkRegister (getRs2 w)
-    let imm = unpackBImm w
+    let imm = Immediate $ unpackBImm w
     return $ BType op (BTypeArgs rs1 rs2 imm)
 
 decodeSome :: Word32 -> Maybe SomeInstruction

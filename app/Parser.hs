@@ -4,7 +4,6 @@ import Types
 import Control.Applicative
 import Data.Char (isDigit, isAlpha, isAlphaNum, isHexDigit)
 import Control.Monad (void)
-import Data.Maybe (catMaybes)
 import qualified Data.Map.Strict as M
 import Text.Read (readMaybe)
 import Numeric (readHex)
@@ -96,7 +95,7 @@ string :: String -> Parser String
 string = traverse char 
 
 identifier :: Parser String
-identifier = many (satisfy isAlphaNum)
+identifier = some (satisfy isAlphaNum)
 
 integer :: Parser Int
 integer = do
@@ -118,13 +117,6 @@ lexeme p = p <* sc
 comment :: Parser ()
 comment = void $ char '#' *> many (satisfy (/= '\n'))
 
-eol :: Parser ()
-eol = do
-    sc
-    _ <- optional comment
-    void (char '\n') <|> eof
-    return ()
-
 eof :: Parser ()
 eof = Parser $ \s ->
     case s of
@@ -142,6 +134,15 @@ register = lexeme $ choice [abiName, xName]
                     Nothing  -> fail "Invalid register name"
                     Just reg -> return reg
                 Nothing -> fail "Invalid register name"
+
+operand :: Parser Operand
+operand = choice 
+    [ Immediate <$> immediate
+    , Label <$> identifier
+    ]
+
+labelDef :: Parser String
+labelDef = identifier <* char ':'
 
 immediate :: Parser Int
 immediate = do
@@ -169,13 +170,13 @@ parseITypeOperands :: Parser ITypeArgs
 parseITypeOperands = ITypeArgs 
     <$> register <* comma
     <*> register <* comma
-    <*> immediate
+    <*> operand 
 
 parseBTypeOperands :: Parser BTypeArgs
 parseBTypeOperands = BTypeArgs
     <$> register <* comma
     <*> register <* comma
-    <*> immediate
+    <*> operand
 
 rType :: String -> (RTypeArgs -> Instruction 'R) -> Parser SomeInstruction 
 rType n c = SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
@@ -203,25 +204,30 @@ parseInstruction = choice [
         bType "bne"  (BType BNE)
     ] 
 
-parseLine :: Parser (Maybe SomeInstruction)
+parseLine :: Parser SourceLine 
 parseLine = do
     sc
-    next <- optional (lookAhead (char '\n' <|> char '#'))
+    l <- optional labelDef
+    sc
+    i <- optional parseInstruction
+    sc
+    _ <- optional comment
 
-    case next of
-        Just _  -> eol >> return Nothing -- empty line or comment
-        Nothing -> do
-            instr <- parseInstruction
-            eol
-            return (Just instr)
+    case (l, i) of
+        (Nothing, Nothing) -> void (char '\n')
+        _                  -> void (char '\n') <|> eof
+    return (l, i)
 
-parseProgram :: Parser [SomeInstruction]
+parseProgram :: Parser [SourceLine]
 parseProgram = do
     l <- many parseLine 
     eof
-    return (catMaybes l)
+    return $ filter (not . isEmpty) l
+    where
+        isEmpty (Nothing, Nothing) = True
+        isEmpty _                  = False
 
-parse :: String -> Either AssemblyError [SomeInstruction] 
+parse :: String -> Either AssemblyError [SourceLine] 
 parse src = case runParser parseProgram src of
     Right (instr, left) -> case left of
         []  -> Right instr
