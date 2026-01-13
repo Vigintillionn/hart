@@ -15,10 +15,10 @@ viewRegisters regs = map fromIntegral (V.toList regs)
 
 program :: String
 program = "addi x1, x0, 5     # x1 = 5\n \
-          \ addi x2, x0, 1    # x2 = 0\n \
+          \ addi x3, x0, 1    # x2 = 0\n \
           \ loop:  # Loop start (offset -8 from the beq below?)\n \
           \ addi x1, x1, -1   # Decrement\n \
-          \ bne  x1, x2, loop   # If x1 != 0, jump back 4 bytes (to the addi)"
+          \ bne  x1, x3, loop   # If x1 != 0, jump back 4 bytes (to the addi)"
 
 main :: IO ()
 main = do 

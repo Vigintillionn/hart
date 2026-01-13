@@ -3,6 +3,14 @@ import Types
 import Data.Word
 import Data.Bits (Bits(..))
 
+encodeReg :: Int -> Register -> Word32
+encodeReg s r = fromIntegral (unReg r) `shiftL` s 
+
+packRd, packRs1, packRs2 :: Register -> Word32
+packRd  = encodeReg 7
+packRs1 = encodeReg 15
+packRs2 = encodeReg 20
+
 getRFmt :: ROp -> (Word32, Word32, Word32)
 getRFmt op = (opc, f3, f7)
     where
@@ -19,16 +27,16 @@ getRFmt op = (opc, f3, f7)
 assembleRType :: Instruction 'R Int -> Word32
 assembleRType (RType op args) =
     opc .|.
-    (rd `shiftL` 7) .|.
+    rs1 .|.
+    rs2 .|.
+    rd  .|.
     (f3 `shiftL` 12) .|.
-    (rs1 `shiftL` 15) .|.
-    (rs2 `shiftL` 20) .|.
     (f7 `shiftL` 25)
     where
        (opc, f3, f7) = getRFmt op 
-       rd   = fromIntegral $ unReg $ r_rd args
-       rs1  = fromIntegral $ unReg $ r_rs1 args
-       rs2  = fromIntegral $ unReg $ r_rs2 args 
+       rd   = packRd  $ r_rd args 
+       rs1  = packRs1 $ r_rs1 args  
+       rs2  = packRs2 $ r_rs2 args 
 
 getIFmt :: IOp -> (Word32, Word32)
 getIFmt op = (opc, f3)
@@ -43,14 +51,14 @@ getIFmt op = (opc, f3)
 assembleIType :: Instruction 'I Int -> Word32
 assembleIType (IType op args) =
     opc .|.
-    (rd `shiftL` 7) .|.
+    rd .|.
+    rs1 .|.
     (f3 `shiftL` 12) .|.
-    (rs1 `shiftL` 15) .|.
     (imm `shiftL` 20)
     where
         (opc, f3)   = getIFmt op
-        rd          = fromIntegral $ unReg $ i_rd args
-        rs1         = fromIntegral $ unReg $ i_rs1 args
+        rd          = packRd  $ i_rd args 
+        rs1         = packRs1 $ i_rs1 args 
         imm         = fromIntegral (i_imm args) .&. 0xFFF
 
 packBImm :: Int -> Word32
@@ -76,19 +84,45 @@ getBFmt op = (opc, f3)
 assembleBType :: Instruction 'B Int -> Word32
 assembleBType (BType op args) =
     packBImm  (b_imm args) .|.
-    (rs2 `shiftL` 20) .|.
-    (rs1 `shiftL` 15) .|.
+    rs2 .|.
+    rs1 .|.
     (f3 `shiftL` 12) .|.
     opc
     where
         (opc, f3) = getBFmt op
-        rs1 = fromIntegral $ unReg $ b_rs1 args
-        rs2 = fromIntegral $ unReg $ b_rs2 args
+        rs1 = packRs1 $ b_rs1 args 
+        rs2 = packRs2 $ b_rs2 args 
+
+getSFmt :: SOp -> (Word32, Word32)
+getSFmt op = (opc, f3)
+    where
+        opc = 0x23 
+        f3 = case op of
+            SB -> 0x0
+            SH -> 0x1
+            SW -> 0x2
+
+assembleSType :: Instruction 'S Int -> Word32
+assembleSType (SType op args) =
+    opc .|.
+    rs1 .|.
+    rs2 .|.
+    (immLo `shiftL` 7) .|.
+    (f3 `shiftL` 12) .|.
+    (immHi `shiftL` 25)
+    where
+        (opc, f3) = getSFmt op
+        imm = fromIntegral $ s_imm args
+        immLo = imm .&. 0x1F
+        immHi = (imm `shiftR` 5) .&. 0x7F
+        rs1 = packRs1 $ s_rs1 args 
+        rs2 = packRs2 $ s_rs2 args 
 
 assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
 assembleSome (SomeInstruction instr@(IType _ _)) = assembleIType instr
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
+assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
 
 assemble :: Program -> [Word32]
 assemble = map assembleSome

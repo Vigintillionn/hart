@@ -157,6 +157,14 @@ immediate = do
             applySign (Just _) x  = -x
             applySign Nothing  x  = x
 
+memOperand :: Parser (Operand, Register)
+memOperand = do
+    off <- operand
+    void $ char '('
+    base <- register
+    void $ char ')'
+    return (off, base)
+
 parseRTypeOperands :: Parser RTypeArgs
 parseRTypeOperands = RTypeArgs 
     <$> register <* comma 
@@ -175,6 +183,13 @@ parseBTypeOperands = BTypeArgs
     <*> register <* comma
     <*> operand
 
+parseSTypeOperands :: Parser (STypeArgs Operand)
+parseSTypeOperands = do
+    src <- register
+    comma
+    (off, base) <- memOperand
+    return $ STypeArgs base src off 
+
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (SomeInstruction Operand) 
 rType n c = SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
@@ -184,16 +199,21 @@ iType n c = SomeInstruction . c <$ lexeme (string n) <*> parseITypeOperands
 bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (SomeInstruction Operand)
 bType n c = SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
 
+sType :: String -> (STypeArgs Operand -> Instruction 'S Operand) -> Parser (SomeInstruction Operand)
+sType n c = SomeInstruction . c <$ lexeme (string n) <*> parseSTypeOperands
+
 parseInstruction :: Parser (SomeInstruction Operand) 
 parseInstruction = choice $ concat 
     [ map (\(n, op) -> rType n (RType op)) rOps
     , map (\(n, op) -> iType n (IType op)) iOps
     , map (\(n, op) -> bType n (BType op)) bOps 
+    , map (\(n, op) -> sType n (SType op)) sOps 
     ]
     where
         rOps = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
         iOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
         bOps = [("beq", BEQ), ("bne", BNE)]
+        sOps = [("sb", SB), ("sh", SH), ("sw", SW)]
 
 parseLine :: Parser SourceLine 
 parseLine = do

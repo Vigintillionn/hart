@@ -11,9 +11,11 @@ module Types (Register
              , ROp(..)
              , IOp(..)
              , BOp(..)
+             , SOp(..)
              , RTypeArgs(..)
              , ITypeArgs(..)
              , BTypeArgs(..)
+             , STypeArgs(..)
              , AssemblyError(..)
              ) where
 
@@ -30,6 +32,7 @@ data Operand = ImmVal Int | Label String
 data ROp = ADD | SUB | XOR | OR | AND  deriving (Show, Eq)
 data IOp = ADDI | XORI | ORI | ANDI    deriving (Show, Eq)
 data BOp = BEQ | BNE                   deriving (Show, Eq)
+data SOp = SB | SH | SW                deriving (Show, Eq)
 
 data RTypeArgs = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
     deriving (Show, Eq)
@@ -37,13 +40,16 @@ data ITypeArgs a = ITypeArgs { i_rd :: Register, i_rs1 :: Register, i_imm :: a }
     deriving (Show, Eq)
 data BTypeArgs a = BTypeArgs { b_rs1 :: Register, b_rs2 :: Register, b_imm :: a }
     deriving (Show, Eq)
+data STypeArgs a = STypeArgs { s_rs1 :: Register, s_rs2 :: Register, s_imm :: a }
+    deriving (Show, Eq)
 
-data InstrKind = R | I | B
+data InstrKind = R | I | B | S
 
 data Instruction (k :: InstrKind) a where
     RType :: ROp -> RTypeArgs   -> Instruction 'R a
     IType :: IOp -> ITypeArgs a -> Instruction 'I a
     BType :: BOp -> BTypeArgs a -> Instruction 'B a
+    SType :: SOp -> STypeArgs a -> Instruction 'S a
 
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)
@@ -52,6 +58,7 @@ instance Functor (Instruction k) where
     fmap _ (RType op args) = RType op args
     fmap f (IType op args) = IType op (args { i_imm = f (i_imm args) })
     fmap f (BType op args) = BType op (args { b_imm = f (b_imm args) })
+    fmap f (SType op args) = SType op (args { s_imm = f (s_imm args) })
 
 data SomeInstruction a where
   SomeInstruction :: Instruction k a -> SomeInstruction a
@@ -61,6 +68,7 @@ instance Eq a => Eq (SomeInstruction a) where
   (SomeInstruction (RType o1 a1))  == (SomeInstruction (RType o2 a2))  = o1 == o2 && a1 == a2
   (SomeInstruction (IType o1 a1))  == (SomeInstruction (IType o2 a2))  = o1 == o2 && a1 == a2
   (SomeInstruction (BType o1 a1))  == (SomeInstruction (BType o2 a2))  = o1 == o2 && a1 == a2
+  (SomeInstruction (SType o1 a1))  == (SomeInstruction (SType o2 a2))  = o1 == o2 && a1 == a2
   _ == _ = False
 
 instance Functor SomeInstruction where

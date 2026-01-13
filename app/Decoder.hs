@@ -81,6 +81,21 @@ decodeBType w = do
     let imm = unpackBImm w
     return $ BType op (BTypeArgs rs1 rs2 imm)
 
+decodeSType :: Word32 -> Maybe (Instruction 'S Int)
+decodeSType w = do
+    op <- case getF3 w of
+        0x0 -> Just SB
+        0x1 -> Just SH
+        0x2 -> Just SW
+        _   -> Nothing
+    rs1 <- mkRegister $ getRs1 w
+    rs2 <- mkRegister $ getRs2 w
+    let immHi = slice 31 25 w
+    let immLo = slice 11  7 w
+    let imm = signExtend 12 $ (immHi `shiftL` 5) .|. immLo
+    return $ SType op (STypeArgs rs1 rs2 imm)
+
+
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
     let opcode = slice 6 0 w

@@ -22,10 +22,13 @@ data CPU = CPU
 entryPoint :: Word32
 entryPoint = 0x0
 
+stackTop :: Word32
+stackTop = 0x100000 -- 1MB
+
 emptyCPU :: CPU
 emptyCPU = CPU 
     { pc    = entryPoint 
-    , regs  = V.replicate 32 0
+    , regs  = V.replicate 32 0 // [(2, stackTop)]
     , mem   = M.empty
     }
 
@@ -48,15 +51,20 @@ setReg r v
 extractByte :: Word32 -> Int -> Word8
 extractByte w n = fromIntegral $ (w `shiftR` (n * 8)) .&. 0xFF 
 
-store :: Word32 -> Word32 -> Emulator ()
-store a w = modify $ \cpu ->
-    let addr = fromIntegral a
-        m0 = M.insert addr       (extractByte w 0) (mem cpu)
-        m1 = M.insert (addr + 1) (extractByte w 1) m0
-        m2 = M.insert (addr + 2) (extractByte w 2) m1
-        m3 = M.insert (addr + 3) (extractByte w 3) m2
-    in cpu { mem = m3 } 
-    
+storeByte :: Word32 -> Word32 -> Emulator ()
+storeByte a w = modify $ \cpu ->
+    cpu { mem = M.insert (fromIntegral a) (fromIntegral $ w .&. 0xFF) (mem cpu) }
+
+storeHalf :: Word32 -> Word32 -> Emulator ()
+storeHalf a w = do
+    storeByte a       (w .&. 0xFF)   -- LSB
+    storeByte (a + 1) (w `shiftR` 8) -- Next byte
+
+storeWord :: Word32 -> Word32 -> Emulator ()
+storeWord a w = do
+    storeHalf a       (w .&. 0xFFFF)  -- Lower half
+    storeHalf (a + 2) (w `shiftR` 16) -- Upper half
+
 readByte :: Word32 -> Emulator Word8 
 readByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
 
@@ -80,7 +88,7 @@ loadProgram :: Program -> Emulator ()
 loadProgram instr = do
     modify $ \cpu -> cpu { pc = entryPoint }
     let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
-    traverse_ (uncurry store) assembled 
+    traverse_ (uncurry storeWord) assembled 
 
 runBinaryOp :: (Word32 -> Word32 -> Word32) -> RTypeArgs -> Emulator ()
 runBinaryOp op args = do
@@ -130,10 +138,24 @@ executeBType (BType op args) = do
             return (Jump target)
         else return Advance
 
+executeSType :: Instruction 'S Int -> Emulator PCUpdate
+executeSType (SType op args) = do
+    val <- getReg $ s_rs2 args 
+    base <- getReg $ s_rs1 args
+    let off = fromIntegral $ s_imm args
+    let addr = base + off
+
+    case op of
+        SW -> storeWord addr val
+        SH -> storeHalf addr val
+        SB -> storeByte addr val
+    return Advance
+
 execute :: SomeInstruction Int -> Emulator PCUpdate 
 execute (SomeInstruction inst@(RType _ _)) = executeRType inst 
 execute (SomeInstruction inst@(IType _ _)) = executeIType inst 
 execute (SomeInstruction inst@(BType _ _)) = executeBType inst
+execute (SomeInstruction inst@(SType _ _)) = executeSType inst
 
 
 setPC :: Word32 -> Emulator ()
