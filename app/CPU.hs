@@ -51,11 +51,11 @@ extractByte w n = fromIntegral $ (w `shiftR` (n * 8)) .&. 0xFF
 store :: Word32 -> Word32 -> Emulator ()
 store a w = modify $ \cpu ->
     let addr = fromIntegral a
-        n = M.fromList [ (addr, extractByte w 0),
-            (addr + 1, extractByte w 1),
-            (addr + 2, extractByte w 2),
-            (addr + 3, extractByte w 3)]
-    in cpu { mem = n `M.union` mem cpu  } 
+        m0 = M.insert addr       (extractByte w 0) (mem cpu)
+        m1 = M.insert (addr + 1) (extractByte w 1) m0
+        m2 = M.insert (addr + 2) (extractByte w 2) m1
+        m3 = M.insert (addr + 3) (extractByte w 3) m2
+    in cpu { mem = m3 } 
     
 readByte :: Word32 -> Emulator Word8 
 readByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
