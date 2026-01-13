@@ -15,9 +15,10 @@ import Data.Int
 data PCUpdate = Advance | Jump Word32
 
 data CPU = CPU 
-    { pc    :: Word32 
-    , regs  :: V.Vector Word32 
-    , mem   :: M.IntMap Word8 
+    { pc     :: Word32 
+    , regs   :: V.Vector Word32 
+    , mem    :: M.IntMap Word8 
+    , cycles :: Int
     }
 
 entryPoint :: Word32
@@ -28,9 +29,10 @@ stackTop = 0x100000 -- 1MB
 
 emptyCPU :: CPU
 emptyCPU = CPU 
-    { pc    = entryPoint 
-    , regs  = V.replicate 32 0 // [(2, stackTop)]
-    , mem   = M.empty
+    { pc     = entryPoint 
+    , regs   = V.replicate 32 0 // [(2, stackTop)]
+    , mem    = M.empty
+    , cycles = 0 
     }
 
 type Emulator a = State CPU a 
@@ -190,10 +192,14 @@ setPC t = modify $ \cpu -> cpu { pc = t }
 incrPC :: Emulator ()
 incrPC = modify $ \cpu -> cpu { pc = pc cpu + 4 }
 
+-- TODO: in reality certain instructions are more cycles
+cpuCycle :: Emulator ()
+cpuCycle = modify $ \cpu -> cpu { cycles = cycles cpu + 1 }
+
 -- One clock cycle
 step :: Emulator ()
 step = 
-    fetch >>= either (const $ pure ()) execInstr . decodeWord
+    cpuCycle >> fetch >>= either (const $ pure ()) execInstr . decodeWord
     where
         execInstr i =
             execute i >>= \case
