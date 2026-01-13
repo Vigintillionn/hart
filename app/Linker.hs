@@ -21,12 +21,14 @@ buildSymTable l = snd <$> foldM step (0, M.empty) l
                 Just n  -> if M.member n table
                            then Left $ "Duplicate label: " ++ n
                            else Right $ M.insert n pc table
-
             let nextPC = case mi of
                     Nothing -> pc
                     Just _  -> pc + 4
-
             return (nextPC, newTable)
+
+resolveImm :: String -> Operand -> Either String Int
+resolveImm _ (ImmVal v) = Right v
+resolveImm e (Label _)  = Left e
 
 resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either String) (SomeInstruction Int)
 resolveInstruction table instr = do
@@ -43,8 +45,13 @@ resolveOperand pc table (SomeInstruction (BType op args)) = do
             Just target -> Right (target - pc)
             Nothing     -> Left $ "Undefined label: " ++ l
     return $ SomeInstruction (BType op (args { b_imm = off }))
-resolveOperand _ _ (SomeInstruction (IType op args)) = do
-    case i_imm args of
-        ImmVal v -> Right $ SomeInstruction $ IType op (args { i_imm = v })
-        Label _  -> Left "Label in immediate instruction."
+resolveOperand _ _ (SomeInstruction (LoadI op args)) = do
+    val <- resolveImm "Label in load immediate" (i_imm args)
+    return $ SomeInstruction (LoadI op (args { i_imm = val }))
+resolveOperand _ _ (SomeInstruction (ArithI op args)) = do
+    val <- resolveImm "Label in arithmatic immediate" (i_imm args)
+    return $ SomeInstruction (ArithI op (args { i_imm = val }))
+resolveOperand _ _ (SomeInstruction (SType op args)) = do
+    val <- resolveImm "Label in store instruction" (s_imm args)
+    return $ SomeInstruction (SType op (args { s_imm = val }))
 resolveOperand _ _ (SomeInstruction (RType op args)) = Right $ SomeInstruction $ RType op args

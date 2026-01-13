@@ -42,19 +42,29 @@ decodeRType w = do
     rs2 <- mkRegister (getRs2 w)
     return $ RType op (RTypeArgs rd rs1 rs2)
 
-decodeIType :: Word32 -> Maybe (Instruction 'I Int)
-decodeIType w = do
+decodeIType :: Word32 -> Word32 -> Maybe (Instruction 'I Int)
+decodeIType 0x13 w = do
     op <- case getF3 w of
         0x0 -> Just ADDI
         0x4 -> Just XORI
         0x6 -> Just ORI
         0x7 -> Just ANDI
-        _   -> Nothing 
-
+        _   -> Nothing
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     let imm = signExtend 12 $ slice 31 20 w
-    return $ IType op (ITypeArgs rd rs1 imm)
+    return $ ArithI op (ITypeArgs rd rs1 imm)
+decodeIType 0x03 w = do
+    op <- case getF3 w of
+        0x0 -> Just LB
+        0x1 -> Just LH
+        0x2 -> Just LW
+        _   -> Nothing
+    rd  <- mkRegister (getRd w)
+    rs1 <- mkRegister (getRs1 w)
+    let imm = signExtend 12 $ slice 31 20 w
+    return $ LoadI op (ITypeArgs rd rs1 imm)
+decodeIType _ _ = Nothing
 
 unpackBImm :: Word32 -> Int
 unpackBImm w =
@@ -100,9 +110,11 @@ decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
     let opcode = slice 6 0 w
         instr = case opcode of
-            0x33    -> SomeInstruction <$> decodeRType w
-            0x13    -> SomeInstruction <$> decodeIType w
-            0x63    -> SomeInstruction <$> decodeBType w
+            0x33    -> SomeInstruction <$> decodeRType w            -- Arithmatic
+            0x13    -> SomeInstruction <$> decodeIType opcode w     -- Immediate
+            0x03    -> SomeInstruction <$> decodeIType opcode w     -- Load
+            0x63    -> SomeInstruction <$> decodeBType w            -- Branch
+            0x23    -> SomeInstruction <$> decodeSType w            -- Store
             _       -> Nothing
     in instr
 

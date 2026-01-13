@@ -16,10 +16,11 @@ getRFmt op = (opc, f3, f7)
     where
         opc = 0x33
         f3  = case op of
+            ADD -> 0x0
+            SUB -> 0x0
             XOR -> 0x4
             OR  -> 0x6
             AND -> 0x7
-            _   -> 0x0
         f7  = case op of
             SUB -> 0x20
             _   -> 0x0
@@ -38,25 +39,27 @@ assembleRType (RType op args) =
        rs1  = packRs1 $ r_rs1 args  
        rs2  = packRs2 $ r_rs2 args 
 
-getIFmt :: IOp -> (Word32, Word32)
-getIFmt op = (opc, f3)
-    where
-        opc = 0x13
-        f3  = case op of
-            XORI -> 0x4
-            ORI  -> 0x6
-            ANDI -> 0x7
-            _    -> 0x0
+getArithFmt :: IArithOp -> Word32 
+getArithFmt op = case op of
+    ADDI -> 0x0
+    XORI -> 0x4
+    ORI  -> 0x6 
+    ANDI -> 0x7 
 
-assembleIType :: Instruction 'I Int -> Word32
-assembleIType (IType op args) =
+getLoadFmt :: ILoadOp -> Word32
+getLoadFmt op = case op of 
+    LB   -> 0x0 
+    LH   -> 0x1 
+    LW   -> 0x2
+
+packIType :: Word32 -> Word32 -> ITypeArgs Int -> Word32
+packIType opc f3 args =
     opc .|.
     rd .|.
     rs1 .|.
     (f3 `shiftL` 12) .|.
     (imm `shiftL` 20)
     where
-        (opc, f3)   = getIFmt op
         rd          = packRd  $ i_rd args 
         rs1         = packRs1 $ i_rs1 args 
         imm         = fromIntegral (i_imm args) .&. 0xFFF
@@ -120,7 +123,8 @@ assembleSType (SType op args) =
 
 assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
-assembleSome (SomeInstruction instr@(IType _ _)) = assembleIType instr
+assembleSome (SomeInstruction (ArithI op args))  = packIType 0x13 (getArithFmt op) args
+assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op) args
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
 assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
 

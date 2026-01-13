@@ -171,11 +171,18 @@ parseRTypeOperands = RTypeArgs
     <*> register <* comma 
     <*> register 
 
-parseITypeOperands :: Parser (ITypeArgs Operand)
-parseITypeOperands = ITypeArgs 
+parseIArithTypeOperands :: Parser (ITypeArgs Operand)
+parseIArithTypeOperands = ITypeArgs 
     <$> register <* comma
     <*> register <* comma
     <*> operand 
+
+parseILoadTypeOperands :: Parser (ITypeArgs Operand)
+parseILoadTypeOperands = do
+    rd <- register
+    comma
+    (off, rs1) <- memOperand
+    return $ ITypeArgs rd rs1 off 
 
 parseBTypeOperands :: Parser (BTypeArgs Operand)
 parseBTypeOperands = BTypeArgs
@@ -193,8 +200,11 @@ parseSTypeOperands = do
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (SomeInstruction Operand) 
 rType n c = SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
-iType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (SomeInstruction Operand)
-iType n c = SomeInstruction . c <$ lexeme (string n) <*> parseITypeOperands
+iArithType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (SomeInstruction Operand)
+iArithType n c = SomeInstruction . c <$ lexeme (string n) <*> parseIArithTypeOperands
+
+iLoadType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (SomeInstruction Operand)
+iLoadType n c = SomeInstruction . c <$ lexeme (string n) <*> parseILoadTypeOperands
 
 bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (SomeInstruction Operand)
 bType n c = SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
@@ -204,14 +214,16 @@ sType n c = SomeInstruction . c <$ lexeme (string n) <*> parseSTypeOperands
 
 parseInstruction :: Parser (SomeInstruction Operand) 
 parseInstruction = choice $ concat 
-    [ map (\(n, op) -> rType n (RType op)) rOps
-    , map (\(n, op) -> iType n (IType op)) iOps
-    , map (\(n, op) -> bType n (BType op)) bOps 
-    , map (\(n, op) -> sType n (SType op)) sOps 
+    [ map (\(n, op) -> rType        n (RType op))   rOps
+    , map (\(n, op) -> iArithType   n (ArithI op))  iArithOps
+    , map (\(n, op) -> iLoadType    n (LoadI op))   iLoadOps
+    , map (\(n, op) -> bType        n (BType op))   bOps 
+    , map (\(n, op) -> sType        n (SType op))   sOps 
     ]
     where
         rOps = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
-        iOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
+        iArithOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
+        iLoadOps = [("lb", LB), ("lh", LH), ("lw", LW)]
         bOps = [("beq", BEQ), ("bne", BNE)]
         sOps = [("sb", SB), ("sh", SH), ("sw", SW)]
 
