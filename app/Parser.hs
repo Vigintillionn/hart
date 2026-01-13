@@ -224,7 +224,7 @@ parseInstruction = choice $ concat
         rOps = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
         iArithOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
         iLoadOps = [("lb", LB), ("lh", LH), ("lw", LW)]
-        bOps = [("beq", BEQ), ("bne", BNE)]
+        bOps = [("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)]
         sOps = [("sb", SB), ("sh", SH), ("sw", SW)]
 
 parseLine :: Parser SourceLine 

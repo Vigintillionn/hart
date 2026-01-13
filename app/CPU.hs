@@ -152,6 +152,8 @@ executeBType (BType op args) = do
     let shouldBranch = case op of
             BEQ -> l == r
             BNE -> l /= r
+            BLT -> l <  r
+            BGE -> l >= r
 
     if shouldBranch
         then do 
