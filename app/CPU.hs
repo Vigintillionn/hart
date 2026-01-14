@@ -216,3 +216,5 @@ runProgram :: Program -> Emulator ()
 runProgram p = do
     loadProgram p
     run
+
+

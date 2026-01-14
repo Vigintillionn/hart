@@ -6,10 +6,11 @@ import qualified Data.Vector as V
 import Control.Monad.State
 import Assembler (assemble)
 import Text.Printf (printf)
-import CPU (runProgram, emptyCPU, regs, cycles)
+import CPU (runProgram, emptyCPU, regs, cycles, pc)
 import Data.Int (Int32)
 import Linker (resolve)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
+import Debugger
 
 formatFreq :: Double -> String
 formatFreq hz
@@ -27,30 +28,46 @@ program = "      addi x1, x0, 10000000 \n\
           \loop: sub  x1, x1, x2       \n\
           \      bne  x1, x0, loop"
 
+runInteractive :: Debugger -> IO ()
+runInteractive dbg = do
+    putStrLn "\n----------------------------------------"
+    
+    let c = current dbg
+    printf "PC: 0x%08x | Cycle: %d\n" (pc c) (cycles c)
+    
+    print (viewRegisters $ regs c)
+
+    putStrLn "[p]rev, [n]ext, [r]ewind, [q]uit"
+    cmd <- getLine
+    case cmd of
+        "p" -> runInteractive (stepBack dbg)    
+        "n" -> runInteractive (stepForward dbg) 
+        "r" -> runInteractive (rewind dbg)      
+        "q" -> putStrLn "Exiting debugger."
+        _   -> runInteractive dbg
+
 main :: IO ()
 main = do 
     case parse program of
         Left err -> print err
         Right inst -> do
-            putStrLn "---- AST PARSED ---"
-            print inst
-
-            putStrLn "---- LINKED ----"
             case resolve inst of
                 Left err       -> putStrLn $ "ERROR: " ++ err
                 Right resolved -> do
-                    start <- getCurrentTime
-
-                    print resolved
                     putStrLn "---- ASSEMBLED ---"
                     let assembled = assemble resolved 
                     mapM_ (putStrLn . printf "%032b") assembled 
 
-                    let cpu = execState (runProgram resolved) emptyCPU
+                    putStrLn "---- EXECUTING ---"
+                    start <- getCurrentTime
 
+                    let history = runTrace resolved emptyCPU
+                    let finalState = last history
+
+                    finalState `seq` return ()
                     end <- getCurrentTime
                     
-                    let totalCycles = cycles cpu 
+                    let totalCycles = cycles finalState 
                     let timeDelta   = diffUTCTime end start 
                     let seconds     = realToFrac timeDelta :: Double
                     
@@ -63,6 +80,7 @@ main = do
                     printf "Execution Time: %.4fs\n" seconds
                     printf "Emulated Speed: %s\n" (formatFreq frequency)
                     
-                    putStrLn "---- FINAL REGISTERS ----"
-                    print (viewRegisters $ regs cpu)
+                    putStrLn "---- LAUNCHING DEBUGGER ----"
+                    let debugger = initDebuggerAtEnd history
+                    runInteractive debugger
 
