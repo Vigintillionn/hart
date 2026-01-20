@@ -83,6 +83,8 @@ getBFmt op = (opc, f3)
         f3 = case op of
             BEQ -> 0x0
             BNE -> 0x1
+            BLT -> 0x4
+            BGE -> 0x5
 
 assembleBType :: Instruction 'B Int -> Word32
 assembleBType (BType op args) =
