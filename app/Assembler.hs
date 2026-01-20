@@ -121,12 +121,12 @@ assembleSType (SType op args) =
         rs1 = packRs1 $ s_rs1 args 
         rs2 = packRs2 $ s_rs2 args 
 
-assembleSome :: SomeInstruction Int -> Word32
-assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
-assembleSome (SomeInstruction (ArithI op args))  = packIType 0x13 (getArithFmt op) args
-assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op) args
-assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
-assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
+assembleSome :: ArchInstr 'Resolved-> Word32
+assembleSome (RealInstr (SomeInstruction instr@(RType _ _))) = assembleRType instr
+assembleSome (RealInstr (SomeInstruction (ArithI op args)))  = packIType 0x13 (getArithFmt op) args
+assembleSome (RealInstr (SomeInstruction (LoadI op args)))   = packIType 0x03 (getLoadFmt op) args
+assembleSome (RealInstr (SomeInstruction instr@(BType _ _))) = assembleBType instr
+assembleSome (RealInstr (SomeInstruction instr@(SType _ _))) = assembleSType instr
 
 assemble :: Program -> [Word32]
 assemble = map assembleSome

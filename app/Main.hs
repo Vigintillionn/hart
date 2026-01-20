@@ -23,10 +23,11 @@ viewRegisters :: V.Vector Word32 -> [Int32]
 viewRegisters regs = map fromIntegral (V.toList regs)
 
 program :: String
-program = "      addi x1, x0, 10000000 \n\
-          \      addi x2, x0, 1        \n\
-          \loop: sub  x1, x1, x2       \n\
-          \      bne  x1, x0, loop"
+program = "addi x2, x0, 50\nmv x1, x2"
+--program = "      addi x1, x0, 10000000 \n\
+ --         \      addi x2, x0, 1        \n\
+  --        \loop: sub  x1, x1, x2       \n\
+   --       \      bne  x1, x0, loop"
 
 runInteractive :: Debugger -> IO ()
 runInteractive dbg = do

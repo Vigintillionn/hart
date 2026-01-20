@@ -197,28 +197,39 @@ parseSTypeOperands = do
     (off, base) <- memOperand
     return $ STypeArgs base src off 
 
-rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (SomeInstruction Operand) 
-rType n c = SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
+rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (ArchInstr 'Parsed) 
+rType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
-iArithType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (SomeInstruction Operand)
-iArithType n c = SomeInstruction . c <$ lexeme (string n) <*> parseIArithTypeOperands
+iArithType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
+iArithType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseIArithTypeOperands
 
-iLoadType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (SomeInstruction Operand)
-iLoadType n c = SomeInstruction . c <$ lexeme (string n) <*> parseILoadTypeOperands
+iLoadType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
+iLoadType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseILoadTypeOperands
 
-bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (SomeInstruction Operand)
-bType n c = SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
+bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (ArchInstr 'Parsed)
+bType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
 
-sType :: String -> (STypeArgs Operand -> Instruction 'S Operand) -> Parser (SomeInstruction Operand)
-sType n c = SomeInstruction . c <$ lexeme (string n) <*> parseSTypeOperands
+sType :: String -> (STypeArgs Operand -> Instruction 'S Operand) -> Parser (ArchInstr 'Parsed)
+sType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseSTypeOperands
 
-parseInstruction :: Parser (SomeInstruction Operand) 
+pseudoType :: String -> Parser PseudoOp -> Parser (ArchInstr 'Parsed)
+pseudoType n p = PseudoInstr <$> (lexeme (string n) *> p)
+
+parseNop :: Parser PseudoOp
+parseNop = pure P_NOP 
+
+parseMv :: Parser PseudoOp
+parseMv = P_MV <$> register <* comma <*> register
+
+parseInstruction :: Parser (ArchInstr 'Parsed) 
 parseInstruction = choice $ concat 
     [ map (\(n, op) -> rType        n (RType op))   rOps
     , map (\(n, op) -> iArithType   n (ArithI op))  iArithOps
     , map (\(n, op) -> iLoadType    n (LoadI op))   iLoadOps
     , map (\(n, op) -> bType        n (BType op))   bOps 
     , map (\(n, op) -> sType        n (SType op))   sOps 
+    , [ pseudoType "nop" parseNop ]
+    , [ pseudoType "mv"  parseMv  ]
     ]
     where
         rOps = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]

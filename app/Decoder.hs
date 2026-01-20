@@ -118,10 +118,10 @@ decodeSome w =
             _       -> Nothing
     in instr
 
-decodeWord :: Word32 -> Either String (SomeInstruction Int)
+decodeWord :: Word32 -> Either String (ArchInstr 'Resolved)
 decodeWord w =
     case decodeSome w of
-        Just instr  -> Right instr
+        Just instr  -> Right $ RealInstr instr
         Nothing     -> Left "Invalid instruction" 
 
 decode :: [Word32] -> Either String Program 

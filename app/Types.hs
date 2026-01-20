@@ -5,6 +5,7 @@ module Types (Register
              , InstrKind(..)
              , SourceLine
              , ParsedProgram
+             , LoweredProgram
              , Program
              , SomeInstruction(..)
              , Operand(..)
@@ -18,17 +19,31 @@ module Types (Register
              , BTypeArgs(..)
              , STypeArgs(..)
              , AssemblyError(..)
+             , Phase(..)
+             , ArchInstr(..)
+             , PseudoOp(..)
+             , x0
              ) where
 
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
+
+x0 :: Register
+x0 = Reg 0
 
 mkRegister :: Int -> Maybe Register
 mkRegister n
     | n >= 0 && n < 32 = Just (Reg n)
     | otherwise        = Nothing
 
+data Phase = Parsed | Lowered | Resolved
+
 data Operand = ImmVal Int | Label String
     deriving (Show, Eq)
+
+type family ImmOf (p :: Phase) where
+    ImmOf 'Parsed   = Operand
+    ImmOf 'Lowered  = Operand
+    ImmOf 'Resolved = Int
 
 data ROp = ADD | SUB | XOR | OR | AND       deriving (Show, Eq)
 data IArithOp = ADDI | XORI | ORI | ANDI    deriving (Show,Eq)    
@@ -54,6 +69,9 @@ data Instruction (k :: InstrKind) a where
     BType  :: BOp       -> BTypeArgs a -> Instruction 'B a
     SType  :: SOp       -> STypeArgs a -> Instruction 'S a
 
+data PseudoOp = P_NOP
+              | P_MV Register Register
+
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)
 
@@ -66,6 +84,10 @@ instance Functor (Instruction k) where
 
 data SomeInstruction a where
   SomeInstruction :: Instruction k a -> SomeInstruction a
+
+data ArchInstr (p :: Phase) where
+    RealInstr   :: SomeInstruction (ImmOf p) -> ArchInstr p
+    PseudoInstr :: PseudoOp -> ArchInstr 'Parsed
 
 deriving instance Show a => Show (SomeInstruction a)
 instance Eq a => Eq (SomeInstruction a) where
@@ -80,9 +102,10 @@ instance Functor SomeInstruction where
     fmap f (SomeInstruction i) = SomeInstruction (fmap f i)
 
 -- Line might have a label, instruction, or both
-type SourceLine = (Maybe String, Maybe (SomeInstruction Operand))
+type SourceLine = (Maybe String, Maybe (ArchInstr 'Parsed))
 type ParsedProgram = [SourceLine]
-type Program = [SomeInstruction Int]
+type LoweredProgram = [ArchInstr 'Lowered]
+type Program = [ArchInstr 'Resolved]
 
 data AssemblyError
     = UnknownInstruction String

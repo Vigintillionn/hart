@@ -201,7 +201,7 @@ step :: Emulator ()
 step = 
     cpuCycle >> fetch >>= either (const $ pure ()) execInstr . decodeWord
     where
-        execInstr i =
+        execInstr (RealInstr i) =
             execute i >>= \case
                 Advance -> incrPC
                 Jump t  -> setPC t
