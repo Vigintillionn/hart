@@ -45,11 +45,11 @@ type family ImmOf (p :: Phase) where
     ImmOf 'Lowered  = Operand
     ImmOf 'Resolved = Int
 
-data ROp = ADD | SUB | XOR | OR | AND       deriving (Show, Eq)
-data IArithOp = ADDI | XORI | ORI | ANDI    deriving (Show,Eq)    
-data ILoadOp = LB | LH | LW                 deriving (Show, Eq)
-data BOp = BEQ | BNE | BLT | BGE            deriving (Show, Eq)
-data SOp = SB | SH | SW                     deriving (Show, Eq)
+data ROp = ADD | SUB | XOR | OR | AND       deriving (Show, Eq, Enum, Bounded)
+data IArithOp = ADDI | XORI | ORI | ANDI    deriving (Show, Eq, Enum, Bounded)    
+data ILoadOp = LB | LH | LW                 deriving (Show, Eq, Enum, Bounded)
+data BOp = BEQ | BNE | BLT | BGE            deriving (Show, Eq, Enum, Bounded)
+data SOp = SB | SH | SW                     deriving (Show, Eq, Enum, Bounded)
 
 data RTypeArgs = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
     deriving (Show, Eq)

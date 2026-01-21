@@ -3,6 +3,7 @@ import Types
 import Data.Word (Word32)
 import Data.Bits (Bits(shiftR, shiftL, (.&.), (.|.)))
 import Data.Int (Int32)
+import Data.List (find)
 
 opMask, rdMask, f3Mask, rs1Mask, rs2Mask, f7Mask :: (Int, Int)
 opMask  = (6, 0)
@@ -33,15 +34,46 @@ signExtend bits x =
     let shift = 32 - bits
     in fromIntegral ((fromIntegral x :: Int32) `shiftL` shift `shiftR` shift)
 
+findOp :: (Enum op, Bounded op, Eq val) => (op -> val) -> val -> Maybe op
+findOp mapping target = find (\op -> mapping op == target) [minBound .. maxBound]
+
+rOpF3F7 :: ROp -> (Word32, Word32)
+rOpF3F7 op = case op of
+    ADD -> (0x0, 0x00)
+    SUB -> (0x0, 0x20)
+    XOR -> (0x4, 0x00)
+    OR  -> (0x6, 0x00)
+    AND -> (0x7, 0x00)
+
+iArithOpF3 :: IArithOp -> Word32 
+iArithOpF3 op = case op of
+    ADDI -> 0x0
+    XORI -> 0x4
+    ORI  -> 0x6 
+    ANDI -> 0x7
+
+iLoadOpF3 :: ILoadOp -> Word32
+iLoadOpF3 op = case op of 
+    LB -> 0x0 
+    LH -> 0x1 
+    LW -> 0x2
+
+bOpF3 :: BOp -> Word32 
+bOpF3 op = case op of
+    BEQ -> 0x0
+    BNE -> 0x1
+    BLT -> 0x4
+    BGE -> 0x5
+
+sOpF3 :: SOp -> Word32
+sOpF3 op = case op of
+    SB -> 0x0 
+    SH -> 0x1
+    SW -> 0x2
+
 decodeRType :: Word32 -> Maybe (Instruction 'R Int)
 decodeRType w = do
-    op <- case (getF3 w, getF7 w) of
-            (0x0, 0x0)  -> Just ADD
-            (0x0, 0x20) -> Just SUB
-            (0x4, 0x0)  -> Just XOR
-            (0x6, 0x0)  -> Just OR
-            (0x7, 0x0)  -> Just AND
-            _           -> Nothing
+    op  <- findOp rOpF3F7 (getF3 w, getF7 w)
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     rs2 <- mkRegister (getRs2 w)
@@ -49,22 +81,13 @@ decodeRType w = do
 
 decodeIType :: Word32 -> Word32 -> Maybe (Instruction 'I Int)
 decodeIType 0x13 w = do
-    op <- case getF3 w of
-        0x0 -> Just ADDI
-        0x4 -> Just XORI
-        0x6 -> Just ORI
-        0x7 -> Just ANDI
-        _   -> Nothing
+    op <- findOp iArithOpF3 $ getF3 w 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     let imm = signExtend 12 $ slice (31, 20) w
     return $ ArithI op (ITypeArgs rd rs1 imm)
 decodeIType 0x03 w = do
-    op <- case getF3 w of
-        0x0 -> Just LB
-        0x1 -> Just LH
-        0x2 -> Just LW
-        _   -> Nothing
+    op <- findOp iLoadOpF3 $ getF3 w 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     let imm = signExtend 12 $ slice (31, 20) w
@@ -87,10 +110,7 @@ unpackBImm w =
 
 decodeBType :: Word32 -> Maybe (Instruction 'B Int)
 decodeBType w = do
-    op <- case getF3 w of
-        0x0 -> Just BEQ
-        0x1 -> Just BNE
-        _   -> Nothing
+    op <- findOp bOpF3 $ getF3 w
     rs1 <- mkRegister (getRs1 w)
     rs2 <- mkRegister (getRs2 w)
     let imm = unpackBImm w
@@ -98,11 +118,7 @@ decodeBType w = do
 
 decodeSType :: Word32 -> Maybe (Instruction 'S Int)
 decodeSType w = do
-    op <- case getF3 w of
-        0x0 -> Just SB
-        0x1 -> Just SH
-        0x2 -> Just SW
-        _   -> Nothing
+    op <- findOp sOpF3 $ getF3 w 
     rs1 <- mkRegister $ getRs1 w
     rs2 <- mkRegister $ getRs2 w
     let immHi = getF7 w -- high bits of immediate are in same range as funct7

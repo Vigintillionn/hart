@@ -52,6 +52,9 @@ extra-doc-files:    CHANGELOG.md
 
 common warnings
     ghc-options: -Wall
+                 -Werror=incomplete-patterns
+                 -Werror=incomplete-record-updates
+                 -Werror=incomplete-uni-patterns
 
 executable riscv
     -- Import common warning flags.
