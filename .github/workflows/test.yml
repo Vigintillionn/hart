@@ -1,0 +1,43 @@
+name: Haskell CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up GHC and Cabal
+      uses: haskell-actions/setup@v2
+      with:
+        ghc-version: '9.6' 
+        cabal-version: 'latest'
+
+    - name: Cache ~/.cabal/store
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cabal/store
+          dist-newstyle
+        key: ${{ runner.os }}-ghc-9.6-${{ hashFiles('**/*.cabal', '**/cabal.project') }}
+        restore-keys: |
+          ${{ runner.os }}-ghc-9.6-
+
+    - name: Update Cabal
+      run: cabal update
+
+    - name: Build dependencies
+      run: cabal build all --only-dependencies
+
+    - name: Build project
+      run: cabal build all
+
+    - name: Run Tests
+      # This runs the test suite we just defined
+      run: cabal test all
