@@ -3,10 +3,9 @@ module Main where
 import Parser (parse)
 import Data.Word
 import qualified Data.Vector as V
-import Control.Monad.State
 import Assembler (assemble)
 import Text.Printf (printf)
-import CPU (runProgram, emptyCPU, regs, cycles, pc)
+import CPU (emptyCPU, regs, cycles, pc)
 import Data.Int (Int32)
 import Linker (resolve)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)

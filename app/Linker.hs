@@ -8,13 +8,13 @@ import qualified Data.List.NonEmpty as NE
 
 type SymbolTable = M.Map String Int
 
-lower :: ArchInstr 'Parsed -> NonEmpty (ArchInstr 'Lowered)
-lower (RealInstr i) = RealInstr i :| []
+lower :: ArchInstr 'Parsed -> NonEmpty (SomeInstruction Operand)
+lower (RealInstr i) = i :| []
 lower (PseudoInstr op) = case op of
-    P_NOP -> pure $ RealInstr $ SomeInstruction $ ArithI ADDI (ITypeArgs x0 x0 (ImmVal 0))
-    P_MV rd rs -> pure $ RealInstr $ SomeInstruction $ ArithI ADDI (ITypeArgs rd rs (ImmVal 0))
+    P_NOP -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs x0 x0 (ImmVal 0))
+    P_MV rd rs -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd rs (ImmVal 0))
 
-expandProgram :: [ArchInstr 'Parsed] -> [ArchInstr 'Lowered]
+expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
 expandProgram = concatMap (NE.toList . lower) 
 
 resolve :: ParsedProgram -> Either String Program 
@@ -44,12 +44,12 @@ resolveImm :: String -> Operand -> Either String Int
 resolveImm _ (ImmVal v) = Right v
 resolveImm e (Label _)  = Left e
 
-resolveInstruction :: SymbolTable -> ArchInstr 'Lowered -> StateT Int (Either String) (ArchInstr 'Resolved)
-resolveInstruction table (RealInstr instr) = do
+resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either String) (SomeInstruction Int)
+resolveInstruction table instr = do
     pc <- get
     resolved <- lift $ resolveOperand pc table instr
     modify (+4)
-    return $ RealInstr resolved
+    return resolved
 
 resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
 resolveOperand pc table (SomeInstruction (BType op args)) = do

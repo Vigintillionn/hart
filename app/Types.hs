@@ -104,8 +104,8 @@ instance Functor SomeInstruction where
 -- Line might have a label, instruction, or both
 type SourceLine = (Maybe String, Maybe (ArchInstr 'Parsed))
 type ParsedProgram = [SourceLine]
-type LoweredProgram = [ArchInstr 'Lowered]
-type Program = [ArchInstr 'Resolved]
+type LoweredProgram = [SomeInstruction Operand]
+type Program = [SomeInstruction Int]
 
 data AssemblyError
     = UnknownInstruction String
