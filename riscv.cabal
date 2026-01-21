@@ -95,3 +95,34 @@ executable riscv
 
     -- Base language which the package is written in.
     default-language: GHC2021
+
+test-suite riscv-test
+    import:           warnings
+    default-language: GHC2021
+    type:             exitcode-stdio-1.0
+    hs-source-dirs:   test, app
+    main-is:          Spec.hs
+    other-modules:
+        Test.Arbitrary
+        Test.AssemblerSpec
+        Types
+        Parser
+        Linker
+        Assembler
+        Decoder
+        CPU
+        Debugger
+    build-depends:
+        base ^>=4.18.3.0,
+        mtl >= 2.3,
+        containers >= 0.6,
+        vector >= 0.13,
+        hspec,        
+        QuickCheck    
+    default-extensions:
+        GADTs
+        DataKinds
+        KindSignatures
+        StandaloneDeriving
+        LambdaCase
+        TypeFamilies
