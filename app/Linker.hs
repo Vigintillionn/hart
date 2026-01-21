@@ -8,6 +8,9 @@ import qualified Data.List.NonEmpty as NE
 
 type SymbolTable = M.Map String Int
 
+instrSize :: SomeInstruction a -> Int
+instrSize _ = 4
+
 lower :: ArchInstr 'Parsed -> NonEmpty (SomeInstruction Operand)
 lower (RealInstr i) = i :| []
 lower (PseudoInstr op) = case op of
@@ -36,7 +39,7 @@ buildSymTable l = snd <$> foldM step (0, M.empty) l
 
             let size = case mi of
                     Nothing -> 0
-                    Just i  -> length (lower i) * 4
+                    Just i  -> sum (map instrSize (NE.toList $ lower i)) 
             let nextPC = pc + size
             return (nextPC, newTable)
 
