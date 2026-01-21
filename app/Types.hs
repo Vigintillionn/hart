@@ -54,11 +54,11 @@ data SOp = SB | SH | SW                     deriving (Show, Eq)
 data RTypeArgs = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
     deriving (Show, Eq)
 data ITypeArgs a = ITypeArgs { i_rd :: Register, i_rs1 :: Register, i_imm :: a }
-    deriving (Show, Eq)
+    deriving (Show, Eq, Functor, Foldable, Traversable)
 data BTypeArgs a = BTypeArgs { b_rs1 :: Register, b_rs2 :: Register, b_imm :: a }
-    deriving (Show, Eq)
+    deriving (Show, Eq, Functor, Foldable, Traversable)
 data STypeArgs a = STypeArgs { s_rs1 :: Register, s_rs2 :: Register, s_imm :: a }
-    deriving (Show, Eq)
+    deriving (Show, Eq, Functor, Foldable, Traversable)
 
 data InstrKind = R | I | B | S
 
@@ -82,6 +82,20 @@ instance Functor (Instruction k) where
     fmap f (BType op args)  = BType op (args { b_imm = f (b_imm args) })
     fmap f (SType op args)  = SType op (args { s_imm = f (s_imm args) })
 
+instance Foldable (Instruction k) where
+    foldMap _ (RType _ _)  = mempty
+    foldMap f (ArithI _ a) = foldMap f a
+    foldMap f (LoadI _ a)  = foldMap f a
+    foldMap f (BType _ a)  = foldMap f a
+    foldMap f (SType _ a)  = foldMap f a
+
+instance Traversable (Instruction k) where
+    traverse _ (RType op args)  = pure (RType op args)
+    traverse f (ArithI op args) = ArithI op <$> traverse f args
+    traverse f (LoadI op args)  = LoadI op  <$> traverse f args
+    traverse f (BType op args)  = BType op  <$> traverse f args
+    traverse f (SType op args)  = SType op  <$> traverse f args
+
 data SomeInstruction a where
   SomeInstruction :: Instruction k a -> SomeInstruction a
 
@@ -100,6 +114,12 @@ instance Eq a => Eq (SomeInstruction a) where
 
 instance Functor SomeInstruction where
     fmap f (SomeInstruction i) = SomeInstruction (fmap f i)
+
+instance Foldable SomeInstruction where
+    foldMap f (SomeInstruction i) = foldMap f i
+
+instance Traversable SomeInstruction where
+    traverse f (SomeInstruction i) = SomeInstruction <$> traverse f i
 
 -- Line might have a label, instruction, or both
 type SourceLine = (Maybe String, Maybe (ArchInstr 'Parsed))

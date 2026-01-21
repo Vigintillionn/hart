@@ -40,7 +40,7 @@ buildSymTable l = snd <$> foldM step (0, M.empty) l
             let size = case mi of
                     Nothing -> 0
                     Just i  -> sum (map instrSize (NE.toList $ lower i)) 
-            let nextPC = pc + size
+            let !nextPC = pc + size
             return (nextPC, newTable)
 
 resolveImm :: String -> Operand -> Either String Int
@@ -54,21 +54,12 @@ resolveInstruction table instr = do
     modify (+4)
     return resolved
 
+resolveOneOp :: Int -> SymbolTable -> Operand -> Either String Int
+resolveOneOp _ _ (ImmVal v) = Right v
+resolveOneOp pc table (Label l) =
+    case M.lookup l table of
+        Just target -> Right $ target - pc
+        Nothing     -> Left $ "Undefined label " ++ l
+
 resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
-resolveOperand pc table (SomeInstruction (BType op args)) = do
-    off <- case b_imm args of
-        ImmVal v -> Right v
-        Label l     -> case M.lookup l table of
-            Just target -> Right (target - pc)
-            Nothing     -> Left $ "Undefined label: " ++ l
-    return $ SomeInstruction (BType op (args { b_imm = off }))
-resolveOperand _ _ (SomeInstruction (LoadI op args)) = do
-    val <- resolveImm "Label in load immediate" (i_imm args)
-    return $ SomeInstruction (LoadI op (args { i_imm = val }))
-resolveOperand _ _ (SomeInstruction (ArithI op args)) = do
-    val <- resolveImm "Label in arithmatic immediate" (i_imm args)
-    return $ SomeInstruction (ArithI op (args { i_imm = val }))
-resolveOperand _ _ (SomeInstruction (SType op args)) = do
-    val <- resolveImm "Label in store instruction" (s_imm args)
-    return $ SomeInstruction (SType op (args { s_imm = val }))
-resolveOperand _ _ (SomeInstruction (RType op args)) = Right $ SomeInstruction $ RType op args
+resolveOperand pc table = traverse (resolveOneOp pc table) 
