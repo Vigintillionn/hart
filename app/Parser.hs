@@ -197,6 +197,11 @@ parseSTypeOperands = do
     (off, base) <- memOperand
     return $ STypeArgs base src off 
 
+parseUTypeOperands :: Parser (UTypeArgs Operand)
+parseUTypeOperands = UTypeArgs
+    <$> register <* comma
+    <*> operand
+
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (ArchInstr 'Parsed) 
 rType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
@@ -212,14 +217,20 @@ bType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseBTypeO
 sType :: String -> (STypeArgs Operand -> Instruction 'S Operand) -> Parser (ArchInstr 'Parsed)
 sType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseSTypeOperands
 
+uType :: String -> (UTypeArgs Operand -> Instruction 'U Operand) -> Parser (ArchInstr 'Parsed)
+uType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseUTypeOperands
+
 pseudoType :: String -> Parser PseudoOp -> Parser (ArchInstr 'Parsed)
 pseudoType n p = PseudoInstr <$> (lexeme (string n) *> p)
 
 parseNop :: Parser PseudoOp
 parseNop = pure P_NOP 
 
-parseMv :: Parser PseudoOp
-parseMv = P_MV <$> register <* comma <*> register
+parsePseudoDoubleReg :: (Register -> Register -> PseudoOp) -> Parser PseudoOp
+parsePseudoDoubleReg op = op <$> register <* comma <*> register
+
+parseLi :: Parser PseudoOp
+parseLi = P_LI <$> register <* comma <*> operand
 
 parseInstruction :: Parser (ArchInstr 'Parsed) 
 parseInstruction = choice $ concat 
@@ -228,15 +239,18 @@ parseInstruction = choice $ concat
     , map (\(n, op) -> iLoadType    n (LoadI op))   iLoadOps
     , map (\(n, op) -> bType        n (BType op))   bOps 
     , map (\(n, op) -> sType        n (SType op))   sOps 
-    , [ pseudoType "nop" parseNop ]
-    , [ pseudoType "mv"  parseMv  ]
+    , map (\(n, op) -> uType        n (UType op))   uOps
+    , map (uncurry pseudoType) pseudoOps
     ]
     where
-        rOps = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
+        rOps      = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
         iArithOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
-        iLoadOps = [("lb", LB), ("lh", LH), ("lw", LW)]
-        bOps = [("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)]
-        sOps = [("sb", SB), ("sh", SH), ("sw", SW)]
+        iLoadOps  = [("lb", LB), ("lh", LH), ("lw", LW)]
+        bOps      = [("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)]
+        sOps      = [("sb", SB), ("sh", SH), ("sw", SW)]
+        uOps      = [("lui", LUI), ("auipc", AUIPC)]
+        pseudoOps = [("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
+                    ,("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)]
 
 parseLine :: Parser SourceLine 
 parseLine = do

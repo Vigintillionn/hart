@@ -14,10 +14,12 @@ module Types (Register
              , ILoadOp(..)
              , BOp(..)
              , SOp(..)
+             , UOp(..)
              , RTypeArgs(..)
              , ITypeArgs(..)
              , BTypeArgs(..)
              , STypeArgs(..)
+             , UTypeArgs(..)
              , AssemblyError(..)
              , Phase(..)
              , ArchInstr(..)
@@ -50,8 +52,9 @@ data IArithOp = ADDI | XORI | ORI | ANDI    deriving (Show, Eq, Enum, Bounded)
 data ILoadOp = LB | LH | LW                 deriving (Show, Eq, Enum, Bounded)
 data BOp = BEQ | BNE | BLT | BGE            deriving (Show, Eq, Enum, Bounded)
 data SOp = SB | SH | SW                     deriving (Show, Eq, Enum, Bounded)
+data UOp = LUI | AUIPC                      deriving (Show, Eq, Enum, Bounded)
 
-data RTypeArgs = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
+data RTypeArgs   = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
     deriving (Show, Eq)
 data ITypeArgs a = ITypeArgs { i_rd :: Register, i_rs1 :: Register, i_imm :: a }
     deriving (Show, Eq, Functor, Foldable, Traversable)
@@ -59,8 +62,10 @@ data BTypeArgs a = BTypeArgs { b_rs1 :: Register, b_rs2 :: Register, b_imm :: a 
     deriving (Show, Eq, Functor, Foldable, Traversable)
 data STypeArgs a = STypeArgs { s_rs1 :: Register, s_rs2 :: Register, s_imm :: a }
     deriving (Show, Eq, Functor, Foldable, Traversable)
+data UTypeArgs a = UTypeArgs { u_rd :: Register, u_imm :: a }
+    deriving (Show, Eq, Functor, Foldable, Traversable)
 
-data InstrKind = R | I | B | S
+data InstrKind = R | I | B | S | U
 
 data Instruction (k :: InstrKind) a where
     RType  :: ROp       -> RTypeArgs   -> Instruction 'R a
@@ -68,19 +73,24 @@ data Instruction (k :: InstrKind) a where
     LoadI  :: ILoadOp   -> ITypeArgs a -> Instruction 'I a
     BType  :: BOp       -> BTypeArgs a -> Instruction 'B a
     SType  :: SOp       -> STypeArgs a -> Instruction 'S a
+    UType  :: UOp       -> UTypeArgs a -> Instruction 'U a
 
 data PseudoOp = P_NOP
               | P_MV Register Register
+              | P_LI Register Operand
+              | P_NOT Register Register
+              | P_NEG Register Register
 
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)
 
 instance Functor (Instruction k) where
-    fmap _ (RType op args)  = RType op args
+    fmap _ (RType op args)  = RType  op args
     fmap f (ArithI op args) = ArithI op (args { i_imm = f (i_imm args) })
-    fmap f (LoadI op args)  = LoadI op (args { i_imm = f (i_imm args) })
-    fmap f (BType op args)  = BType op (args { b_imm = f (b_imm args) })
-    fmap f (SType op args)  = SType op (args { s_imm = f (s_imm args) })
+    fmap f (LoadI op args)  = LoadI  op (args { i_imm = f (i_imm args) })
+    fmap f (BType op args)  = BType  op (args { b_imm = f (b_imm args) })
+    fmap f (SType op args)  = SType  op (args { s_imm = f (s_imm args) })
+    fmap f (UType op args)  = UType  op (args { u_imm = f (u_imm args) })
 
 instance Foldable (Instruction k) where
     foldMap _ (RType _ _)  = mempty
@@ -88,6 +98,7 @@ instance Foldable (Instruction k) where
     foldMap f (LoadI _ a)  = foldMap f a
     foldMap f (BType _ a)  = foldMap f a
     foldMap f (SType _ a)  = foldMap f a
+    foldMap f (UType _ a)  = foldMap f a
 
 instance Traversable (Instruction k) where
     traverse _ (RType op args)  = pure (RType op args)
@@ -95,6 +106,7 @@ instance Traversable (Instruction k) where
     traverse f (LoadI op args)  = LoadI op  <$> traverse f args
     traverse f (BType op args)  = BType op  <$> traverse f args
     traverse f (SType op args)  = SType op  <$> traverse f args
+    traverse f (UType op args)  = UType op  <$> traverse f args
 
 data SomeInstruction a where
   SomeInstruction :: Instruction k a -> SomeInstruction a

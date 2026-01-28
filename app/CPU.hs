@@ -178,12 +178,27 @@ executeSType (SType op args) = do
         SB -> storeByte addr val
     return Advance
 
+executeUType :: Instruction 'U Int -> Emulator PCUpdate
+executeUType (UType op args) = do
+    let imm = fromIntegral $ u_imm args `shiftL` 12 :: Word32
+
+    val <- case op of
+        LUI   -> return imm
+        AUIPC -> do
+            currentPC <- gets pc
+            return $ currentPC + imm
+    
+    setReg (u_rd args) val
+
+    return Advance
+
 execute :: SomeInstruction Int -> Emulator PCUpdate 
 execute (SomeInstruction inst@(RType  _ _)) = executeRType inst 
 execute (SomeInstruction inst@(ArithI _ _)) = executeIType inst 
 execute (SomeInstruction inst@(LoadI  _ _)) = executeIType inst 
 execute (SomeInstruction inst@(BType  _ _)) = executeBType inst
 execute (SomeInstruction inst@(SType  _ _)) = executeSType inst
+execute (SomeInstruction inst@(UType  _ _)) = executeUType inst
 
 
 setPC :: Word32 -> Emulator ()

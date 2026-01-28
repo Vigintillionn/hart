@@ -29,6 +29,9 @@ instance Arbitrary BOp where
 instance Arbitrary SOp where
     arbitrary = elements [SB, SH, SW]
 
+instance Arbitrary UOp where
+    arbitrary = elements [AUIPC, LUI]
+
 genImm :: Int -> Gen Int
 genImm bits = choose (-(2^(bits-1)), 2^(bits-1) - 1)
 
@@ -39,6 +42,7 @@ instance Arbitrary (SomeInstruction Int) where
         , genITypeLoad
         , genBType
         , genSType
+        , genUType
         ]
       where
         genRType = do
@@ -67,3 +71,9 @@ instance Arbitrary (SomeInstruction Int) where
             imm <- genImm 12
             args <- STypeArgs <$> arbitrary <*> arbitrary <*> pure imm
             return $ SomeInstruction (SType op args)
+
+        genUType = do
+            op <- arbitrary
+            imm <- genImm 32
+            args <- UTypeArgs <$> arbitrary <*> pure imm
+            return $ SomeInstruction (UType op args)

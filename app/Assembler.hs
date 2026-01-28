@@ -123,12 +123,25 @@ assembleSType (SType op args) =
         rs1 = packRs1 $ s_rs1 args 
         rs2 = packRs2 $ s_rs2 args 
 
+assembleUType :: Instruction 'U Int -> Word32
+assembleUType (UType op args) =
+    opc .|.
+    rd  .|.
+    imm 
+    where
+        opc = case op of
+            AUIPC -> 0x17
+            LUI   -> 0x37
+        rd  = packRd $ u_rd args 
+        imm = fromIntegral $ (u_imm args .&. 0xFFFFF) `shiftL` 12
+
 assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
 assembleSome (SomeInstruction (ArithI op args))  = packIType 0x13 (getArithFmt op) args
 assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op) args
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
 assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
+assembleSome (SomeInstruction instr@(UType _ _)) = assembleUType instr
 
 assemble :: Program -> [Word32]
 assemble = map assembleSome

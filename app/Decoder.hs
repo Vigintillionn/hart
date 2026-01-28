@@ -126,6 +126,16 @@ decodeSType w = do
     let imm = signExtend 12 $ (immHi `shiftL` 5) .|. immLo
     return $ SType op (STypeArgs rs1 rs2 imm)
 
+decodeUType :: Word32 -> Word32 -> Maybe (Instruction 'U Int)
+decodeUType opc w = do
+    op <- case opc of
+            0x17 -> Just AUIPC
+            0x37 -> Just LUI
+            _    -> Nothing
+    rd <- mkRegister (getRd w)
+    let imm = fromIntegral $ slice (31, 12) w `shiftL` 12  
+    return $ UType op (UTypeArgs rd imm)
+
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
     let opcode = getOpc w 
@@ -135,6 +145,8 @@ decodeSome w =
             0x03    -> SomeInstruction <$> decodeIType opcode w     -- Load
             0x63    -> SomeInstruction <$> decodeBType w            -- Branch
             0x23    -> SomeInstruction <$> decodeSType w            -- Store
+            0x17    -> SomeInstruction <$> decodeUType opcode w
+            0x37    -> SomeInstruction <$> decodeUType opcode w
             _       -> Nothing
     in instr
 
