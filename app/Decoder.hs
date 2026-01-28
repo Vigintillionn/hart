@@ -133,7 +133,7 @@ decodeUType opc w = do
             0x37 -> Just LUI
             _    -> Nothing
     rd <- mkRegister (getRd w)
-    let imm = fromIntegral $ slice (31, 12) w `shiftL` 12  
+    let imm = fromIntegral $ slice (31, 12) w 
     return $ UType op (UTypeArgs rd imm)
 
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)

@@ -122,6 +122,7 @@ instance Eq a => Eq (SomeInstruction a) where
   (SomeInstruction (LoadI o1 a1))  == (SomeInstruction (LoadI o2 a2))  = o1 == o2 && a1 == a2
   (SomeInstruction (BType o1 a1))  == (SomeInstruction (BType o2 a2))  = o1 == o2 && a1 == a2
   (SomeInstruction (SType o1 a1))  == (SomeInstruction (SType o2 a2))  = o1 == o2 && a1 == a2
+  (SomeInstruction (UType o1 a1))  == (SomeInstruction (UType o2 a2))  = o1 == o2 && a1 == a2
   _ == _ = False
 
 instance Functor SomeInstruction where

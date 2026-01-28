@@ -74,6 +74,6 @@ instance Arbitrary (SomeInstruction Int) where
 
         genUType = do
             op <- arbitrary
-            imm <- genImm 32
+            imm <- choose (0, 0xFFFFF) 
             args <- UTypeArgs <$> arbitrary <*> pure imm
             return $ SomeInstruction (UType op args)
