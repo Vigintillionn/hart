@@ -56,76 +56,47 @@ common warnings
                  -Werror=incomplete-record-updates
                  -Werror=incomplete-uni-patterns
 
-executable riscv
-    -- Import common warning flags.
-    import:           warnings
-
-    -- .hs or .lhs file containing the Main module.
-    main-is:          Main.hs
-
-    other-modules:    Types
-                      Parser
-                      Linker
-                      Assembler
-                      Decoder
-                      CPU
-                      Debugger
-
-    -- Modules included in this executable, other than Main.
-    -- other-modules:
-
-    -- LANGUAGE extensions used by modules in this package.
-    -- other-extensions:
-
-    -- Other library packages from which modules are imported.
-    build-depends:    
+common shared-properties
+    default-language: GHC2021
+    ghc-options:      -Wall
+    default-extensions:
+        GADTs
+        DataKinds
+        TypeFamilies
+        KindSignatures
+        StandaloneDeriving
+        LambdaCase
+    build-depends:
         base ^>=4.18.3.0,
         mtl >= 2.3,
         containers >= 0.6,
         vector >= 0.13,
         time
 
-    default-extensions:
-        GADTs
-        DataKinds
-        KindSignatures
-        StandaloneDeriving
-        LambdaCase
-        TypeFamilies
+library
+    import:           warnings, shared-properties
+    exposed-modules:  Types
+                      Parser
+                      Linker
+                      Assembler
+                      Decoder
+                      CPU
+                      Debugger
+    hs-source-dirs:   lib 
 
-    -- Directories containing source files.
+executable riscv
+    import:           warnings, shared-properties
+    main-is:          Main.hs
+    build-depends:    riscv
     hs-source-dirs:   app
-
-    -- Base language which the package is written in.
-    default-language: GHC2021
 
 test-suite riscv-test
     import:           warnings
-    default-language: GHC2021
     type:             exitcode-stdio-1.0
-    hs-source-dirs:   test, app
+    hs-source-dirs:   test
     main-is:          Spec.hs
-    other-modules:
-        Test.Arbitrary
-        Test.AssemblerSpec
-        Types
-        Parser
-        Linker
-        Assembler
-        Decoder
-        CPU
-        Debugger
-    build-depends:
-        base ^>=4.18.3.0,
-        mtl >= 2.3,
-        containers >= 0.6,
-        vector >= 0.13,
-        hspec,        
-        QuickCheck    
-    default-extensions:
-        GADTs
-        DataKinds
-        KindSignatures
-        StandaloneDeriving
-        LambdaCase
-        TypeFamilies
+    other-modules:    Test.Arbitrary
+                      Test.AssemblerSpec
+    build-depends:    riscv,  
+                      hspec,
+                      QuickCheck

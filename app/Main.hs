@@ -22,7 +22,19 @@ viewRegisters :: V.Vector Word32 -> [Int32]
 viewRegisters regs = map fromIntegral (V.toList regs)
 
 program :: String
-program = "li x3, 1000\nneg x5, x3"
+program = "      addi x10, x0, 5       \n\
+          \      jal  x1, double       \n\
+          \      addi x11, x0, 1       \n\
+          \      beq  x0, x0, end      \n\
+          \                            \n\
+          \double:                     \n\
+          \      add  x10, x10, x10    \n\
+          \      jalr x0, x1, 0        \n\
+          \                            \n\
+          \end:                        "
+
+--program :: String
+--program = "li x3, 1000\nneg x5, x3"
 --program = "      addi x1, x0, 10000000 \n\
  --         \      addi x2, x0, 1        \n\
   --        \loop: sub  x1, x1, x2       \n\

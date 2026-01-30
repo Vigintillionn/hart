@@ -145,6 +145,14 @@ executeIType (ArithI op args) = do
         ANDI -> runImmediateOp (.&.) args
     return Advance
 executeIType (LoadI op args) = runLoadOp op args >> return Advance
+executeIType (JumpI JALR args) = do
+    currentPC <- gets pc
+    base      <- getReg (i_rs1 args)
+    let imm   = fromIntegral (i_imm args) :: Word32
+
+    setReg (i_rd args) (currentPC + 4)
+    let target = (base + imm) .&. complement 1
+    return $ Jump target
 
 executeBType :: Instruction 'B Int -> Emulator PCUpdate 
 executeBType (BType op args) = do
@@ -192,13 +200,22 @@ executeUType (UType op args) = do
 
     return Advance
 
+executeJType :: Instruction 'J Int -> Emulator PCUpdate
+executeJType (JType JAL args) = do
+    currentPC <- gets pc
+    let off   = fromIntegral (j_imm args) :: Word32
+    setReg (j_rd args) (currentPC + 4)
+    return (Jump $ currentPC + off)
+
 execute :: SomeInstruction Int -> Emulator PCUpdate 
 execute (SomeInstruction inst@(RType  _ _)) = executeRType inst 
 execute (SomeInstruction inst@(ArithI _ _)) = executeIType inst 
 execute (SomeInstruction inst@(LoadI  _ _)) = executeIType inst 
+execute (SomeInstruction inst@(JumpI  _ _)) = executeIType inst
 execute (SomeInstruction inst@(BType  _ _)) = executeBType inst
 execute (SomeInstruction inst@(SType  _ _)) = executeSType inst
 execute (SomeInstruction inst@(UType  _ _)) = executeUType inst
+execute (SomeInstruction inst@(JType  _ _)) = executeJType inst
 
 
 setPC :: Word32 -> Emulator ()

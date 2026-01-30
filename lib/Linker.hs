@@ -57,12 +57,24 @@ resolveInstruction table instr = do
     modify (+4)
     return resolved
 
-resolveOneOp :: Int -> SymbolTable -> Operand -> Either String Int
-resolveOneOp _ _ (ImmVal v) = Right v
-resolveOneOp pc table (Label l) =
+resolveRelative :: Int -> SymbolTable -> Operand -> Either String Int
+resolveRelative _ _ (ImmVal v) = Right v
+resolveRelative pc table (Label l) =
     case M.lookup l table of
         Just target -> Right $ target - pc
         Nothing     -> Left $ "Undefined label " ++ l
 
+resolveAbsolute :: SymbolTable -> Operand -> Either String Int
+resolveAbsolute table (Label l) = 
+    case M.lookup l table of
+        Just target -> Right target        -- Return actual address
+        Nothing     -> Left $ "Undefined label: " ++ l
+resolveAbsolute _ (ImmVal v) = Right v
+
 resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
-resolveOperand pc table = traverse (resolveOneOp pc table) 
+resolveOperand pc table (SomeInstruction (JType op args)) 
+    = SomeInstruction . JType op <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (BType op args))
+    = SomeInstruction . BType op <$> traverse (resolveRelative pc table) args
+resolveOperand _ table (SomeInstruction instr) = 
+    SomeInstruction <$> traverse (resolveAbsolute table) instr

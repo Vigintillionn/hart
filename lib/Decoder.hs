@@ -4,14 +4,16 @@ import Data.Word (Word32)
 import Data.Bits (Bits(shiftR, shiftL, (.&.), (.|.)))
 import Data.Int (Int32)
 import Data.List (find)
+import Control.Monad
 
-opMask, rdMask, f3Mask, rs1Mask, rs2Mask, f7Mask :: (Int, Int)
+opMask, rdMask, f3Mask, rs1Mask, rs2Mask, f7Mask, immMask :: (Int, Int)
 opMask  = (6, 0)
 rdMask  = (11, 7)
 f3Mask  = (14, 12)
 rs1Mask = (19, 15)
 rs2Mask = (24, 20)
 f7Mask  = (31, 25)
+immMask = (31, 20)
 
 -- Extracts bits from 'lo' to 'hi'
 slice :: (Int, Int) -> Word32 -> Word32
@@ -84,14 +86,20 @@ decodeIType 0x13 w = do
     op <- findOp iArithOpF3 $ getF3 w 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
-    let imm = signExtend 12 $ slice (31, 20) w
+    let imm = signExtend 12 $ slice immMask w
     return $ ArithI op (ITypeArgs rd rs1 imm)
 decodeIType 0x03 w = do
     op <- findOp iLoadOpF3 $ getF3 w 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
-    let imm = signExtend 12 $ slice (31, 20) w
+    let imm = signExtend 12 $ slice immMask w
     return $ LoadI op (ITypeArgs rd rs1 imm)
+decodeIType 0x67 w = do
+    guard (getF3 w == 0x0)
+    rd  <- mkRegister (getRd w)
+    rs1 <- mkRegister (getRs1 w)
+    let imm = signExtend 12 $ slice immMask w
+    return $ JumpI JALR (ITypeArgs rd rs1 imm)
 decodeIType _ _ = Nothing
 
 unpackBImm :: Word32 -> Int
@@ -107,6 +115,18 @@ unpackBImm w =
                    (bit11 `shiftL` 11) .|.
                    (bits10_5 `shiftL` 5) .|.
                    (bits4_1 `shiftL` 1) -- bit 0 is implicitely 0 such that addresses are halfword alligned
+
+unpackJImm :: Word32 -> Int
+unpackJImm w = signExtend 21 unpacked
+    where
+        bit20     = slice (31, 31) w
+        bits19_12 = slice (19, 12) w
+        bit11     = slice (20, 20) w
+        bits10_1  = slice (30, 21) w
+        unpacked  = (bit20     `shiftL` 20) .|.
+                    (bits19_12 `shiftL` 12) .|.
+                    (bit11     `shiftL` 11) .|.
+                    (bits10_1  `shiftL` 1)
 
 decodeBType :: Word32 -> Maybe (Instruction 'B Int)
 decodeBType w = do
@@ -136,6 +156,13 @@ decodeUType opc w = do
     let imm = fromIntegral $ slice (31, 12) w 
     return $ UType op (UTypeArgs rd imm)
 
+decodeJType :: Word32 -> Maybe (Instruction 'J Int)
+decodeJType w = do 
+    let op = JAL
+    rd <- mkRegister (getRd w)
+    let imm = unpackJImm w
+    return $ JType op (JTypeArgs rd imm)
+
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
     let opcode = getOpc w 
@@ -143,10 +170,12 @@ decodeSome w =
             0x33    -> SomeInstruction <$> decodeRType w            -- Arithmatic
             0x13    -> SomeInstruction <$> decodeIType opcode w     -- Immediate
             0x03    -> SomeInstruction <$> decodeIType opcode w     -- Load
+            0x67    -> SomeInstruction <$> decodeIType opcode w     -- Jump
             0x63    -> SomeInstruction <$> decodeBType w            -- Branch
             0x23    -> SomeInstruction <$> decodeSType w            -- Store
-            0x17    -> SomeInstruction <$> decodeUType opcode w
-            0x37    -> SomeInstruction <$> decodeUType opcode w
+            0x17    -> SomeInstruction <$> decodeUType opcode w     -- AUIPC
+            0x37    -> SomeInstruction <$> decodeUType opcode w     -- LUI
+            0x6F    -> SomeInstruction <$> decodeJType w            -- JAL
             _       -> Nothing
     in instr
 

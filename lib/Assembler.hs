@@ -76,6 +76,18 @@ packBImm v =
        (bits10_5 `shiftL` 25) .|.
        (bits4_1 `shiftL` 8)
 
+packJImm :: Int -> Word32
+packJImm v =
+    let i = fromIntegral v :: Word32
+        bit20    = (i `shiftR` 20) .&. 0x1
+        bits10_1 = (i `shiftR` 1)  .&. 0x3FF
+        bit11    = (i `shiftR` 11) .&. 0x1
+        bits19_12= (i `shiftR` 12) .&. 0xFF
+    in (bit20     `shiftL` 31) .|.
+       (bits10_1  `shiftL` 21) .|.
+       (bit11     `shiftL` 20) .|.
+       (bits19_12 `shiftL` 12)
+
 getBFmt :: BOp -> (Word32, Word32)
 getBFmt op = (opc, f3)
     where
@@ -135,13 +147,23 @@ assembleUType (UType op args) =
         rd  = packRd $ u_rd args 
         imm = fromIntegral $ (u_imm args .&. 0xFFFFF) `shiftL` 12
 
+assembleJType :: Instruction 'J Int -> Word32
+assembleJType (JType JAL args) =
+    packJImm (j_imm args) .|.
+    rd .|.
+    0x6F -- JAL
+    where
+        rd = packRd (j_rd args)
+
 assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
 assembleSome (SomeInstruction (ArithI op args))  = packIType 0x13 (getArithFmt op) args
 assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op) args
+assembleSome (SomeInstruction (JumpI JALR args)) = packIType 0x67 0x0 args
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
 assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
 assembleSome (SomeInstruction instr@(UType _ _)) = assembleUType instr
+assembleSome (SomeInstruction instr@(JType _ _)) = assembleJType instr
 
 assemble :: Program -> [Word32]
 assemble = map assembleSome

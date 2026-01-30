@@ -202,6 +202,11 @@ parseUTypeOperands = UTypeArgs
     <$> register <* comma
     <*> operand
 
+parseJTypeOperands :: Parser (JTypeArgs Operand)
+parseJTypeOperands = JTypeArgs
+    <$> register <* comma
+    <*> operand
+
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (ArchInstr 'Parsed) 
 rType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
 
@@ -211,6 +216,9 @@ iArithType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseI
 iLoadType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
 iLoadType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseILoadTypeOperands
 
+iJmpType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
+iJmpType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseIArithTypeOperands
+
 bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (ArchInstr 'Parsed)
 bType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
 
@@ -219,6 +227,9 @@ sType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseSTypeO
 
 uType :: String -> (UTypeArgs Operand -> Instruction 'U Operand) -> Parser (ArchInstr 'Parsed)
 uType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseUTypeOperands
+
+jType :: String -> (JTypeArgs Operand -> Instruction 'J Operand) -> Parser (ArchInstr 'Parsed)
+jType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseJTypeOperands
 
 pseudoType :: String -> Parser PseudoOp -> Parser (ArchInstr 'Parsed)
 pseudoType n p = PseudoInstr <$> (lexeme (string n) *> p)
@@ -237,18 +248,22 @@ parseInstruction = choice $ concat
     [ map (\(n, op) -> rType        n (RType op))   rOps
     , map (\(n, op) -> iArithType   n (ArithI op))  iArithOps
     , map (\(n, op) -> iLoadType    n (LoadI op))   iLoadOps
+    , map (\(n, op) -> iJmpType     n (JumpI op))   iJmpOps
     , map (\(n, op) -> bType        n (BType op))   bOps 
     , map (\(n, op) -> sType        n (SType op))   sOps 
     , map (\(n, op) -> uType        n (UType op))   uOps
+    , map (\(n, op) -> jType        n (JType op))   jOps
     , map (uncurry pseudoType) pseudoOps
     ]
     where
         rOps      = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
         iArithOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
         iLoadOps  = [("lb", LB), ("lh", LH), ("lw", LW)]
+        iJmpOps   = [("jalr", JALR)]
         bOps      = [("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)]
         sOps      = [("sb", SB), ("sh", SH), ("sw", SW)]
         uOps      = [("lui", LUI), ("auipc", AUIPC)]
+        jOps      = [("jal", JAL)]
         pseudoOps = [("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
                     ,("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)]
 
