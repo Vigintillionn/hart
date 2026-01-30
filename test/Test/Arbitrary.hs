@@ -23,6 +23,9 @@ instance Arbitrary IArithOp where
 instance Arbitrary ILoadOp where
     arbitrary = elements [LB, LH, LW]
 
+instance Arbitrary IJmpOp where
+    arbitrary = return JALR
+
 instance Arbitrary BOp where
     arbitrary = elements [BEQ, BNE, BLT, BGE]
 
@@ -32,6 +35,9 @@ instance Arbitrary SOp where
 instance Arbitrary UOp where
     arbitrary = elements [AUIPC, LUI]
 
+instance Arbitrary JOp where
+    arbitrary = return JAL
+
 genImm :: Int -> Gen Int
 genImm bits = choose (-(2^(bits-1)), 2^(bits-1) - 1)
 
@@ -40,9 +46,11 @@ instance Arbitrary (SomeInstruction Int) where
         [ genRType
         , genITypeArith
         , genITypeLoad
+        , genITypeJump
         , genBType
         , genSType
         , genUType
+        , genJType
         ]
       where
         genRType = do
@@ -59,6 +67,11 @@ instance Arbitrary (SomeInstruction Int) where
             op <- arbitrary
             args <- ITypeArgs <$> arbitrary <*> arbitrary <*> genImm 12
             return $ SomeInstruction (LoadI op args)
+
+        genITypeJump = do
+            op <- arbitrary
+            args <- ITypeArgs <$> arbitrary <*> arbitrary <*> genImm 12
+            return $ SomeInstruction (JumpI op args)
 
         genBType = do
             op <- arbitrary
@@ -77,3 +90,10 @@ instance Arbitrary (SomeInstruction Int) where
             imm <- choose (0, 0xFFFFF) 
             args <- UTypeArgs <$> arbitrary <*> pure imm
             return $ SomeInstruction (UType op args)
+
+        genJType = do
+            op <- arbitrary
+            val <- genImm 19 
+            let imm = val * 2
+            args <- JTypeArgs <$> arbitrary <*> pure imm 
+            return $ SomeInstruction (JType op args)
