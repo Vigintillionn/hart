@@ -19,6 +19,9 @@ lower (PseudoInstr op) = case op of
     P_LI rd imm -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
     P_NEG rd rs -> pure $ SomeInstruction $ RType SUB (RTypeArgs rd x0 rs)
     P_NOT rd rs -> pure $ SomeInstruction $ ArithI XORI (ITypeArgs rd rs (ImmVal (-1)))
+    P_J off     -> pure $ SomeInstruction $ JType JAL (JTypeArgs x0 off)
+    P_JR rs     -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 rs (ImmVal 0))
+    P_RET       -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 x1 (ImmVal 0))
 
 expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
 expandProgram = concatMap (NE.toList . lower) 

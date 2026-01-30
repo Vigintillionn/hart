@@ -28,12 +28,16 @@ module Types (Register
              , ArchInstr(..)
              , PseudoOp(..)
              , x0
+             , x1
              ) where
 
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 
 x0 :: Register
 x0 = Reg 0
+
+x1 :: Register
+x1 = Reg 1
 
 mkRegister :: Int -> Maybe Register
 mkRegister n
@@ -89,6 +93,9 @@ data PseudoOp = P_NOP
               | P_LI Register Operand
               | P_NOT Register Register
               | P_NEG Register Register
+              | P_J Operand
+              | P_JR Register
+              | P_RET
 
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)

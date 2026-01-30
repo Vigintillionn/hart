@@ -184,6 +184,17 @@ parseILoadTypeOperands = do
     (off, rs1) <- memOperand
     return $ ITypeArgs rd rs1 off 
 
+parseIJumpTypeOperands :: Parser (ITypeArgs Operand)
+parseIJumpTypeOperands = explicit <|> implicit
+    where
+        explicit = ITypeArgs
+            <$> register <* comma
+            <*> register <* comma
+            <*> operand
+        implicit = do
+            rs <- register
+            return $ ITypeArgs x1 rs (ImmVal 0)
+
 parseBTypeOperands :: Parser (BTypeArgs Operand)
 parseBTypeOperands = BTypeArgs
     <$> register <* comma
@@ -203,9 +214,13 @@ parseUTypeOperands = UTypeArgs
     <*> operand
 
 parseJTypeOperands :: Parser (JTypeArgs Operand)
-parseJTypeOperands = JTypeArgs
-    <$> register <* comma
-    <*> operand
+parseJTypeOperands = explicit <|> implicit
+    where
+        explicit = JTypeArgs
+            <$> register <* comma
+            <*> operand
+        implicit = JTypeArgs x1 
+            <$> operand
 
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (ArchInstr 'Parsed) 
 rType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
