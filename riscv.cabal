@@ -91,7 +91,7 @@ executable riscv
     hs-source-dirs:   app
 
 test-suite riscv-test
-    import:           warnings
+    import:           warnings, shared-properties
     type:             exitcode-stdio-1.0
     hs-source-dirs:   test
     main-is:          Spec.hs
