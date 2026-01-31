@@ -12,6 +12,12 @@ import Decoder (decodeWord)
 import Control.Monad
 import Data.Int
 
+shiftRA :: Word32 -> Int -> Word32
+shiftRA w i = fromIntegral (fromIntegral w `shiftR` i :: Int32)
+
+lessThanSigned :: Word32 -> Word32 -> Word32
+lessThanSigned a b = if (fromIntegral a :: Int32) < (fromIntegral b :: Int32) then 1 else 0
+
 data PCUpdate = Advance | Jump Word32
 
 data CPU = CPU 
@@ -115,6 +121,11 @@ executeRType (RType op args) = do
         XOR -> runBinaryOp xor args
         OR  -> runBinaryOp (.|.) args
         AND -> runBinaryOp (.&.) args
+        SLL  -> runBinaryOp (\a b -> a `shiftL` (fromIntegral b .&. 0x1F)) args
+        SRL  -> runBinaryOp (\a b -> a `shiftR` (fromIntegral b .&. 0x1F)) args
+        SRA  -> runBinaryOp (\a b -> a `shiftRA` (fromIntegral b .&. 0x1F)) args
+        SLT  -> runBinaryOp lessThanSigned args
+        SLTU -> runBinaryOp (\a b -> if a < b then 1 else 0) args
     return Advance
 
 runImmediateOp :: (Word32 -> Word32 -> Word32) -> ITypeArgs Int -> Emulator ()

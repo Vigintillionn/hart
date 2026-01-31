@@ -21,8 +21,14 @@ getRFmt op = (opc, f3, f7)
             XOR -> 0x4
             OR  -> 0x6
             AND -> 0x7
+            SLL -> 0x1
+            SRL -> 0x5
+            SRA -> 0x5
+            SLT -> 0x2
+            SLTU -> 0x3
         f7  = case op of
             SUB -> 0x20
+            SRA -> 0x20
             _   -> 0x0
 
 assembleRType :: Instruction 'R Int -> Word32

@@ -271,7 +271,10 @@ parseInstruction = choice $ concat
     , map (uncurry pseudoType) pseudoOps
     ]
     where
-        rOps      = [("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)]
+        rOps      = [ ("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)
+                    , ("sll", SLL), ("srl", SRL), ("sra", SRA)
+                    , ("slt", SLT), ("sltu",SLTU)
+                    ]
         iArithOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
         iLoadOps  = [("lb", LB), ("lh", LH), ("lw", LW)]
         iJmpOps   = [("jalr", JALR)]
@@ -279,8 +282,9 @@ parseInstruction = choice $ concat
         sOps      = [("sb", SB), ("sh", SH), ("sw", SW)]
         uOps      = [("lui", LUI), ("auipc", AUIPC)]
         jOps      = [("jal", JAL)]
-        pseudoOps = [("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
-                    ,("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)]
+        pseudoOps = [ ("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
+                    , ("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)
+                    ]
 
 parseLine :: Parser SourceLine 
 parseLine = do

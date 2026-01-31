@@ -54,7 +54,8 @@ type family ImmOf (p :: Phase) where
     ImmOf 'Lowered  = Operand
     ImmOf 'Resolved = Int
 
-data ROp = ADD | SUB | XOR | OR | AND       deriving (Show, Eq, Enum, Bounded)
+data ROp = ADD | SUB | XOR | OR  | AND
+         | SLL | SRL | SRA | SLT | SLTU     deriving (Show, Eq, Enum, Bounded)
 data IArithOp = ADDI | XORI | ORI | ANDI    deriving (Show, Eq, Enum, Bounded)    
 data ILoadOp = LB | LH | LW                 deriving (Show, Eq, Enum, Bounded)
 data IJmpOp = JALR                          deriving (Show, Eq, Enum, Bounded)
