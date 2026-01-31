@@ -18,7 +18,7 @@ instance Arbitrary ROp where
     arbitrary = elements [ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU]
 
 instance Arbitrary IArithOp where
-    arbitrary = elements [ADDI, XORI, ORI, ANDI]
+    arbitrary = elements [ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU]
 
 instance Arbitrary ILoadOp where
     arbitrary = elements [LB, LH, LW]
@@ -60,7 +60,10 @@ instance Arbitrary (SomeInstruction Int) where
 
         genITypeArith = do
             op <- arbitrary
-            args <- ITypeArgs <$> arbitrary <*> arbitrary <*> genImm 12
+            let imm = if op `elem` [SLLI, SRLI, SRAI] 
+                 then choose (0, 31) 
+                 else genImm 12
+            args <- ITypeArgs <$> arbitrary <*> arbitrary <*> imm
             return $ SomeInstruction (ArithI op args)
 
         genITypeLoad = do

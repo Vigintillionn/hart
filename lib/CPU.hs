@@ -154,6 +154,11 @@ executeIType (ArithI op args) = do
         XORI -> runImmediateOp xor args
         ORI  -> runImmediateOp (.|.) args
         ANDI -> runImmediateOp (.&.) args
+        SLLI -> runImmediateOp (\a i -> a `shiftL` (fromIntegral i .&. 0x1F)) args
+        SRLI -> runImmediateOp (\a i -> a `shiftR` (fromIntegral i .&. 0x1F)) args
+        SRAI -> runImmediateOp (\a i -> a `shiftRA` (fromIntegral i .&. 0x1F)) args
+        SLTI -> runImmediateOp lessThanSigned args
+        SLTIU -> runImmediateOp (\a i -> if a < i then 1 else 0) args
     return Advance
 executeIType (LoadI op args) = runLoadOp op args >> return Advance
 executeIType (JumpI JALR args) = do

@@ -275,7 +275,10 @@ parseInstruction = choice $ concat
                     , ("sll", SLL), ("srl", SRL), ("sra", SRA)
                     , ("slt", SLT), ("sltu",SLTU)
                     ]
-        iArithOps = [("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)]
+        iArithOps = [ ("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)
+                    , ("slli", SLLI), ("srli", SRLI), ("srai", SRAI)
+                    , ("slti", SLTI), ("sltiu", SLTIU)
+                    ]
         iLoadOps  = [("lb", LB), ("lh", LH), ("lw", LW)]
         iJmpOps   = [("jalr", JALR)]
         bOps      = [("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)]

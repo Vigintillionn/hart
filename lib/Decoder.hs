@@ -54,10 +54,15 @@ rOpF3F7 op = case op of
 
 iArithOpF3 :: IArithOp -> Word32 
 iArithOpF3 op = case op of
-    ADDI -> 0x0
-    XORI -> 0x4
-    ORI  -> 0x6 
-    ANDI -> 0x7
+    ADDI  -> 0x0
+    XORI  -> 0x4
+    ORI   -> 0x6
+    ANDI  -> 0x7
+    SLLI  -> 0x1
+    SRLI  -> 0x5
+    SRAI  -> 0x5
+    SLTI  -> 0x2
+    SLTIU -> 0x3
 
 iLoadOpF3 :: ILoadOp -> Word32
 iLoadOpF3 op = case op of 
@@ -88,10 +93,22 @@ decodeRType w = do
 
 decodeIType :: Word32 -> Word32 -> Maybe (Instruction 'I Int)
 decodeIType 0x13 w = do
-    op <- findOp iArithOpF3 $ getF3 w 
+    let f3 = getF3 w
+    let f7 = getF7 w 
+
+    op  <- case f3 of
+            0x5 -> case f7 of
+                0x00 -> Just SRLI
+                0x20 -> Just SRAI
+                _    -> Nothing
+            _ -> findOp iArithOpF3 f3  
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
-    let imm = signExtend 12 $ slice immMask w
+    let rawImm = slice immMask w
+    
+    let imm = if op `elem` [SLLI, SRLI, SRAI]
+              then fromIntegral (rawImm .&. 0x1F) 
+              else signExtend 12 rawImm
     return $ ArithI op (ITypeArgs rd rs1 imm)
 decodeIType 0x03 w = do
     op <- findOp iLoadOpF3 $ getF3 w 

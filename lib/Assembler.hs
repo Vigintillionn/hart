@@ -45,12 +45,20 @@ assembleRType (RType op args) =
        rs1  = packRs1 $ r_rs1 args  
        rs2  = packRs2 $ r_rs2 args 
 
-getArithFmt :: IArithOp -> Word32 
-getArithFmt op = case op of
-    ADDI -> 0x0
-    XORI -> 0x4
-    ORI  -> 0x6 
-    ANDI -> 0x7 
+getArithFmt :: IArithOp -> (Word32, Word32) 
+getArithFmt op = (f3, f7)
+    where
+        f3 = case op of
+            ADDI  -> 0x0
+            XORI  -> 0x4
+            ORI   -> 0x6
+            ANDI  -> 0x7
+            SLLI  -> 0x1
+            SRLI  -> 0x5
+            SRAI  -> 0x5
+            SLTI  -> 0x2
+            SLTIU -> 0x3
+        f7 = if op == SRAI then 0x20 else 0x00
 
 getLoadFmt :: ILoadOp -> Word32
 getLoadFmt op = case op of 
@@ -58,17 +66,19 @@ getLoadFmt op = case op of
     LH   -> 0x1 
     LW   -> 0x2
 
-packIType :: Word32 -> Word32 -> ITypeArgs Int -> Word32
-packIType opc f3 args =
+packIType :: Word32 -> (Word32, Word32) -> ITypeArgs Int -> Word32
+packIType opc (f3, f7) args =
     opc .|.
     rd .|.
     rs1 .|.
     (f3 `shiftL` 12) .|.
-    (imm `shiftL` 20)
+    (imm `shiftL` 20) 
     where
         rd          = packRd  $ i_rd args 
         rs1         = packRs1 $ i_rs1 args 
-        imm         = fromIntegral (i_imm args) .&. 0xFFF
+        rawImm = fromIntegral (i_imm args) .&. 0xFFF
+        mask   = f7 `shiftL` 5
+        imm    = rawImm .|. mask 
 
 packBImm :: Int -> Word32
 packBImm v =
@@ -163,9 +173,14 @@ assembleJType (JType JAL args) =
 
 assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
-assembleSome (SomeInstruction (ArithI op args))  = packIType 0x13 (getArithFmt op) args
-assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op) args
-assembleSome (SomeInstruction (JumpI JALR args)) = packIType 0x67 0x0 args
+assembleSome (SomeInstruction (ArithI op args))  = 
+    let safeImm = if op `elem` [SLLI, SRLI, SRAI]
+                  then i_imm args .&. 0x1F
+                  else i_imm args
+        safeArgs = args { i_imm = safeImm }
+    in packIType 0x13 (getArithFmt op) safeArgs 
+assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op, 0x00) args
+assembleSome (SomeInstruction (JumpI JALR args)) = packIType 0x67 (0x0, 0x0) args
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
 assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
 assembleSome (SomeInstruction instr@(UType _ _)) = assembleUType instr

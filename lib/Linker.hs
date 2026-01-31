@@ -53,6 +53,12 @@ resolveImm :: String -> Operand -> Either String Int
 resolveImm _ (ImmVal v) = Right v
 resolveImm e (Label _)  = Left e
 
+checkShiftBounds :: IArithOp -> Int -> Either String Int
+checkShiftBounds op val
+    | op `elem` [SLLI, SRLI, SRAI] && (val < 0 || val > 31) = 
+        Left $ "Shift amount out of range (0-31): " ++ show val
+    | otherwise = Right val
+
 resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either String) (SomeInstruction Int)
 resolveInstruction table instr = do
     pc <- get
@@ -79,5 +85,9 @@ resolveOperand pc table (SomeInstruction (JType op args))
     = SomeInstruction . JType op <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (BType op args))
     = SomeInstruction . BType op <$> traverse (resolveRelative pc table) args
+resolveOperand _ _ (SomeInstruction (ArithI op args)) = do
+    val <- resolveImm "Label in arith immediate" (i_imm args)
+    validVal <- checkShiftBounds op val
+    return $ SomeInstruction $ ArithI op (args { i_imm = validVal })
 resolveOperand _ table (SomeInstruction instr) = 
     SomeInstruction <$> traverse (resolveAbsolute table) instr
