@@ -106,6 +106,10 @@ data PseudoOp = P_NOP
               | P_LA Register String 
               | P_LOAD_GL ILoadOp Register String
               | P_STORE_GL SOp Register String Register
+              | P_SEQZ Register Register
+              | P_SNEZ Register Register
+              | P_SLTZ Register Register
+              | P_SGTZ Register Register
 
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)

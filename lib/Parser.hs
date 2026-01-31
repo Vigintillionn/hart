@@ -308,6 +308,8 @@ parseInstruction = choice $ concat
         jOps      = [("jal", JAL)]
         pseudoOps = [ ("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
                     , ("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)
+                    , ("seqz", parsePseudoDoubleReg P_SEQZ), ("snez", parsePseudoDoubleReg P_SNEZ)
+                    , ("sltz", parsePseudoDoubleReg P_SLTZ), ("sgtz", parsePseudoDoubleReg P_SGTZ)
                     , ("la", parseLa)
                     , ("lw",  parseLoadGlobal LW), ("lb",  parseLoadGlobal LB)
                     , ("lbu", parseLoadGlobal LBU), ("lh",  parseLoadGlobal LH)

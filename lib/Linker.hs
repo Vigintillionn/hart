@@ -29,6 +29,10 @@ lower (PseudoInstr op) = case op of
                    [ SomeInstruction (LoadI lop (ITypeArgs rd rd (LabelLo lbl))) ]
     P_STORE_GL sop src lbl temp -> SomeInstruction (UType AUIPC (UTypeArgs temp (LabelHi lbl))) :|
                    [ SomeInstruction (SType sop (STypeArgs temp src (LabelLo lbl))) ]
+    P_SEQZ rd rs -> pure $ SomeInstruction $ ArithI SLTIU (ITypeArgs rd rs (ImmVal 1))
+    P_SNEZ rd rs -> pure $ SomeInstruction $ RType SLTU (RTypeArgs rd x0 rs)
+    P_SLTZ rd rs -> pure $ SomeInstruction $ RType SLT  (RTypeArgs rd rs x0)
+    P_SGTZ rd rs -> pure $ SomeInstruction $ RType SLT  (RTypeArgs rd x0 rs)
 
 expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
 expandProgram = concatMap (NE.toList . lower) 
