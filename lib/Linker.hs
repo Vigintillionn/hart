@@ -5,6 +5,7 @@ import Control.Monad (foldM)
 import Control.Monad.State
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
+import Data.Bits (Bits(..))
 
 type SymbolTable = M.Map String Int
 
@@ -22,6 +23,12 @@ lower (PseudoInstr op) = case op of
     P_J off     -> pure $ SomeInstruction $ JType JAL (JTypeArgs x0 off)
     P_JR rs     -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 rs (ImmVal 0))
     P_RET       -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 x1 (ImmVal 0))
+    P_LA rd lbl -> SomeInstruction (UType AUIPC (UTypeArgs rd (LabelHi lbl))) :|
+                   [ SomeInstruction (ArithI ADDI (ITypeArgs rd rd (LabelLo lbl))) ]
+    P_LOAD_GL lop rd lbl -> SomeInstruction (UType AUIPC (UTypeArgs rd (LabelHi lbl))) :|
+                   [ SomeInstruction (LoadI lop (ITypeArgs rd rd (LabelLo lbl))) ]
+    P_STORE_GL sop src lbl temp -> SomeInstruction (UType AUIPC (UTypeArgs temp (LabelHi lbl))) :|
+                   [ SomeInstruction (SType sop (STypeArgs temp src (LabelLo lbl))) ]
 
 expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
 expandProgram = concatMap (NE.toList . lower) 
@@ -51,7 +58,7 @@ buildSymTable l = snd <$> foldM step (0, M.empty) l
 
 resolveImm :: String -> Operand -> Either String Int
 resolveImm _ (ImmVal v) = Right v
-resolveImm e (Label _)  = Left e
+resolveImm e _  = Left e
 
 checkShiftBounds :: IArithOp -> Int -> Either String Int
 checkShiftBounds op val
@@ -72,12 +79,33 @@ resolveRelative pc table (Label l) =
     case M.lookup l table of
         Just target -> Right $ target - pc
         Nothing     -> Left $ "Undefined label " ++ l
+resolveRelative pc table (LabelHi l) =
+    case M.lookup l table of
+        Just target -> Right $ (target - pc + 0x800) `shiftR` 12
+        Nothing     -> Left $ "Undefined label (Hi): " ++ l
+-- Compensation for the fact that this ADDI is 4 bytes ahead of the AUIPC 
+-- that started the address calculation.
+--
+-- Ideally we make the linker more complex later on to link instructions together
+-- such that we can allow for instructions like addi a0, a0, %lo(label)
+resolveRelative pc table (LabelLo l) =
+    case M.lookup l table of
+        Just target -> Right $ (target - pc + 4) .&. 0xFFF
+        Nothing     -> Left $ "Undefined label (Lo): " ++ l
 
 resolveAbsolute :: SymbolTable -> Operand -> Either String Int
 resolveAbsolute table (Label l) = 
     case M.lookup l table of
         Just target -> Right target        -- Return actual address
         Nothing     -> Left $ "Undefined label: " ++ l
+resolveAbsolute table (LabelHi l) = 
+    case M.lookup l table of
+        Just target -> Right $ (target + 0x800) `shiftR` 12
+        Nothing     -> Left $ "Undefined label (Hi): " ++ l
+resolveAbsolute table (LabelLo l) = 
+    case M.lookup l table of
+        Just target -> Right $ target .&. 0xFFF
+        Nothing     -> Left $ "Undefined label (Lo): " ++ l
 resolveAbsolute _ (ImmVal v) = Right v
 
 resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
@@ -85,8 +113,14 @@ resolveOperand pc table (SomeInstruction (JType op args))
     = SomeInstruction . JType op <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (BType op args))
     = SomeInstruction . BType op <$> traverse (resolveRelative pc table) args
-resolveOperand _ _ (SomeInstruction (ArithI op args)) = do
-    val <- resolveImm "Label in arith immediate" (i_imm args)
+resolveOperand pc table (SomeInstruction (UType AUIPC args))
+    = SomeInstruction . UType AUIPC <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (LoadI op args)) = 
+    SomeInstruction . LoadI op <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (SType op args)) = 
+    SomeInstruction . SType op <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (ArithI op args)) = do
+    val <- resolveRelative pc table (i_imm args) 
     validVal <- checkShiftBounds op val
     return $ SomeInstruction $ ArithI op (args { i_imm = validVal })
 resolveOperand _ table (SomeInstruction instr) = 

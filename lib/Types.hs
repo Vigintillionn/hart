@@ -46,7 +46,10 @@ mkRegister n
 
 data Phase = Parsed | Lowered | Resolved
 
-data Operand = ImmVal Int | Label String
+data Operand = ImmVal Int 
+             | Label String
+             | LabelHi String -- %hi(symbol)
+             | LabelLo String -- %lo(symbol)
     deriving (Show, Eq)
 
 type family ImmOf (p :: Phase) where
@@ -100,6 +103,9 @@ data PseudoOp = P_NOP
               | P_J Operand
               | P_JR Register
               | P_RET
+              | P_LA Register String 
+              | P_LOAD_GL ILoadOp Register String
+              | P_STORE_GL SOp Register String Register
 
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)

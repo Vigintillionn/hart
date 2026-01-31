@@ -258,6 +258,23 @@ parsePseudoDoubleReg op = op <$> register <* comma <*> register
 parseLi :: Parser PseudoOp
 parseLi = P_LI <$> register <* comma <*> operand
 
+parseLa :: Parser PseudoOp
+parseLa = P_LA <$> register <* comma <*> identifier
+
+parseLoadGlobal :: ILoadOp -> Parser PseudoOp
+parseLoadGlobal op = do
+    rd <- register
+    comma
+    P_LOAD_GL op rd <$> identifier 
+
+parseStoreGlobal :: SOp -> Parser PseudoOp
+parseStoreGlobal op = do
+    src <- register
+    comma
+    lbl <- identifier
+    comma
+    P_STORE_GL op src lbl <$> register 
+
 parseInstruction :: Parser (ArchInstr 'Parsed) 
 parseInstruction = choice $ concat 
     [ map (\(n, op) -> rType        n (RType op))   rOps
@@ -291,6 +308,11 @@ parseInstruction = choice $ concat
         jOps      = [("jal", JAL)]
         pseudoOps = [ ("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
                     , ("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)
+                    , ("la", parseLa)
+                    , ("lw",  parseLoadGlobal LW), ("lb",  parseLoadGlobal LB)
+                    , ("lbu", parseLoadGlobal LBU), ("lh",  parseLoadGlobal LH)
+                    , ("lhu", parseLoadGlobal LHU), ("sw",  parseStoreGlobal SW)
+                    , ("sb",  parseStoreGlobal SB), ("sh",  parseStoreGlobal SH)
                     ]
 
 parseLine :: Parser SourceLine 
