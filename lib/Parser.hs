@@ -275,6 +275,14 @@ parseStoreGlobal op = do
     comma
     P_STORE_GL op src lbl <$> register 
 
+parsePseudoBranchZero :: (Register -> Operand -> PseudoOp) -> Parser PseudoOp
+parsePseudoBranchZero op = op <$> register <* comma <*> operand
+
+parsePseudoBranchCompare :: (Register -> Register -> Operand -> PseudoOp) -> Parser PseudoOp
+parsePseudoBranchCompare op = do
+    args <- parseBTypeOperands
+    return $ op (b_rs1 args) (b_rs2 args) (b_imm args)
+
 parseInstruction :: Parser (ArchInstr 'Parsed) 
 parseInstruction = choice $ concat 
     [ map (\(n, op) -> rType        n (RType op))   rOps
@@ -315,6 +323,11 @@ parseInstruction = choice $ concat
                     , ("lbu", parseLoadGlobal LBU), ("lh",  parseLoadGlobal LH)
                     , ("lhu", parseLoadGlobal LHU), ("sw",  parseStoreGlobal SW)
                     , ("sb",  parseStoreGlobal SB), ("sh",  parseStoreGlobal SH)
+                    , ("beqz", parsePseudoBranchZero P_BEQZ), ("bnez", parsePseudoBranchZero P_BNEZ)
+                    , ("blez", parsePseudoBranchZero P_BLEZ), ("bgez", parsePseudoBranchZero P_BGEZ)
+                    , ("bltz", parsePseudoBranchZero P_BLTZ), ("bgtz", parsePseudoBranchZero P_BGTZ)
+                    , ("bgt",  parsePseudoBranchCompare P_BGT), ("ble",  parsePseudoBranchCompare P_BLE)
+                    , ("bgtu", parsePseudoBranchCompare P_BGTU), ("bleu", parsePseudoBranchCompare P_BLEU)
                     ]
 
 parseLine :: Parser SourceLine 

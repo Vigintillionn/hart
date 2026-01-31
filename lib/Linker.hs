@@ -33,6 +33,16 @@ lower (PseudoInstr op) = case op of
     P_SNEZ rd rs -> pure $ SomeInstruction $ RType SLTU (RTypeArgs rd x0 rs)
     P_SLTZ rd rs -> pure $ SomeInstruction $ RType SLT  (RTypeArgs rd rs x0)
     P_SGTZ rd rs -> pure $ SomeInstruction $ RType SLT  (RTypeArgs rd x0 rs)
+    P_BEQZ rs off -> pure $ SomeInstruction $ BType BEQ (BTypeArgs rs x0 off)
+    P_BNEZ rs off -> pure $ SomeInstruction $ BType BNE (BTypeArgs rs x0 off)
+    P_BLTZ rs off -> pure $ SomeInstruction $ BType BLT (BTypeArgs rs x0 off) -- rs < 0
+    P_BGEZ rs off -> pure $ SomeInstruction $ BType BGE (BTypeArgs rs x0 off)
+    P_BLEZ rs off -> pure $ SomeInstruction $ BType BGE (BTypeArgs x0 rs off)
+    P_BGTZ rs off -> pure $ SomeInstruction $ BType BLT (BTypeArgs x0 rs off)
+    P_BGT rs rt off  -> pure $ SomeInstruction $ BType BLT  (BTypeArgs rt rs off)
+    P_BLE rs rt off  -> pure $ SomeInstruction $ BType BGE  (BTypeArgs rt rs off)
+    P_BGTU rs rt off -> pure $ SomeInstruction $ BType BLTU (BTypeArgs rt rs off)
+    P_BLEU rs rt off -> pure $ SomeInstruction $ BType BGEU (BTypeArgs rt rs off)
 
 expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
 expandProgram = concatMap (NE.toList . lower) 

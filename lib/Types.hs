@@ -110,6 +110,16 @@ data PseudoOp = P_NOP
               | P_SNEZ Register Register
               | P_SLTZ Register Register
               | P_SGTZ Register Register
+              | P_BEQZ Register Operand
+              | P_BNEZ Register Operand
+              | P_BLEZ Register Operand
+              | P_BGEZ Register Operand
+              | P_BLTZ Register Operand
+              | P_BGTZ Register Operand
+              | P_BGT  Register Register Operand
+              | P_BLE  Register Register Operand
+              | P_BGTU Register Register Operand
+              | P_BLEU Register Register Operand
 
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)
