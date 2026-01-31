@@ -43,6 +43,10 @@ lower (PseudoInstr op) = case op of
     P_BLE rs rt off  -> pure $ SomeInstruction $ BType BGE  (BTypeArgs rt rs off)
     P_BGTU rs rt off -> pure $ SomeInstruction $ BType BLTU (BTypeArgs rt rs off)
     P_BLEU rs rt off -> pure $ SomeInstruction $ BType BGEU (BTypeArgs rt rs off)
+    P_CALL lbl -> SomeInstruction (UType AUIPC (UTypeArgs x1 (LabelHi lbl))) :|
+                    [ SomeInstruction (JumpI JALR (ITypeArgs x1 x1 (LabelLo lbl))) ]
+    P_TAIL lbl -> SomeInstruction (UType AUIPC (UTypeArgs x6 (LabelHi lbl))) :|
+                    [ SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (LabelLo lbl))) ]
 
 expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
 expandProgram = concatMap (NE.toList . lower) 
@@ -131,11 +135,13 @@ resolveOperand pc table (SomeInstruction (UType AUIPC args))
     = SomeInstruction . UType AUIPC <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (LoadI op args)) = 
     SomeInstruction . LoadI op <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (SType op args)) = 
-    SomeInstruction . SType op <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (JumpI op args)) = 
+    SomeInstruction . JumpI op <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (ArithI op args)) = do
     val <- resolveRelative pc table (i_imm args) 
     validVal <- checkShiftBounds op val
     return $ SomeInstruction $ ArithI op (args { i_imm = validVal })
+resolveOperand pc table (SomeInstruction (SType op args)) = 
+    SomeInstruction . SType op <$> traverse (resolveRelative pc table) args
 resolveOperand _ table (SomeInstruction instr) = 
     SomeInstruction <$> traverse (resolveAbsolute table) instr

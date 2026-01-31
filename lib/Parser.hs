@@ -328,6 +328,7 @@ parseInstruction = choice $ concat
                     , ("bltz", parsePseudoBranchZero P_BLTZ), ("bgtz", parsePseudoBranchZero P_BGTZ)
                     , ("bgt",  parsePseudoBranchCompare P_BGT), ("ble",  parsePseudoBranchCompare P_BLE)
                     , ("bgtu", parsePseudoBranchCompare P_BGTU), ("bleu", parsePseudoBranchCompare P_BLEU)
+                    , ("call", P_CALL <$> identifier), ("tail", P_TAIL <$> identifier)
                     ]
 
 parseLine :: Parser SourceLine 
