@@ -65,6 +65,8 @@ getLoadFmt op = case op of
     LB   -> 0x0 
     LH   -> 0x1 
     LW   -> 0x2
+    LBU  -> 0x4
+    LHU  -> 0x5
 
 packIType :: Word32 -> (Word32, Word32) -> ITypeArgs Int -> Word32
 packIType opc (f3, f7) args =
@@ -109,10 +111,12 @@ getBFmt op = (opc, f3)
     where
         opc = 0x63
         f3 = case op of
-            BEQ -> 0x0
-            BNE -> 0x1
-            BLT -> 0x4
-            BGE -> 0x5
+            BEQ  -> 0x0
+            BNE  -> 0x1
+            BLT  -> 0x4
+            BGE  -> 0x5
+            BLTU -> 0x6 
+            BGEU -> 0x7
 
 assembleBType :: Instruction 'B Int -> Word32
 assembleBType (BType op args) =

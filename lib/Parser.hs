@@ -92,7 +92,7 @@ string :: String -> Parser String
 string = traverse char 
 
 identifier :: Parser String
-identifier = some (satisfy isAlphaNum)
+identifier = some (satisfy (\c -> isAlphaNum c || c == '_'))
 
 integer :: Parser Int
 integer = do
@@ -232,7 +232,7 @@ iLoadType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (
 iLoadType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseILoadTypeOperands
 
 iJmpType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
-iJmpType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseIArithTypeOperands
+iJmpType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseIJumpTypeOperands
 
 bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (ArchInstr 'Parsed)
 bType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
@@ -279,9 +279,13 @@ parseInstruction = choice $ concat
                     , ("slli", SLLI), ("srli", SRLI), ("srai", SRAI)
                     , ("slti", SLTI), ("sltiu", SLTIU)
                     ]
-        iLoadOps  = [("lb", LB), ("lh", LH), ("lw", LW)]
+        iLoadOps  = [ ("lbu", LBU), ("lhu", LHU) 
+                    , ("lb", LB), ("lh", LH), ("lw", LW)
+                    ]
         iJmpOps   = [("jalr", JALR)]
-        bOps      = [("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)]
+        bOps      = [ ("bltu", BLTU), ("bgeu", BGEU)
+                    , ("beq", BEQ), ("bne", BNE), ("blt", BLT), ("bge", BGE)
+                    ]
         sOps      = [("sb", SB), ("sh", SH), ("sw", SW)]
         uOps      = [("lui", LUI), ("auipc", AUIPC)]
         jOps      = [("jal", JAL)]

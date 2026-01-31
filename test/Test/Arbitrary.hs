@@ -21,13 +21,13 @@ instance Arbitrary IArithOp where
     arbitrary = elements [ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU]
 
 instance Arbitrary ILoadOp where
-    arbitrary = elements [LB, LH, LW]
+    arbitrary = elements [LB, LH, LW, LBU, LHU]
 
 instance Arbitrary IJmpOp where
     arbitrary = return JALR
 
 instance Arbitrary BOp where
-    arbitrary = elements [BEQ, BNE, BLT, BGE]
+    arbitrary = elements [BEQ, BNE, BLT, BGE, BLTU, BGEU]
 
 instance Arbitrary SOp where
     arbitrary = elements [SB, SH, SW]

@@ -18,6 +18,21 @@ shiftRA w i = fromIntegral (fromIntegral w `shiftR` i :: Int32)
 lessThanSigned :: Word32 -> Word32 -> Word32
 lessThanSigned a b = if (fromIntegral a :: Int32) < (fromIntegral b :: Int32) then 1 else 0
 
+lessThanUnsigned :: Word32 -> Word32 -> Word32
+lessThanUnsigned a b = if a < b then 1 else 0
+
+shamt :: Word32 -> Int
+shamt = fromIntegral . (.&. 0x1F)
+
+sll :: Word32 -> Word32 -> Word32
+sll a b = a `shiftL` shamt b
+
+srl :: Word32 -> Word32 -> Word32
+srl a b = a `shiftR` shamt b
+
+sra :: Word32 -> Word32 -> Word32
+sra a b = shiftRA a (shamt b)
+
 data PCUpdate = Advance | Jump Word32
 
 data CPU = CPU 
@@ -74,13 +89,13 @@ storeWord a w = do
     storeHalf a       (w .&. 0xFFFF)  -- Lower half
     storeHalf (a + 2) (w `shiftR` 16) -- Upper half
 
-readByte :: Word32 -> Emulator Word8 
-readByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
+loadByte :: Word32 -> Emulator Word8 
+loadByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
 
 loadHalf :: Word32 -> Emulator Word16
 loadHalf a = do
-    b0 <- readByte a
-    b1 <- readByte $ a + 1 
+    b0 <- loadByte a
+    b1 <- loadByte $ a + 1 
     return $ fromIntegral b0 .|. (fromIntegral b1 `shiftL` 8)
 
 loadWord :: Word32 -> Emulator Word32
@@ -94,6 +109,12 @@ signExt8 w = fromIntegral (fromIntegral w :: Int8)
 
 signExt16 :: Word16 -> Word32
 signExt16 w = fromIntegral (fromIntegral w :: Int16)
+
+zeroExt8 :: Word8 -> Word32
+zeroExt8 = fromIntegral 
+
+zeroExt16 :: Word16 -> Word32
+zeroExt16 = fromIntegral
 
 incr :: Word32 -> Int -> Word32
 incr w o = fromIntegral $ fromIntegral w + o
@@ -121,11 +142,11 @@ executeRType (RType op args) = do
         XOR -> runBinaryOp xor args
         OR  -> runBinaryOp (.|.) args
         AND -> runBinaryOp (.&.) args
-        SLL  -> runBinaryOp (\a b -> a `shiftL` (fromIntegral b .&. 0x1F)) args
-        SRL  -> runBinaryOp (\a b -> a `shiftR` (fromIntegral b .&. 0x1F)) args
-        SRA  -> runBinaryOp (\a b -> a `shiftRA` (fromIntegral b .&. 0x1F)) args
+        SLL  -> runBinaryOp sll args
+        SRL  -> runBinaryOp srl args
+        SRA  -> runBinaryOp sra args
         SLT  -> runBinaryOp lessThanSigned args
-        SLTU -> runBinaryOp (\a b -> if a < b then 1 else 0) args
+        SLTU -> runBinaryOp lessThanUnsigned args
     return Advance
 
 runImmediateOp :: (Word32 -> Word32 -> Word32) -> ITypeArgs Int -> Emulator ()
@@ -141,9 +162,11 @@ runLoadOp op args = do
     let addr = base + off
 
     val <- case op of
-        LB -> signExt8 <$> readByte addr
+        LB -> signExt8  <$> loadByte addr
         LH -> signExt16 <$> loadHalf addr
         LW -> loadWord addr
+        LBU -> zeroExt8  <$> loadByte addr
+        LHU -> zeroExt16 <$> loadHalf addr
 
     setReg (i_rd args) val
 
@@ -154,11 +177,11 @@ executeIType (ArithI op args) = do
         XORI -> runImmediateOp xor args
         ORI  -> runImmediateOp (.|.) args
         ANDI -> runImmediateOp (.&.) args
-        SLLI -> runImmediateOp (\a i -> a `shiftL` (fromIntegral i .&. 0x1F)) args
-        SRLI -> runImmediateOp (\a i -> a `shiftR` (fromIntegral i .&. 0x1F)) args
-        SRAI -> runImmediateOp (\a i -> a `shiftRA` (fromIntegral i .&. 0x1F)) args
+        SLLI -> runImmediateOp sll args
+        SRLI -> runImmediateOp srl args
+        SRAI -> runImmediateOp sra args
         SLTI -> runImmediateOp lessThanSigned args
-        SLTIU -> runImmediateOp (\a i -> if a < i then 1 else 0) args
+        SLTIU -> runImmediateOp lessThanUnsigned args
     return Advance
 executeIType (LoadI op args) = runLoadOp op args >> return Advance
 executeIType (JumpI JALR args) = do
@@ -175,11 +198,16 @@ executeBType (BType op args) = do
     l <- getReg (b_rs1 args)
     r <- getReg (b_rs2 args)
 
+    let sl = fromIntegral l :: Int32
+    let sr = fromIntegral r :: Int32
+
     let shouldBranch = case op of
-            BEQ -> l == r
-            BNE -> l /= r
-            BLT -> l <  r
-            BGE -> l >= r
+            BEQ  -> l == r
+            BNE  -> l /= r
+            BLT  -> sl <  sr 
+            BGE  -> sl >= sr 
+            BLTU -> l < r
+            BGEU -> l >= r
 
     if shouldBranch
         then do 

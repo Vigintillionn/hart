@@ -66,16 +66,20 @@ iArithOpF3 op = case op of
 
 iLoadOpF3 :: ILoadOp -> Word32
 iLoadOpF3 op = case op of 
-    LB -> 0x0 
-    LH -> 0x1 
-    LW -> 0x2
+    LB  -> 0x0 
+    LH  -> 0x1 
+    LW  -> 0x2
+    LBU -> 0x4
+    LHU -> 0x5
 
 bOpF3 :: BOp -> Word32 
 bOpF3 op = case op of
-    BEQ -> 0x0
-    BNE -> 0x1
-    BLT -> 0x4
-    BGE -> 0x5
+    BEQ  -> 0x0
+    BNE  -> 0x1
+    BLT  -> 0x4
+    BGE  -> 0x5
+    BLTU -> 0x6
+    BGEU -> 0x7
 
 sOpF3 :: SOp -> Word32
 sOpF3 op = case op of

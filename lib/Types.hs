@@ -59,9 +59,10 @@ data ROp = ADD | SUB | XOR | OR  | AND
 data IArithOp = ADDI | XORI | ORI  | ANDI    
               | SLLI | SRLI | SRAI | SLTI 
               | SLTIU                       deriving (Show, Eq, Enum, Bounded)    
-data ILoadOp = LB | LH | LW                 deriving (Show, Eq, Enum, Bounded)
+data ILoadOp = LB | LH | LW | LBU | LHU     deriving (Show, Eq, Enum, Bounded)
 data IJmpOp = JALR                          deriving (Show, Eq, Enum, Bounded)
-data BOp = BEQ | BNE | BLT | BGE            deriving (Show, Eq, Enum, Bounded)
+data BOp = BEQ | BNE | BLT | BGE
+         | BLTU | BGEU                      deriving (Show, Eq, Enum, Bounded)
 data SOp = SB | SH | SW                     deriving (Show, Eq, Enum, Bounded)
 data UOp = LUI | AUIPC                      deriving (Show, Eq, Enum, Bounded)
 data JOp = JAL                              deriving (Show, Eq, Enum, Bounded)
