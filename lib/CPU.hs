@@ -1,16 +1,15 @@
 module CPU where
 import Data.Word
-import qualified Data.Vector as V
-import qualified Data.IntMap.Strict as M
 import Types
 import Control.Monad.State 
-import Data.Vector ((!), (//))
 import Data.Bits (Bits(..))
 import Assembler (assembleSome)
 import Data.Foldable (traverse_)
 import Decoder (decodeWord)
 import Control.Monad
 import Data.Int
+import Kernel (handleSyscall) 
+import Machine
 
 shiftRA :: Word32 -> Int -> Word32
 shiftRA w i = fromIntegral (fromIntegral w `shiftR` i :: Int32)
@@ -32,89 +31,6 @@ srl a b = a `shiftR` shamt b
 
 sra :: Word32 -> Word32 -> Word32
 sra a b = shiftRA a (shamt b)
-
-data PCUpdate = Advance | Jump Word32
-
-data CPU = CPU 
-    { pc     :: Word32 
-    , regs   :: V.Vector Word32 
-    , mem    :: M.IntMap Word8 
-    , cycles :: Int
-    }
-
-entryPoint :: Word32
-entryPoint = 0x0
-
-stackTop :: Word32
-stackTop = 0x100000 -- 1MB
-
-emptyCPU :: CPU
-emptyCPU = CPU 
-    { pc     = entryPoint 
-    , regs   = V.replicate 32 0 // [(2, stackTop)]
-    , mem    = M.empty
-    , cycles = 0 
-    }
-
-type Emulator a = State CPU a 
-
-getReg :: Register -> Emulator Word32 
-getReg r  
-    | unReg r == 0 = return 0
-    | otherwise = do
-        file <- gets regs
-        return (file ! unReg r)
-
-setReg :: Register -> Word32 -> Emulator ()
-setReg r v
-    | unReg r == 0 = return ()
-    | otherwise = do
-        modify $ \cpu ->
-            cpu { regs = regs cpu // [(unReg r, v)]  } 
-
-extractByte :: Word32 -> Int -> Word8
-extractByte w n = fromIntegral $ (w `shiftR` (n * 8)) .&. 0xFF 
-
-storeByte :: Word32 -> Word32 -> Emulator ()
-storeByte a w = modify $ \cpu ->
-    cpu { mem = M.insert (fromIntegral a) (fromIntegral $ w .&. 0xFF) (mem cpu) }
-
-storeHalf :: Word32 -> Word32 -> Emulator ()
-storeHalf a w = do
-    storeByte a       (w .&. 0xFF)   -- LSB
-    storeByte (a + 1) (w `shiftR` 8) -- Next byte
-
-storeWord :: Word32 -> Word32 -> Emulator ()
-storeWord a w = do
-    storeHalf a       (w .&. 0xFFFF)  -- Lower half
-    storeHalf (a + 2) (w `shiftR` 16) -- Upper half
-
-loadByte :: Word32 -> Emulator Word8 
-loadByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
-
-loadHalf :: Word32 -> Emulator Word16
-loadHalf a = do
-    b0 <- loadByte a
-    b1 <- loadByte $ a + 1 
-    return $ fromIntegral b0 .|. (fromIntegral b1 `shiftL` 8)
-
-loadWord :: Word32 -> Emulator Word32
-loadWord a = do
-    lower <- loadHalf a
-    upper <- loadHalf (a + 2)
-    return $ fromIntegral lower .|. (fromIntegral upper `shiftL` 16)
-
-signExt8 :: Word8 -> Word32
-signExt8 w = fromIntegral (fromIntegral w :: Int8)
-
-signExt16 :: Word16 -> Word32
-signExt16 w = fromIntegral (fromIntegral w :: Int16)
-
-zeroExt8 :: Word8 -> Word32
-zeroExt8 = fromIntegral 
-
-zeroExt16 :: Word16 -> Word32
-zeroExt16 = fromIntegral
 
 incr :: Word32 -> Int -> Word32
 incr w o = fromIntegral $ fromIntegral w + o
@@ -251,6 +167,49 @@ executeJType (JType JAL args) = do
     setReg (j_rd args) (currentPC + 4)
     return (Jump $ currentPC + off)
 
+executeSystem :: Instruction 'Sys Int -> Emulator PCUpdate
+executeSystem (System op args) = do
+    let csrAddr = c_csr args
+    oldVal <- getCSR csrAddr
+    rs1Val <- getReg (c_rs1 args)
+
+    let newVal = case op of
+            CSRRW -> rs1Val              
+            CSRRS -> oldVal .|. rs1Val  
+            CSRRC -> oldVal .&. complement rs1Val 
+    setCSR csrAddr newVal        
+    setReg (c_rd args) oldVal   
+
+    return Advance
+executeSystem (SystemI op args) = do
+    let csrAddr = ci_csr args
+    oldVal <- getCSR csrAddr
+    
+    let uimm = fromIntegral (ci_uimm args) :: Word32
+    let newVal = case op of
+            CSRRWI -> uimm
+            CSRRSI -> oldVal .|. uimm
+            CSRRCI -> oldVal .&. complement uimm
+    setCSR csrAddr newVal
+    setReg (ci_rd args) oldVal
+
+    return Advance
+executeSystem (Trap ECALL) = do
+    currentPC <- gets pc
+    _ <- takeTrap trapECallM currentPC
+
+    update <- Kernel.handleSyscall
+
+    case update of
+        Advance -> do
+            return $ Jump (currentPC + 4)
+        _ -> return update
+executeSystem (Trap EBREAK) = do
+        currentPC <- gets pc
+        _ <- takeTrap trapBreakpointM currentPC
+        liftIO $ putStrLn "--- BREAKPOINT ---"
+        return Breakpoint 
+
 execute :: SomeInstruction Int -> Emulator PCUpdate 
 execute (SomeInstruction inst@(RType  _ _)) = executeRType inst 
 execute (SomeInstruction inst@(ArithI _ _)) = executeIType inst 
@@ -260,6 +219,9 @@ execute (SomeInstruction inst@(BType  _ _)) = executeBType inst
 execute (SomeInstruction inst@(SType  _ _)) = executeSType inst
 execute (SomeInstruction inst@(UType  _ _)) = executeUType inst
 execute (SomeInstruction inst@(JType  _ _)) = executeJType inst
+execute (SomeInstruction inst@(System _ _))   = executeSystem inst
+execute (SomeInstruction inst@(SystemI _ _)) = executeSystem inst
+execute (SomeInstruction inst@(Trap _))       = executeSystem inst
 
 
 setPC :: Word32 -> Emulator ()
@@ -273,20 +235,40 @@ cpuCycle :: Emulator ()
 cpuCycle = modify $ \cpu -> cpu { cycles = cycles cpu + 1 }
 
 -- One clock cycle
-step :: Emulator ()
-step = 
-    cpuCycle >> fetch >>= either (const $ pure ()) execInstr . decodeWord
-    where
-        execInstr i =
-            execute i >>= \case
-                Advance -> incrPC
-                Jump t  -> setPC t
-
+step :: Emulator Bool  
+step = do
+    curStatus <- gets status
+    if curStatus /= Running
+    then return False
+    else do
+        w <- fetch
+        if w == 0 then do
+            liftIO $ putStrLn ">> End of instructions (Implicit Halt)"
+            modify $ \c -> c { status = Halted }
+            return False
+        else do 
+            cpuCycle
+            case decodeWord w of
+                Left err -> do
+                    liftIO $ putStrLn $ "Decode Error: " ++ err
+                    modify $ \c -> c { status = Halted } 
+                    return False
+                Right instr -> do
+                    update <- execute instr
+                    case update of
+                        Advance    -> incrPC  >> return True
+                        Jump t     -> setPC t >> return True
+                        Terminate  -> do
+                            modify $ \c -> c { status = Halted }
+                            return False 
+                        Breakpoint -> do
+                            modify $ \c -> c { status = Paused }
+                            return False
+    
 run :: Emulator ()
 run = do
-    step
-    w <- fetch
-    unless (w == 0x0) run
+   running <- step
+   when running run  
 
 runProgram :: Program -> Emulator ()
 runProgram p = do

@@ -175,6 +175,39 @@ assembleJType (JType JAL args) =
     where
         rd = packRd (j_rd args)
 
+assembleSystem :: Instruction 'Sys Int -> Word32
+assembleSystem (System op args) =
+    0x73 .|.                        
+    packRd (c_rd args) .|.          
+    packRs1 (c_rs1 args) .|.        
+    (f3 `shiftL` 12) .|.            
+    (csr `shiftL` 20)               
+    where
+        csr = fromIntegral (c_csr args .&. 0xFFF)
+        f3  = case op of
+            CSRRW -> 0x1
+            CSRRS -> 0x2
+            CSRRC -> 0x3
+assembleSystem (SystemI op args) =
+    0x73 .|.                        
+    packRd (ci_rd args) .|.         
+    (uimm `shiftL` 15) .|.          
+    (f3 `shiftL` 12) .|.            
+    (csr `shiftL` 20)               
+    where
+        csr  = fromIntegral (ci_csr args .&. 0xFFF)
+        uimm = fromIntegral (ci_uimm args .&. 0x1F) 
+        f3   = case op of
+            CSRRWI -> 0x5
+            CSRRSI -> 0x6
+            CSRRCI -> 0x7
+assembleSystem (Trap op) =
+    0x73 .|. (imm `shiftL` 20)
+    where
+        imm = case op of
+            ECALL  -> 0
+            EBREAK -> 1
+
 assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
 assembleSome (SomeInstruction (ArithI op args))  = 
@@ -183,12 +216,15 @@ assembleSome (SomeInstruction (ArithI op args))  =
                   else i_imm args
         safeArgs = args { i_imm = safeImm }
     in packIType 0x13 (getArithFmt op) safeArgs 
-assembleSome (SomeInstruction (LoadI op args))   = packIType 0x03 (getLoadFmt op, 0x00) args
-assembleSome (SomeInstruction (JumpI JALR args)) = packIType 0x67 (0x0, 0x0) args
-assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
-assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
-assembleSome (SomeInstruction instr@(UType _ _)) = assembleUType instr
-assembleSome (SomeInstruction instr@(JType _ _)) = assembleJType instr
+assembleSome (SomeInstruction (LoadI op args))     = packIType 0x03 (getLoadFmt op, 0x00) args
+assembleSome (SomeInstruction (JumpI JALR args))   = packIType 0x67 (0x0, 0x0) args
+assembleSome (SomeInstruction instr@(BType _ _))   = assembleBType instr
+assembleSome (SomeInstruction instr@(SType _ _))   = assembleSType instr
+assembleSome (SomeInstruction instr@(UType _ _))   = assembleUType instr
+assembleSome (SomeInstruction instr@(JType _ _))   = assembleJType instr
+assembleSome (SomeInstruction instr@(System _ _))  = assembleSystem instr
+assembleSome (SomeInstruction instr@(SystemI _ _)) = assembleSystem instr
+assembleSome (SomeInstruction instr@(Trap _))      = assembleSystem instr
 
 assemble :: Program -> [Word32]
 assemble = map assembleSome

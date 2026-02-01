@@ -38,6 +38,15 @@ instance Arbitrary UOp where
 instance Arbitrary JOp where
     arbitrary = return JAL
 
+instance Arbitrary SysOp where
+    arbitrary = elements [CSRRW, CSRRC, CSRRS]
+
+instance Arbitrary SysIOp where
+    arbitrary = elements [CSRRWI, CSRRCI, CSRRSI]
+
+instance Arbitrary TrapOp where
+    arbitrary = elements [ECALL, EBREAK]
+
 genImm :: Int -> Gen Int
 genImm bits = choose (-(2^(bits-1)), 2^(bits-1) - 1)
 
@@ -51,6 +60,9 @@ instance Arbitrary (SomeInstruction Int) where
         , genSType
         , genUType
         , genJType
+        , genSys
+        , genSysImm
+        , genTrap
         ]
       where
         genRType = do
@@ -100,3 +112,21 @@ instance Arbitrary (SomeInstruction Int) where
             let imm = val * 2
             args <- JTypeArgs <$> arbitrary <*> pure imm 
             return $ SomeInstruction (JType op args)
+
+        genSys = do
+            op   <- arbitrary
+            rd   <- arbitrary
+            rs1  <- arbitrary
+            csr  <- choose (0, 0xFFF) -- 12-bit CSR address
+            return $ SomeInstruction $ System op (SysArgs rd csr rs1)
+
+        genSysImm = do
+            op   <- arbitrary
+            rd   <- arbitrary
+            uimm <- choose (0, 31)    
+            csr  <- choose (0, 0xFFF) 
+            return $ SomeInstruction $ SystemI op (SysIArgs rd csr uimm)
+
+        genTrap = do
+            op <- arbitrary
+            return $ SomeInstruction (Trap op)

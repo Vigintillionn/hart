@@ -189,6 +189,27 @@ decodeJType w = do
     let imm = unpackJImm w
     return $ JType op (JTypeArgs rd imm)
 
+decodeSystemType :: Word32 -> Maybe (Instruction 'Sys Int)
+decodeSystemType w = do
+    let f3 = getF3 w
+    let imm12 = fromIntegral $ slice immMask w 
+    rd  <- mkRegister (getRd w)
+    let rs1Idx = getRs1 w
+    rs1Reg <- mkRegister rs1Idx
+
+    case f3 of
+        0x0 -> case imm12 of
+            0 -> Just $ Trap ECALL
+            1 -> Just $ Trap EBREAK
+            _ -> Nothing -- Future: WFI, MRET, SRET go here
+        0x1 -> Just $ System CSRRW (SysArgs rd imm12 rs1Reg)
+        0x2 -> Just $ System CSRRS (SysArgs rd imm12 rs1Reg)
+        0x3 -> Just $ System CSRRC (SysArgs rd imm12 rs1Reg)
+        0x5 -> Just $ SystemI CSRRWI (SysIArgs rd imm12 rs1Idx)
+        0x6 -> Just $ SystemI CSRRSI (SysIArgs rd imm12 rs1Idx)
+        0x7 -> Just $ SystemI CSRRCI (SysIArgs rd imm12 rs1Idx)
+        _ -> Nothing
+
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
     let opcode = getOpc w 
@@ -202,6 +223,7 @@ decodeSome w =
             0x17    -> SomeInstruction <$> decodeUType opcode w     -- AUIPC
             0x37    -> SomeInstruction <$> decodeUType opcode w     -- LUI
             0x6F    -> SomeInstruction <$> decodeJType w            -- JAL
+            0x73    -> SomeInstruction <$> decodeSystemType w
             _       -> Nothing
     in instr
 

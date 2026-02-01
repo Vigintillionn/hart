@@ -17,12 +17,17 @@ module Types (Register
              , SOp(..)
              , UOp(..)
              , JOp(..)
+             , SysOp(..)
+             , SysIOp(..)
+             , TrapOp(..)
              , RTypeArgs(..)
              , ITypeArgs(..)
              , BTypeArgs(..)
              , STypeArgs(..)
              , UTypeArgs(..)
              , JTypeArgs(..)
+             , SysArgs(..)
+             , SysIArgs(..)
              , AssemblyError(..)
              , Phase(..)
              , ArchInstr(..)
@@ -30,14 +35,34 @@ module Types (Register
              , x0
              , x1
              , x6
+             , a0
+             , a1
+             , a2
+             , a7
+             , decodeCSRName
+             , decodeCSR
+             , encodeCSR
+             , trapECallM
+             , trapBreakpointM
              ) where
+import Data.List (find)
+import Numeric
+import Data.Word (Word32)
 
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 
-x0, x1, x6 :: Register
+x0, x1, x6, a0, a1, a2, a7 :: Register
 x0 = Reg 0
 x1 = Reg 1
 x6 = Reg 6
+a0 = Reg 10
+a1 = Reg 11
+a2 = Reg 12
+a7 = Reg 17
+
+trapECallM, trapBreakpointM :: Word32
+trapECallM      = 11
+trapBreakpointM = 3
 
 mkRegister :: Int -> Maybe Register
 mkRegister n
@@ -69,6 +94,9 @@ data BOp = BEQ | BNE | BLT | BGE
 data SOp = SB | SH | SW                     deriving (Show, Eq, Enum, Bounded)
 data UOp = LUI | AUIPC                      deriving (Show, Eq, Enum, Bounded)
 data JOp = JAL                              deriving (Show, Eq, Enum, Bounded)
+data SysOp = CSRRW  | CSRRS  | CSRRC        deriving (Show, Eq, Enum, Bounded)
+data SysIOp = CSRRWI | CSRRSI | CSRRCI      deriving (Show, Eq, Enum, Bounded)
+data TrapOp = ECALL  | EBREAK               deriving (Show, Eq, Enum, Bounded)
 
 data RTypeArgs   = RTypeArgs { r_rd :: Register, r_rs1 :: Register, r_rs2 :: Register }
     deriving (Show, Eq)
@@ -82,18 +110,25 @@ data UTypeArgs a = UTypeArgs { u_rd :: Register, u_imm :: a }
     deriving (Show, Eq, Functor, Foldable, Traversable)
 data JTypeArgs a = JTypeArgs { j_rd :: Register, j_imm :: a }
     deriving (Show, Eq, Functor, Foldable, Traversable)
+data SysArgs     = SysArgs { c_rd :: Register, c_csr :: Int, c_rs1 :: Register }
+    deriving (Show, Eq)
+data SysIArgs  a = SysIArgs { ci_rd :: Register, ci_csr :: Int, ci_uimm :: a }
+    deriving (Show, Eq, Functor, Foldable, Traversable)
 
-data InstrKind = R | I | B | S | U | J
+data InstrKind = R | I | B | S | U | J | Sys 
 
 data Instruction (k :: InstrKind) a where
-    RType  :: ROp       -> RTypeArgs   -> Instruction 'R a
-    ArithI :: IArithOp  -> ITypeArgs a -> Instruction 'I a
-    LoadI  :: ILoadOp   -> ITypeArgs a -> Instruction 'I a
-    JumpI  :: IJmpOp    -> ITypeArgs a -> Instruction 'I a 
-    BType  :: BOp       -> BTypeArgs a -> Instruction 'B a
-    SType  :: SOp       -> STypeArgs a -> Instruction 'S a
-    UType  :: UOp       -> UTypeArgs a -> Instruction 'U a
-    JType  :: JOp       -> JTypeArgs a -> Instruction 'J a
+    RType   :: ROp       -> RTypeArgs   -> Instruction 'R a
+    ArithI  :: IArithOp  -> ITypeArgs a -> Instruction 'I a
+    LoadI   :: ILoadOp   -> ITypeArgs a -> Instruction 'I a
+    JumpI   :: IJmpOp    -> ITypeArgs a -> Instruction 'I a 
+    BType   :: BOp       -> BTypeArgs a -> Instruction 'B a
+    SType   :: SOp       -> STypeArgs a -> Instruction 'S a
+    UType   :: UOp       -> UTypeArgs a -> Instruction 'U a
+    JType   :: JOp       -> JTypeArgs a -> Instruction 'J a
+    System  :: SysOp     -> SysArgs     -> Instruction 'Sys a
+    SystemI :: SysIOp    -> SysIArgs a  -> Instruction 'Sys a
+    Trap    :: TrapOp                   -> Instruction 'Sys a 
 
 data PseudoOp = P_NOP
               | P_MV Register Register
@@ -127,34 +162,43 @@ deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)
 
 instance Functor (Instruction k) where
-    fmap _ (RType op args)  = RType  op args
-    fmap f (ArithI op args) = ArithI op (args { i_imm = f (i_imm args) })
-    fmap f (LoadI op args)  = LoadI  op (args { i_imm = f (i_imm args) })
-    fmap f (JumpI op args)  = JumpI  op (args { i_imm = f (i_imm args) })
-    fmap f (BType op args)  = BType  op (args { b_imm = f (b_imm args) })
-    fmap f (SType op args)  = SType  op (args { s_imm = f (s_imm args) })
-    fmap f (UType op args)  = UType  op (args { u_imm = f (u_imm args) })
-    fmap f (JType op args)  = JType  op (args { j_imm = f (j_imm args) })
+    fmap _ (RType op args)   = RType  op args
+    fmap f (ArithI op args)  = ArithI op (args { i_imm = f (i_imm args) })
+    fmap f (LoadI op args)   = LoadI  op (args { i_imm = f (i_imm args) })
+    fmap f (JumpI op args)   = JumpI  op (args { i_imm = f (i_imm args) })
+    fmap f (BType op args)   = BType  op (args { b_imm = f (b_imm args) })
+    fmap f (SType op args)   = SType  op (args { s_imm = f (s_imm args) })
+    fmap f (UType op args)   = UType  op (args { u_imm = f (u_imm args) })
+    fmap f (JType op args)   = JType  op (args { j_imm = f (j_imm args) })
+    fmap _ (System op args)  = System op args
+    fmap f (SystemI op args) = SystemI op (fmap f args)
+    fmap _ (Trap op)         = Trap op
 
 instance Foldable (Instruction k) where
-    foldMap _ (RType _ _)  = mempty
-    foldMap f (ArithI _ a) = foldMap f a
-    foldMap f (LoadI _ a)  = foldMap f a
-    foldMap f (JumpI _ a)  = foldMap f a
-    foldMap f (BType _ a)  = foldMap f a
-    foldMap f (SType _ a)  = foldMap f a
-    foldMap f (UType _ a)  = foldMap f a
-    foldMap f (JType _ a)  = foldMap f a
+    foldMap _ (RType _ _)      = mempty
+    foldMap f (ArithI _ a)     = foldMap f a
+    foldMap f (LoadI _ a)      = foldMap f a
+    foldMap f (JumpI _ a)      = foldMap f a
+    foldMap f (BType _ a)      = foldMap f a
+    foldMap f (SType _ a)      = foldMap f a
+    foldMap f (UType _ a)      = foldMap f a
+    foldMap f (JType _ a)      = foldMap f a
+    foldMap _ (System _ _)     = mempty
+    foldMap f (SystemI _ args) = foldMap f args
+    foldMap _ (Trap _)         = mempty
 
 instance Traversable (Instruction k) where
-    traverse _ (RType op args)  = pure (RType op args)
-    traverse f (ArithI op args) = ArithI op <$> traverse f args
-    traverse f (LoadI op args)  = LoadI op  <$> traverse f args
-    traverse f (JumpI op args)  = JumpI op  <$> traverse f args
-    traverse f (BType op args)  = BType op  <$> traverse f args
-    traverse f (SType op args)  = SType op  <$> traverse f args
-    traverse f (UType op args)  = UType op  <$> traverse f args
-    traverse f (JType op args)  = JType op  <$> traverse f args
+    traverse _ (RType op args)   = pure (RType op args)
+    traverse f (ArithI op args)  = ArithI op <$> traverse f args
+    traverse f (LoadI op args)   = LoadI op  <$> traverse f args
+    traverse f (JumpI op args)   = JumpI op  <$> traverse f args
+    traverse f (BType op args)   = BType op  <$> traverse f args
+    traverse f (SType op args)   = SType op  <$> traverse f args
+    traverse f (UType op args)   = UType op  <$> traverse f args
+    traverse f (JType op args)   = JType op  <$> traverse f args
+    traverse _ (System op args)  = pure (System op args)
+    traverse f (SystemI op args) = SystemI op <$> traverse f args
+    traverse _ (Trap op)         = pure (Trap op)
 
 data SomeInstruction a where
   SomeInstruction :: Instruction k a -> SomeInstruction a
@@ -165,14 +209,17 @@ data ArchInstr (p :: Phase) where
 
 deriving instance Show a => Show (SomeInstruction a)
 instance Eq a => Eq (SomeInstruction a) where
-  (SomeInstruction (RType o1 a1))  == (SomeInstruction (RType o2 a2))  = o1 == o2 && a1 == a2
-  (SomeInstruction (ArithI o1 a1)) == (SomeInstruction (ArithI o2 a2)) = o1 == o2 && a1 == a2
-  (SomeInstruction (LoadI o1 a1))  == (SomeInstruction (LoadI o2 a2))  = o1 == o2 && a1 == a2
-  (SomeInstruction (JumpI o1 a1))  == (SomeInstruction (JumpI o2 a2))  = o1 == o2 && a1 == a2
-  (SomeInstruction (BType o1 a1))  == (SomeInstruction (BType o2 a2))  = o1 == o2 && a1 == a2
-  (SomeInstruction (SType o1 a1))  == (SomeInstruction (SType o2 a2))  = o1 == o2 && a1 == a2
-  (SomeInstruction (UType o1 a1))  == (SomeInstruction (UType o2 a2))  = o1 == o2 && a1 == a2
-  (SomeInstruction (JType o1 a1))  == (SomeInstruction (JType o2 a2))  = o1 == o2 && a1 == a2
+  (SomeInstruction (RType o1 a1))   == (SomeInstruction (RType o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (ArithI o1 a1))  == (SomeInstruction (ArithI o2 a2))  = o1 == o2 && a1 == a2
+  (SomeInstruction (LoadI o1 a1))   == (SomeInstruction (LoadI o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (JumpI o1 a1))   == (SomeInstruction (JumpI o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (BType o1 a1))   == (SomeInstruction (BType o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (SType o1 a1))   == (SomeInstruction (SType o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (UType o1 a1))   == (SomeInstruction (UType o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (JType o1 a1))   == (SomeInstruction (JType o2 a2))   = o1 == o2 && a1 == a2
+  (SomeInstruction (System o1 a1))  == (SomeInstruction (System o2 a2))  = o1 == o2 && a1 == a2
+  (SomeInstruction (SystemI o1 a1)) == (SomeInstruction (SystemI o2 a2)) = o1 == o2 && a1 == a2
+  (SomeInstruction (Trap o1))       == (SomeInstruction (Trap o2))       = o1 == o2 
   _ == _ = False
 
 instance Functor SomeInstruction where
@@ -199,3 +246,38 @@ data AssemblyError
     | ParserFail String
     | EOF 
     deriving (Show, Eq)
+
+data CSRName 
+    = MSTATUS | MISA | MIE | MTVEC | MSCRATCH | MEPC | MCAUSE | MTVAL | MIP 
+    deriving (Show, Eq, Enum, Bounded)
+
+csrInfo :: CSRName -> (String, Int)
+csrInfo reg = case reg of
+    MSTATUS  -> ("mstatus",  0x300)
+    MISA     -> ("misa",     0x301)
+    MIE      -> ("mie",      0x304)
+    MTVEC    -> ("mtvec",    0x305)
+    MSCRATCH -> ("mscratch", 0x340)
+    MEPC     -> ("mepc",     0x341)
+    MCAUSE   -> ("mcause",   0x342)
+    MTVAL    -> ("mtval",    0x343)
+    MIP      -> ("mip",      0x344)
+
+encodeCSR :: String -> Maybe Int
+encodeCSR name = 
+    snd <$> find (\(n, _) -> n == name) allCSRs
+
+decodeCSRName :: Int -> String
+decodeCSRName addr = 
+    case find (\(_, a) -> a == addr) allCSRs of
+        Just (name, _) -> name
+        Nothing        -> "0x" ++ showHex addr "" 
+
+decodeCSR :: Int -> Maybe CSRName
+decodeCSR addr = 
+    fst <$> find (\(_, a) -> a == addr) allPairs
+  where
+    allPairs = [ (c, a) | c <- [minBound .. maxBound], let (_, a) = csrInfo c ]
+
+allCSRs :: [(String, Int)]
+allCSRs = [ csrInfo c | c <- [minBound .. maxBound] ]

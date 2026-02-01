@@ -2,6 +2,7 @@ module Debugger where
 import CPU
 import Types
 import Control.Monad.State
+import Machine (CPU)
 
 data Debugger = Debugger 
     { past      :: [CPU]
@@ -42,25 +43,19 @@ rewind dbg = case past dbg of
     [] -> dbg
     _  -> rewind (stepBack dbg)
 
-nextState :: CPU -> CPU
-nextState = execState step
+loop :: [CPU] -> CPU -> IO [CPU]
+loop acc curr = do
+    (running, next) <- runStateT step curr
+    if running
+        then loop (next : acc) next
+        else return (reverse (next : acc))
 
-traceExecution :: CPU -> [CPU]
-traceExecution = iterate nextState
+resumeTrace :: CPU -> IO [CPU]
+resumeTrace currentCpu = 
+    loop [currentCpu] currentCpu
 
-runTrace :: Program -> CPU -> [CPU]
-runTrace prog c =
-    let loadedCPU = execState (loadProgram prog) c
-        fullTrace = traceExecution loadedCPU
+runTrace :: Program -> CPU -> IO [CPU]
+runTrace prog startCPU = do
+    cpuReady <- execStateT (loadProgram prog) startCPU
+    loop [cpuReady] cpuReady
 
-        isHalt cpu =
-            let inst = evalState fetch cpu
-            in  inst == 0
-
-    in takeUntil isHalt fullTrace
-    where
-        takeUntil :: (a -> Bool) -> [a] -> [a]
-        takeUntil _ [] = []
-        takeUntil p (x:xs)
-            | p x       = [x]
-            | otherwise = x : takeUntil p xs

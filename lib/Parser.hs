@@ -7,6 +7,7 @@ import Control.Monad (void)
 import qualified Data.Map.Strict as M
 import Text.Read (readMaybe)
 import Numeric (readHex)
+import GHC.Base (when)
 
 abiMap :: M.Map String Int
 abiMap = M.fromList [
@@ -165,6 +166,15 @@ memOperand = do
     void $ char ')'
     return (off, base)
 
+csrOperand :: Parser Int
+csrOperand = namedCSR <|> immediate
+  where
+    namedCSR = do
+        name <- identifier
+        case encodeCSR name of
+            Just addr -> return addr
+            Nothing   -> fail $ "Unknown CSR name: " ++ name
+
 parseRTypeOperands :: Parser RTypeArgs
 parseRTypeOperands = RTypeArgs 
     <$> register <* comma 
@@ -249,6 +259,34 @@ jType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseJTypeO
 pseudoType :: String -> Parser PseudoOp -> Parser (ArchInstr 'Parsed)
 pseudoType n p = PseudoInstr <$> (lexeme (string n) *> p)
 
+parseSystem :: SysOp -> Parser (ArchInstr 'Parsed)
+parseSystem op = do
+    rd  <- register
+    comma
+    csr <- csrOperand
+    comma
+    rs1 <- register
+    
+    let args = SysArgs { c_rd = rd, c_csr = csr, c_rs1 = rs1 }
+    return $ RealInstr $ SomeInstruction $ System op args
+
+parseSystemImm :: SysIOp -> Parser (ArchInstr 'Parsed)
+parseSystemImm op = do
+    rd   <- register
+    comma
+    csr  <- csrOperand
+    comma
+    uimm <- immediate 
+    
+    when (uimm < 0 || uimm > 31) $ 
+        fail $ "CSR immediate must be 0-31, got: " ++ show uimm
+
+    let args = SysIArgs { ci_rd = rd, ci_csr = csr, ci_uimm = ImmVal (fromIntegral uimm) }
+    return $ RealInstr $ SomeInstruction $ SystemI op args
+
+parseTrap :: TrapOp -> Parser (ArchInstr 'Parsed)
+parseTrap op = return $ RealInstr $ SomeInstruction (Trap op)
+
 parseNop :: Parser PseudoOp
 parseNop = pure P_NOP 
 
@@ -294,6 +332,9 @@ parseInstruction = choice $ concat
     , map (\(n, op) -> uType        n (UType op))   uOps
     , map (\(n, op) -> jType        n (JType op))   jOps
     , map (uncurry pseudoType) pseudoOps
+    , map (\(n, op) -> lexeme (string n) >> parseSystemImm op) sysImmOps
+    , map (\(n, op) -> lexeme (string n) >> parseSystem op)    sysOps
+    , map (\(n, op) -> lexeme (string n) >> parseTrap op)      trapOps
     ]
     where
         rOps      = [ ("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)
@@ -314,6 +355,9 @@ parseInstruction = choice $ concat
         sOps      = [("sb", SB), ("sh", SH), ("sw", SW)]
         uOps      = [("lui", LUI), ("auipc", AUIPC)]
         jOps      = [("jal", JAL)]
+        sysImmOps = [ ("csrrwi", CSRRWI), ("csrrsi", CSRRSI), ("csrrci", CSRRCI) ]
+        sysOps    = [ ("csrrw", CSRRW), ("csrrs", CSRRS), ("csrrc", CSRRC) ]
+        trapOps   = [ ("ecall", ECALL), ("ebreak", EBREAK) ]
         pseudoOps = [ ("nop", parseNop), ("mv", parsePseudoDoubleReg P_MV), ("li", parseLi)
                     , ("neg", parsePseudoDoubleReg P_NEG), ("not", parsePseudoDoubleReg P_NOT)
                     , ("seqz", parsePseudoDoubleReg P_SEQZ), ("snez", parsePseudoDoubleReg P_SNEZ)
@@ -328,7 +372,7 @@ parseInstruction = choice $ concat
                     , ("bltz", parsePseudoBranchZero P_BLTZ), ("bgtz", parsePseudoBranchZero P_BGTZ)
                     , ("bgt",  parsePseudoBranchCompare P_BGT), ("ble",  parsePseudoBranchCompare P_BLE)
                     , ("bgtu", parsePseudoBranchCompare P_BGTU), ("bleu", parsePseudoBranchCompare P_BLEU)
-                    , ("call", P_CALL <$> identifier), ("tail", P_TAIL <$> identifier)
+                    , ("call", P_CALL <$> lexeme (string "call")), ("tail", P_TAIL <$> lexeme (string "tail"))
                     ]
 
 parseLine :: Parser SourceLine 

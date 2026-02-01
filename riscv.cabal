@@ -71,6 +71,7 @@ common shared-properties
         mtl >= 2.3,
         containers >= 0.6,
         vector >= 0.13,
+        bytestring,
         time
 
 library
@@ -82,6 +83,8 @@ library
                       Decoder
                       CPU
                       Debugger
+                      Kernel
+                      Machine
     hs-source-dirs:   lib 
 
 executable riscv
