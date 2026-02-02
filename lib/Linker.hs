@@ -6,6 +6,7 @@ import Control.Monad.State
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import Data.Bits (Bits(..))
+import Machine
 
 type SymbolTable = M.Map String Int
 

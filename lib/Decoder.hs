@@ -6,6 +6,7 @@ import Data.Int (Int32)
 import Control.Monad
 import ISA
 import Control.Applicative (liftA3)
+import Machine
 
 opMask, rdMask, f3Mask, rs1Mask, rs2Mask, f7Mask, immMask :: (Int, Int)
 opMask  = (6, 0)

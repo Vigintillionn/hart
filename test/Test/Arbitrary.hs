@@ -3,6 +3,7 @@ module Test.Arbitrary where
 
 import Test.QuickCheck
 import Types
+import Machine
 
 mkReg :: Int -> Register
 mkReg n = case mkRegister n of

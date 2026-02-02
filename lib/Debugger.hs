@@ -2,7 +2,7 @@ module Debugger where
 import CPU
 import Types
 import Control.Monad.State
-import Machine (CPU (..), RunStatus (..), Emulator, getCSR)
+import Machine (CPU (..), RunStatus (..), Emulator, getCSR, trapBreakpointM)
 import Control.Monad (when)
 import Text.Printf (printf)
 import qualified Data.IntMap.Strict as M

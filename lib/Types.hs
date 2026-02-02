@@ -1,73 +1,7 @@
-module Types (Register
-             , mkRegister
-             , unReg
-             , Instruction(..)
-             , InstrKind(..)
-             , SourceLine
-             , ParsedProgram
-             , LoweredProgram
-             , Program
-             , SomeInstruction(..)
-             , Operand(..)
-             , ROp(..)
-             , IArithOp(..)
-             , ILoadOp(..)
-             , IJmpOp(..)
-             , BOp(..)
-             , SOp(..)
-             , UOp(..)
-             , JOp(..)
-             , SysOp(..)
-             , SysIOp(..)
-             , TrapOp(..)
-             , RTypeArgs(..)
-             , ITypeArgs(..)
-             , BTypeArgs(..)
-             , STypeArgs(..)
-             , UTypeArgs(..)
-             , JTypeArgs(..)
-             , SysArgs(..)
-             , SysIArgs(..)
-             , AssemblyError(..)
-             , Phase(..)
-             , ArchInstr(..)
-             , PseudoOp(..)
-             , x0
-             , x1
-             , x6
-             , a0
-             , a1
-             , a2
-             , a7
-             , decodeCSRName
-             , decodeCSR
-             , encodeCSR
-             , trapECallM
-             , trapBreakpointM
-             ) where
+module Types where
 import Data.List (find)
 import Numeric
-import Data.Word (Word32)
-
-newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
-
-x0, x1, x6, a0, a1, a2, a7 :: Register
-x0 = Reg 0
-x1 = Reg 1
-x6 = Reg 6
-a0 = Reg 10
-a1 = Reg 11
-a2 = Reg 12
-a7 = Reg 17
-
-trapECallM, trapBreakpointM :: Word32
-trapECallM      = 11
-trapBreakpointM = 3
-
-mkRegister :: Int -> Maybe Register
-mkRegister n
-    | n >= 0 && n < 32 = Just (Reg n)
-    | otherwise        = Nothing
+import Machine (Register) 
 
 data Phase = Parsed | Lowered | Resolved
 

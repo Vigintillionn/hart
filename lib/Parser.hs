@@ -8,6 +8,7 @@ import qualified Data.Map.Strict as M
 import Text.Read (readMaybe)
 import Numeric (readHex)
 import GHC.Base (when)
+import Machine
 
 abiMap :: M.Map String Int
 abiMap = M.fromList [

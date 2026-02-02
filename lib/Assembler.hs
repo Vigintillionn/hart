@@ -3,6 +3,7 @@ import Types
 import Data.Word
 import Data.Bits (Bits(..))
 import ISA
+import Machine
 
 encodeReg :: Int -> Register -> Word32
 encodeReg s r = fromIntegral (unReg r) `shiftL` s 

@@ -1,13 +1,50 @@
-module Machine where
+module Machine (Register
+               , mkRegister
+               , unReg
+               , getReg
+               , setReg
+               , getCSR
+               , setCSR
+               , PCUpdate(..)
+               , RunStatus(..)
+               , CPU(..)
+               , Emulator
+               , emptyCPU
+               , x0
+               , x1
+               , x6
+               , a0
+               , a1
+               , a2
+               , a7
+               , trapECallM
+               , trapBreakpointM
+               , entryPoint
+               , stackTop
+               , extractByte
+               , storeByte
+               , storeHalf
+               , storeWord
+               , loadByte
+               , loadHalf
+               , loadWord
+               , signExt8
+               , signExt16
+               , zeroExt8
+               , zeroExt16
+               , takeTrap
+               )
+where
 
 import Data.Word (Word32, Word8, Word16)
 import qualified Data.Vector as V
 import qualified Data.IntMap.Strict as M
 import Control.Monad.State 
 import Data.Vector ((!), (//))
-import Types
 import Data.Int (Int8, Int16)
 import Data.Bits (Bits(..))
+
+newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 
 data PCUpdate = Advance | Jump Word32 | Terminate | Breakpoint
 
@@ -24,6 +61,24 @@ data CPU = CPU
     }
 
 type Emulator a = StateT CPU IO a 
+
+x0, x1, x6, a0, a1, a2, a7 :: Register
+x0 = Reg 0
+x1 = Reg 1
+x6 = Reg 6
+a0 = Reg 10
+a1 = Reg 11
+a2 = Reg 12
+a7 = Reg 17
+
+trapECallM, trapBreakpointM :: Word32
+trapECallM      = 11
+trapBreakpointM = 3
+
+mkRegister :: Int -> Maybe Register
+mkRegister n
+    | n >= 0 && n < 32 = Just (Reg n)
+    | otherwise        = Nothing
 
 entryPoint :: Word32
 entryPoint = 0x0
