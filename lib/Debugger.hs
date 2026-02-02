@@ -2,7 +2,7 @@ module Debugger where
 import CPU
 import Types
 import Control.Monad.State
-import Machine (CPU (..), RunStatus (..), Emulator, getCSR, trapBreakpointM)
+import Machine (CPU (..), RunStatus (..), Emulator (..), getCSR, trapBreakpointM, MonadCPU (..), incPC)
 import Control.Monad (when)
 import Text.Printf (printf)
 import qualified Data.IntMap.Strict as M
@@ -51,7 +51,7 @@ rewind dbg = case past dbg of
 
 loop :: [CPU] -> CPU -> IO [CPU]
 loop acc curr = do
-    (running, next) <- runStateT step curr
+    (running, next) <- runStateT (runEmulator step) curr
     if running
         then loop (next : acc) next
         else return (reverse (next : acc))
@@ -62,7 +62,7 @@ resumeTrace currentCpu =
 
 runTrace :: Program -> CPU -> IO [CPU]
 runTrace prog startCPU = do
-    cpuReady <- execStateT (loadProgram prog) startCPU
+    cpuReady <- execStateT (runEmulator $ loadProgram prog) startCPU
     loop [cpuReady] cpuReady
 
 viewRegisters :: V.Vector Word32 -> [Int32]
@@ -76,18 +76,18 @@ viewCSRs csrMap =
     fmt (addr, val) = printf "  %s: 0x%08x" (decodeCSRName addr) val
 
 isAtBreakpoint :: CPU -> IO Bool
-isAtBreakpoint = evalStateT check
+isAtBreakpoint = evalStateT (runEmulator check)
   where
-    check :: Emulator Bool
+    check :: MonadCPU m => m Bool
     check = do
         cause <- getCSR 0x342       -- mcause
         epc   <- getCSR 0x341       -- mepc
-        currentPC <- gets pc        
+        currentPC <- getPC        
         return (cause == trapBreakpointM && epc == currentPC)
 
 isHalted :: CPU -> IO Bool
 isHalted c = do
-    w <- evalStateT fetch c 
+    w <- evalStateT (runEmulator fetch) c 
     return (w == 0) 
 
 runInteractive :: Debugger -> IO ()
@@ -113,11 +113,11 @@ runInteractive dbg = do
                     runInteractive dbg
                 _ -> do
                     atBreak <- isAtBreakpoint c
-                    startState <- execStateT (do
-                                    when atBreak incrPC
-                                    modify $ \cpu -> cpu { status = Running }
+                    startState <- execStateT (runEmulator $ do
+                                    when atBreak incPC
+                                    setStatus Running
                                   ) c
-                    (_, nextState) <- runStateT step startState
+                    (_, nextState) <- runStateT (runEmulator step) startState
                     
                     let newDbg = Debugger 
                            { past    = c : past dbg 
@@ -138,9 +138,9 @@ runInteractive dbg = do
                     if atBreak 
                         then putStrLn ">> Resuming from breakpoint..."
                         else putStrLn ">> Resuming..."
-                    startState <- execStateT (do
-                                    when atBreak incrPC 
-                                    modify $ \cpu -> cpu { status = Running }
+                    startState <- execStateT (runEmulator $ do
+                                    when atBreak incPC 
+                                    setStatus Running
                                   ) c
                     newTrace <- resumeTrace startState
                     

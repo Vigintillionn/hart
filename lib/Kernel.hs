@@ -1,12 +1,10 @@
 module Kernel (handleSyscall) where
 import Data.Word (Word32)
-import Types
 import Machine
-import Control.Monad.State
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Char8 as C8
 
-handleSyscall :: Emulator PCUpdate
+handleSyscall :: MonadCPU m => m PCUpdate
 handleSyscall = do
     syscall <- getReg a7 
     
@@ -17,19 +15,19 @@ handleSyscall = do
             len <- getReg a2 -- length 
             
             str <- readString ptrAddr (fromIntegral len)
-            liftIO $ putStr str 
+            consoleLog str 
             
             return Advance
         93 -> do -- sys_exit 
             code <- getReg a0 
-            liftIO $ putStrLn $ "\nProgram exited with code: " ++ show code
+            consoleLog $ "\nProgram exited with code: " ++ show code
             return Terminate 
             
         _ -> do
-            liftIO $ putStrLn $ "Unknown Syscall: " ++ show a7
+            consoleLog $ "Unknown Syscall: " ++ show a7
             return Advance
 
-readString :: Word32 -> Int -> Emulator String
+readString :: MonadCPU m => Word32 -> Int -> m String
 readString addr len = do
     bytes <- mapM (\i -> loadByte (addr + fromIntegral i)) [0 .. len - 1]
     return $ C8.unpack $ BS.pack bytes
