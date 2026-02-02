@@ -2,6 +2,7 @@ module Assembler where
 import Types 
 import Data.Word
 import Data.Bits (Bits(..))
+import ISA
 
 encodeReg :: Int -> Register -> Word32
 encodeReg s r = fromIntegral (unReg r) `shiftL` s 
@@ -11,73 +12,29 @@ packRd  = encodeReg 7
 packRs1 = encodeReg 15
 packRs2 = encodeReg 20
 
-getRFmt :: ROp -> (Word32, Word32, Word32)
-getRFmt op = (opc, f3, f7)
-    where
-        opc = 0x33
-        f3  = case op of
-            ADD -> 0x0
-            SUB -> 0x0
-            XOR -> 0x4
-            OR  -> 0x6
-            AND -> 0x7
-            SLL -> 0x1
-            SRL -> 0x5
-            SRA -> 0x5
-            SLT -> 0x2
-            SLTU -> 0x3
-        f7  = case op of
-            SUB -> 0x20
-            SRA -> 0x20
-            _   -> 0x0
-
 assembleRType :: Instruction 'R Int -> Word32
 assembleRType (RType op args) =
-    opc .|.
+    getOpcode op .|.
     rs1 .|.
     rs2 .|.
     rd  .|.
-    (f3 `shiftL` 12) .|.
-    (f7 `shiftL` 25)
+    (getFunct3 op `shiftL` 12) .|.
+    (getFunct7 op `shiftL` 25)
     where
-       (opc, f3, f7) = getRFmt op 
        rd   = packRd  $ r_rd args 
        rs1  = packRs1 $ r_rs1 args  
        rs2  = packRs2 $ r_rs2 args 
 
-getArithFmt :: IArithOp -> (Word32, Word32) 
-getArithFmt op = (f3, f7)
-    where
-        f3 = case op of
-            ADDI  -> 0x0
-            XORI  -> 0x4
-            ORI   -> 0x6
-            ANDI  -> 0x7
-            SLLI  -> 0x1
-            SRLI  -> 0x5
-            SRAI  -> 0x5
-            SLTI  -> 0x2
-            SLTIU -> 0x3
-        f7 = if op == SRAI then 0x20 else 0x00
-
-getLoadFmt :: ILoadOp -> Word32
-getLoadFmt op = case op of 
-    LB   -> 0x0 
-    LH   -> 0x1 
-    LW   -> 0x2
-    LBU  -> 0x4
-    LHU  -> 0x5
-
-packIType :: Word32 -> (Word32, Word32) -> ITypeArgs Int -> Word32
-packIType opc (f3, f7) args =
+packIType :: Word32 -> Word32 -> Word32 -> ITypeArgs Int -> Word32
+packIType opc f3 f7 args =
     opc .|.
     rd .|.
     rs1 .|.
     (f3 `shiftL` 12) .|.
     (imm `shiftL` 20) 
     where
-        rd          = packRd  $ i_rd args 
-        rs1         = packRs1 $ i_rs1 args 
+        rd     = packRd  $ i_rd args 
+        rs1    = packRs1 $ i_rs1 args 
         rawImm = fromIntegral (i_imm args) .&. 0xFFF
         mask   = f7 `shiftL` 5
         imm    = rawImm .|. mask 
@@ -106,49 +63,26 @@ packJImm v =
        (bit11     `shiftL` 20) .|.
        (bits19_12 `shiftL` 12)
 
-getBFmt :: BOp -> (Word32, Word32)
-getBFmt op = (opc, f3)
-    where
-        opc = 0x63
-        f3 = case op of
-            BEQ  -> 0x0
-            BNE  -> 0x1
-            BLT  -> 0x4
-            BGE  -> 0x5
-            BLTU -> 0x6 
-            BGEU -> 0x7
-
 assembleBType :: Instruction 'B Int -> Word32
 assembleBType (BType op args) =
     packBImm  (b_imm args) .|.
     rs2 .|.
     rs1 .|.
-    (f3 `shiftL` 12) .|.
-    opc
+    (getFunct3 op `shiftL` 12) .|.
+    getOpcode op
     where
-        (opc, f3) = getBFmt op
         rs1 = packRs1 $ b_rs1 args 
         rs2 = packRs2 $ b_rs2 args 
 
-getSFmt :: SOp -> (Word32, Word32)
-getSFmt op = (opc, f3)
-    where
-        opc = 0x23 
-        f3 = case op of
-            SB -> 0x0
-            SH -> 0x1
-            SW -> 0x2
-
 assembleSType :: Instruction 'S Int -> Word32
 assembleSType (SType op args) =
-    opc .|.
+    getOpcode op .|.
     rs1 .|.
     rs2 .|.
     (immLo `shiftL` 7) .|.
-    (f3 `shiftL` 12) .|.
+    (getFunct3 op `shiftL` 12) .|.
     (immHi `shiftL` 25)
     where
-        (opc, f3) = getSFmt op
         imm = fromIntegral $ s_imm args
         immLo = imm .&. 0x1F
         immHi = (imm `shiftR` 5) .&. 0x7F
@@ -157,13 +91,10 @@ assembleSType (SType op args) =
 
 assembleUType :: Instruction 'U Int -> Word32
 assembleUType (UType op args) =
-    opc .|.
+    getOpcode op .|.
     rd  .|.
     imm 
     where
-        opc = case op of
-            AUIPC -> 0x17
-            LUI   -> 0x37
         rd  = packRd $ u_rd args 
         imm = fromIntegral $ (u_imm args .&. 0xFFFFF) `shiftL` 12
 
@@ -180,27 +111,19 @@ assembleSystem (System op args) =
     0x73 .|.                        
     packRd (c_rd args) .|.          
     packRs1 (c_rs1 args) .|.        
-    (f3 `shiftL` 12) .|.            
+    (getFunct3 op `shiftL` 12) .|.            
     (csr `shiftL` 20)               
     where
         csr = fromIntegral (c_csr args .&. 0xFFF)
-        f3  = case op of
-            CSRRW -> 0x1
-            CSRRS -> 0x2
-            CSRRC -> 0x3
 assembleSystem (SystemI op args) =
     0x73 .|.                        
     packRd (ci_rd args) .|.         
     (uimm `shiftL` 15) .|.          
-    (f3 `shiftL` 12) .|.            
+    (getFunct3 op `shiftL` 12) .|.            
     (csr `shiftL` 20)               
     where
         csr  = fromIntegral (ci_csr args .&. 0xFFF)
         uimm = fromIntegral (ci_uimm args .&. 0x1F) 
-        f3   = case op of
-            CSRRWI -> 0x5
-            CSRRSI -> 0x6
-            CSRRCI -> 0x7
 assembleSystem (Trap op) =
     0x73 .|. (imm `shiftL` 20)
     where
@@ -215,9 +138,9 @@ assembleSome (SomeInstruction (ArithI op args))  =
                   then i_imm args .&. 0x1F
                   else i_imm args
         safeArgs = args { i_imm = safeImm }
-    in packIType 0x13 (getArithFmt op) safeArgs 
-assembleSome (SomeInstruction (LoadI op args))     = packIType 0x03 (getLoadFmt op, 0x00) args
-assembleSome (SomeInstruction (JumpI JALR args))   = packIType 0x67 (0x0, 0x0) args
+    in packIType (getOpcode op) (getFunct3 op) (getFunct7 op) safeArgs 
+assembleSome (SomeInstruction (LoadI op args))     = packIType (getOpcode op) (getFunct3 op) 0x00 args
+assembleSome (SomeInstruction (JumpI op args))     = packIType (getOpcode op) (getFunct3 op) 0x00 args
 assembleSome (SomeInstruction instr@(BType _ _))   = assembleBType instr
 assembleSome (SomeInstruction instr@(SType _ _))   = assembleSType instr
 assembleSome (SomeInstruction instr@(UType _ _))   = assembleUType instr

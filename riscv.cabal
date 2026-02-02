@@ -85,6 +85,7 @@ library
                       Debugger
                       Kernel
                       Machine
+                      ISA
     hs-source-dirs:   lib 
 
 executable riscv

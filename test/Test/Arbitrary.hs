@@ -72,8 +72,8 @@ instance Arbitrary (SomeInstruction Int) where
 
         genITypeArith = do
             op <- arbitrary
-            let imm = if op `elem` [SLLI, SRLI, SRAI] 
-                 then choose (0, 31) 
+            let imm = if op `elem` [SLLI, SRLI, SRAI]
+                 then choose (0, 31)
                  else genImm 12
             args <- ITypeArgs <$> arbitrary <*> arbitrary <*> imm
             return $ SomeInstruction (ArithI op args)
@@ -102,15 +102,15 @@ instance Arbitrary (SomeInstruction Int) where
 
         genUType = do
             op <- arbitrary
-            imm <- choose (0, 0xFFFFF) 
+            imm <- choose (0, 0xFFFFF)
             args <- UTypeArgs <$> arbitrary <*> pure imm
             return $ SomeInstruction (UType op args)
 
         genJType = do
             op <- arbitrary
-            val <- genImm 19 
+            val <- genImm 19
             let imm = val * 2
-            args <- JTypeArgs <$> arbitrary <*> pure imm 
+            args <- JTypeArgs <$> arbitrary <*> pure imm
             return $ SomeInstruction (JType op args)
 
         genSys = do
@@ -123,10 +123,8 @@ instance Arbitrary (SomeInstruction Int) where
         genSysImm = do
             op   <- arbitrary
             rd   <- arbitrary
-            uimm <- choose (0, 31)    
-            csr  <- choose (0, 0xFFF) 
+            uimm <- choose (0, 31)
+            csr  <- choose (0, 0xFFF)
             return $ SomeInstruction $ SystemI op (SysIArgs rd csr uimm)
 
-        genTrap = do
-            op <- arbitrary
-            return $ SomeInstruction (Trap op)
+        genTrap = SomeInstruction . Trap <$> arbitrary

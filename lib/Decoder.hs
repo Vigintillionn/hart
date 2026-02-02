@@ -3,8 +3,9 @@ import Types
 import Data.Word (Word32)
 import Data.Bits (Bits(shiftR, shiftL, (.&.), (.|.)))
 import Data.Int (Int32)
-import Data.List (find)
 import Control.Monad
+import ISA
+import Control.Applicative (liftA3)
 
 opMask, rdMask, f3Mask, rs1Mask, rs2Mask, f7Mask, immMask :: (Int, Int)
 opMask  = (6, 0)
@@ -36,60 +37,12 @@ signExtend bits x =
     let shift = 32 - bits
     in fromIntegral ((fromIntegral x :: Int32) `shiftL` shift `shiftR` shift)
 
-findOp :: (Enum op, Bounded op, Eq val) => (op -> val) -> val -> Maybe op
-findOp mapping target = find (\op -> mapping op == target) [minBound .. maxBound]
-
-rOpF3F7 :: ROp -> (Word32, Word32)
-rOpF3F7 op = case op of
-    ADD -> (0x0, 0x00)
-    SUB -> (0x0, 0x20)
-    XOR -> (0x4, 0x00)
-    OR  -> (0x6, 0x00)
-    AND -> (0x7, 0x00)
-    SLL -> (0x1, 0x00)
-    SRL -> (0x5, 0x00)
-    SRA -> (0x5, 0x20)
-    SLT -> (0x2, 0x00)
-    SLTU -> (0x3, 0x00)
-
-iArithOpF3 :: IArithOp -> Word32 
-iArithOpF3 op = case op of
-    ADDI  -> 0x0
-    XORI  -> 0x4
-    ORI   -> 0x6
-    ANDI  -> 0x7
-    SLLI  -> 0x1
-    SRLI  -> 0x5
-    SRAI  -> 0x5
-    SLTI  -> 0x2
-    SLTIU -> 0x3
-
-iLoadOpF3 :: ILoadOp -> Word32
-iLoadOpF3 op = case op of 
-    LB  -> 0x0 
-    LH  -> 0x1 
-    LW  -> 0x2
-    LBU -> 0x4
-    LHU -> 0x5
-
-bOpF3 :: BOp -> Word32 
-bOpF3 op = case op of
-    BEQ  -> 0x0
-    BNE  -> 0x1
-    BLT  -> 0x4
-    BGE  -> 0x5
-    BLTU -> 0x6
-    BGEU -> 0x7
-
-sOpF3 :: SOp -> Word32
-sOpF3 op = case op of
-    SB -> 0x0 
-    SH -> 0x1
-    SW -> 0x2
+getOp :: RISCVEncoding a => Word32 -> Maybe a
+getOp = liftA3 matchOp getOpc getF3 getF7
 
 decodeRType :: Word32 -> Maybe (Instruction 'R Int)
 decodeRType w = do
-    op  <- findOp rOpF3F7 (getF3 w, getF7 w)
+    op  <- getOp w 
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     rs2 <- mkRegister (getRs2 w)
@@ -98,14 +51,9 @@ decodeRType w = do
 decodeIType :: Word32 -> Word32 -> Maybe (Instruction 'I Int)
 decodeIType 0x13 w = do
     let f3 = getF3 w
-    let f7 = getF7 w 
-
-    op  <- case f3 of
-            0x5 -> case f7 of
-                0x00 -> Just SRLI
-                0x20 -> Just SRAI
-                _    -> Nothing
-            _ -> findOp iArithOpF3 f3  
+    op  <- if f3 == 0x1 || f3 == 0x5
+           then getOp w
+           else matchOpF3 0x13 f3
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     let rawImm = slice immMask w
@@ -115,7 +63,7 @@ decodeIType 0x13 w = do
               else signExtend 12 rawImm
     return $ ArithI op (ITypeArgs rd rs1 imm)
 decodeIType 0x03 w = do
-    op <- findOp iLoadOpF3 $ getF3 w 
+    op  <- matchOpF3 0x03 (getF3 w)
     rd  <- mkRegister (getRd w)
     rs1 <- mkRegister (getRs1 w)
     let imm = signExtend 12 $ slice immMask w
@@ -156,7 +104,7 @@ unpackJImm w = signExtend 21 unpacked
 
 decodeBType :: Word32 -> Maybe (Instruction 'B Int)
 decodeBType w = do
-    op <- findOp bOpF3 $ getF3 w
+    op  <- matchOpF3 0x63 (getF3 w)
     rs1 <- mkRegister (getRs1 w)
     rs2 <- mkRegister (getRs2 w)
     let imm = unpackBImm w
@@ -164,7 +112,7 @@ decodeBType w = do
 
 decodeSType :: Word32 -> Maybe (Instruction 'S Int)
 decodeSType w = do
-    op <- findOp sOpF3 $ getF3 w 
+    op  <- matchOpF3 0x23 (getF3 w) 
     rs1 <- mkRegister $ getRs1 w
     rs2 <- mkRegister $ getRs2 w
     let immHi = getF7 w -- high bits of immediate are in same range as funct7
@@ -197,18 +145,16 @@ decodeSystemType w = do
     let rs1Idx = getRs1 w
     rs1Reg <- mkRegister rs1Idx
 
-    case f3 of
-        0x0 -> case imm12 of
-            0 -> Just $ Trap ECALL
-            1 -> Just $ Trap EBREAK
-            _ -> Nothing -- Future: WFI, MRET, SRET go here
-        0x1 -> Just $ System CSRRW (SysArgs rd imm12 rs1Reg)
-        0x2 -> Just $ System CSRRS (SysArgs rd imm12 rs1Reg)
-        0x3 -> Just $ System CSRRC (SysArgs rd imm12 rs1Reg)
-        0x5 -> Just $ SystemI CSRRWI (SysIArgs rd imm12 rs1Idx)
-        0x6 -> Just $ SystemI CSRRSI (SysIArgs rd imm12 rs1Idx)
-        0x7 -> Just $ SystemI CSRRCI (SysIArgs rd imm12 rs1Idx)
-        _ -> Nothing
+    let csrOp  = matchOpF3 0x73 f3 :: Maybe SysOp
+    let csrIOp = matchOpF3 0x73 f3 :: Maybe SysIOp
+
+    case (csrOp, csrIOp) of
+        (Just op, _) -> Just $ System  op (SysArgs rd imm12 rs1Reg)
+        (_, Just op) -> Just $ SystemI op (SysIArgs rd imm12 rs1Idx)
+        _ -> case (f3, imm12) of 
+                (0, 0) -> Just $ Trap ECALL
+                (0, 1) -> Just $ Trap EBREAK
+                _      -> Nothing
 
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
