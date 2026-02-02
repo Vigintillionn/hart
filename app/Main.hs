@@ -1,20 +1,12 @@
 module Main where
 
 import Parser (parse)
-import Data.Word
-import qualified Data.Vector as V
 import Assembler (assemble)
 import Text.Printf (printf)
-import Machine (emptyCPU, regs, cycles, pc, csrs, CPU, Emulator, getCSR, RunStatus(..), status) 
-import Data.Int (Int32)
 import Linker (resolve)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Debugger 
-import qualified Data.IntMap.Strict as M
-import Types (decodeCSRName, trapBreakpointM)
-import Control.Monad.State
-import CPU (incrPC, fetch, step)
-import Control.Monad (when)
+import Machine (emptyCPU, cycles)
 
 formatFreq :: Double -> String
 formatFreq hz
@@ -22,31 +14,6 @@ formatFreq hz
     | hz > 1000000    = printf "%.2f MHz" (hz / 1000000)
     | hz > 1000       = printf "%.2f kHz" (hz / 1000)
     | otherwise       = printf "%.0f Hz" hz
-
-viewRegisters :: V.Vector Word32 -> [Int32]
-viewRegisters regs = map fromIntegral (V.toList regs)
-
-viewCSRs :: M.IntMap Word32 -> String
-viewCSRs csrMap = 
-    let validCSRs = filter (\(k,_) -> k >= 0x300) (M.toList csrMap)
-    in unlines $ map fmt validCSRs
-  where
-    fmt (addr, val) = printf "  %s: 0x%08x" (decodeCSRName addr) val
-
-isAtBreakpoint :: CPU -> IO Bool
-isAtBreakpoint = evalStateT check
-  where
-    check :: Emulator Bool
-    check = do
-        cause <- getCSR 0x342       -- mcause
-        epc   <- getCSR 0x341       -- mepc
-        currentPC <- gets pc        
-        return (cause == trapBreakpointM && epc == currentPC)
-
-isHalted :: CPU -> IO Bool
-isHalted c = do
-    w <- evalStateT fetch c 
-    return (w == 0) 
 
 program :: String
 program = 
@@ -77,67 +44,6 @@ program =
            \                                                      \n\
            \msg:  nop"
  
-runInteractive :: Debugger -> IO ()
-runInteractive dbg = do
-    putStrLn "\n----------------------------------------"
-    
-    let c = current dbg
-    printf "PC: 0x%08x | Cycle: %d\n" (pc c) (cycles c)
-    
-    print (viewRegisters $ regs c)
-    putStrLn "CSRs:"
-    putStrLn (viewCSRs $ csrs c)
-
-    putStrLn "[p]rev, [n]ext, [c]ontinue, [r]ewind, [q]uit: " 
-    cmd <- getLine
-    case cmd of
-        "p" -> runInteractive (stepBack dbg)    
-        "n" -> case future dbg of
-            (_:_) -> runInteractive (stepForward dbg)
-            []    -> case status c of
-                Halted -> do
-                    putStrLn ">> Execution Finished. Cannot step."
-                    runInteractive dbg
-                _ -> do
-                    atBreak <- isAtBreakpoint c
-                    startState <- execStateT (do
-                                    when atBreak incrPC
-                                    modify $ \cpu -> cpu { status = Running }
-                                  ) c
-                    (_, nextState) <- runStateT step startState
-                    
-                    let newDbg = Debugger 
-                           { past    = c : past dbg 
-                           , current = nextState
-                           , future  = []
-                           }
-                    
-                    runInteractive newDbg
-        "r" -> runInteractive (rewind dbg)      
-        "q" -> putStrLn "Exiting debugger."
-        "c" -> do
-            case status c of
-                Halted -> do
-                    putStrLn ">> Execution Finished (Halted)."
-                    runInteractive dbg
-                _ -> do
-                    atBreak <- isAtBreakpoint c
-                    if atBreak 
-                        then putStrLn ">> Resuming from breakpoint..."
-                        else putStrLn ">> Resuming..."
-                    startState <- execStateT (do
-                                    when atBreak incrPC 
-                                    modify $ \cpu -> cpu { status = Running }
-                                  ) c
-                    newTrace <- resumeTrace startState
-                    
-                    let fullTrace = reverse (past dbg) ++ newTrace
-                    let newDbg = initDebuggerAtEnd fullTrace
-                    
-                    runInteractive newDbg
-        ""  -> runInteractive dbg 
-        _   -> runInteractive dbg
-
 main :: IO ()
 main = do 
     case parse program of
