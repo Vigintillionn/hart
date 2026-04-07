@@ -71,6 +71,7 @@ common shared-properties
         mtl >= 2.3,
         containers >= 0.6,
         vector >= 0.13,
+        aeson,
         bytestring,
         time
 
@@ -91,6 +92,8 @@ library
 executable riscv
     import:           warnings, shared-properties
     main-is:          Main.hs
+    other-modules:    CLI
+                      RPC
     build-depends:    riscv
     hs-source-dirs:   app
 

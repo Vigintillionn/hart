@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Machine (Register
                , mkRegister
                , unReg
@@ -46,6 +47,7 @@ import System.IO (hFlush, stdout, Handle, IOMode (..), openFile, hClose)
 import Numeric (showHex)
 import Control.Exception (SomeException, try)
 import qualified Data.ByteString as BS
+import Data.Aeson (ToJSON(..), object, (.=))
 
 class Monad m => MonadCPU m where
     getReg     :: Register -> m Word32
@@ -83,6 +85,11 @@ data PCUpdate = Advance | Jump Word32 | Terminate | Breakpoint
 data RunStatus = Running | Halted | Paused
     deriving (Show, Eq)
 
+instance ToJSON RunStatus where
+    toJSON Running = "Running"
+    toJSON Halted  = "Halted"
+    toJSON Paused  = "Paused"
+
 data CPU = CPU
     { pc        :: Word32
     , regs      :: V.Vector Word32
@@ -94,6 +101,17 @@ data CPU = CPU
     , fileMap   :: M.IntMap Handle
     , nextFD    :: Int
     }
+
+instance ToJSON CPU where
+    toJSON cpu = object
+        [ "pc"      .= pc cpu
+        , "regs"    .= regs cpu
+        , "csrs"    .= csrs cpu
+        , "mem"     .= mem cpu 
+        , "cycles"  .= cycles cpu
+        , "status"  .= status cpu
+        , "heapTop" .= heapTop cpu
+        ]
 
 newtype Emulator a = Emulator
   { runEmulator :: StateT CPU IO a
