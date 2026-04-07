@@ -362,6 +362,8 @@ parseInstruction = choice $ concat
         rOps      = [ ("add", ADD), ("sub", SUB), ("xor", XOR), ("or", OR), ("and", AND)
                     , ("sll", SLL), ("srl", SRL), ("sra", SRA)
                     , ("slt", SLT), ("sltu",SLTU)
+                    , ("mul", MUL), ("mulh", MULH), ("mulhsu", MULHSU), ("mulhu", MULHU)
+                    , ("div", DIV), ("divu", DIVU), ("rem", REM), ("remu", REMU)
                     ]
         iArithOps = [ ("addi", ADDI), ("xori", XORI), ("ori", ORI), ("andi", ANDI)
                     , ("slli", SLLI), ("srli", SRLI), ("srai", SRAI)

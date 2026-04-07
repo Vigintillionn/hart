@@ -17,7 +17,9 @@ type family ImmOf (p :: Phase) where
     ImmOf 'Resolved = Int
 
 data ROp = ADD | SUB | XOR | OR  | AND
-         | SLL | SRL | SRA | SLT | SLTU     deriving (Show, Eq, Enum, Bounded)
+         | SLL | SRL | SRA | SLT | SLTU     
+         | MUL | MULH | MULHSU | MULHU
+         | DIV | DIVU | REM | REMU          deriving (Show, Eq, Enum, Bounded)
 data IArithOp = ADDI | XORI | ORI  | ANDI    
               | SLLI | SRLI | SRAI | SLTI 
               | SLTIU                       deriving (Show, Eq, Enum, Bounded)    

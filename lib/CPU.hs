@@ -33,6 +33,40 @@ srl a b = a `shiftR` shamt b
 sra :: Word32 -> Word32 -> Word32
 sra a b = shiftRA a (shamt b)
 
+mulh :: Word32 -> Word32 -> Word32
+mulh a b = let res = fromIntegral (fromIntegral a :: Int32) * fromIntegral (fromIntegral b :: Int32) :: Int64
+           in fromIntegral (res `shiftR` 32)
+
+mulhsu :: Word32 -> Word32 -> Word32
+mulhsu a b = let res = fromIntegral (fromIntegral a :: Int32) * fromIntegral b :: Int64
+             in fromIntegral (res `shiftR` 32)
+
+mulhu :: Word32 -> Word32 -> Word32
+mulhu a b = let res = fromIntegral a * fromIntegral b :: Word64
+            in fromIntegral (res `shiftR` 32)
+
+divSigned :: Word32 -> Word32 -> Word32
+divSigned a b
+    | b == 0 = 0xFFFFFFFF
+    | a == 0x80000000 && b == 0xFFFFFFFF = 0x80000000
+    | otherwise = fromIntegral (fromIntegral a `quot` fromIntegral b :: Int32)
+
+divUnsigned :: Word32 -> Word32 -> Word32
+divUnsigned a b
+    | b == 0 = 0xFFFFFFFF
+    | otherwise = a `quot` b
+
+remSigned :: Word32 -> Word32 -> Word32
+remSigned a b
+    | b == 0 = a
+    | a == 0x80000000 && b == 0xFFFFFFFF = 0
+    | otherwise = fromIntegral (fromIntegral a `rem` fromIntegral b :: Int32)
+
+remUnsigned :: Word32 -> Word32 -> Word32
+remUnsigned a b
+    | b == 0 = a
+    | otherwise = a `rem` b
+
 incr :: Word32 -> Int -> Word32
 incr w o = fromIntegral $ fromIntegral w + o
 
@@ -67,6 +101,14 @@ executeRType (RType op args) = do
         SRA  -> runBinaryOp sra args
         SLT  -> runBinaryOp lessThanSigned args
         SLTU -> runBinaryOp lessThanUnsigned args
+        MUL    -> runBinaryOp (*) args
+        MULH   -> runBinaryOp mulh args
+        MULHSU -> runBinaryOp mulhsu args
+        MULHU  -> runBinaryOp mulhu args
+        DIV    -> runBinaryOp divSigned args
+        DIVU   -> runBinaryOp divUnsigned args
+        REM    -> runBinaryOp remSigned args
+        REMU   -> runBinaryOp remUnsigned args
     return Advance
 
 runImmediateOp :: MonadCPU m => (Word32 -> Word32 -> Word32) -> ITypeArgs Int -> m ()

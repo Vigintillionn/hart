@@ -19,8 +19,11 @@ program :: String
 program = unlines
     [ ".text"
     , "main:"
-    , "    li a1, 1          # Address 0x1 (Not a multiple of 4!)"
-    , "    lw a0, 0(a1)      # Try to load a word from 0x1... BOOM!"
+    , "    li a1, 10"
+    , "    li a2, 5"
+    , "    mul a0, a1, a2   # a0 = 10 * 5 = 50"
+    , "    li a1, 2"
+    , "    div a0, a0, a1   # a0 = 50 / 2 = 25"
     , "    li a7, 93"
     , "    ecall"
     ]

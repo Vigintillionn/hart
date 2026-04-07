@@ -32,8 +32,12 @@ instance RISCVEncoding ROp where
         XOR -> 0x4; OR  -> 0x6; AND -> 0x7
         SLL -> 0x1; SRL -> 0x5; SRA -> 0x5; 
         SLT -> 0x2; SLTU-> 0x3
+        MUL -> 0x0; MULH -> 0x1; MULHSU -> 0x2; MULHU -> 0x3
+        DIV -> 0x4; DIVU -> 0x5; REM  -> 0x6; REMU  -> 0x7
     getFunct7 op = case op of
         SUB -> 0x20; SRA -> 0x20
+        MUL -> 0x01; MULH -> 0x01; MULHSU -> 0x01; MULHU -> 0x01
+        DIV -> 0x01; DIVU -> 0x01; REM  -> 0x01; REMU  -> 0x01
         _   -> 0x00
 
 instance RISCVEncoding IArithOp where
