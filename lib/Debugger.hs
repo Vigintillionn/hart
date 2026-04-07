@@ -2,13 +2,15 @@ module Debugger where
 import CPU
 import Types
 import Control.Monad.State
-import Machine (CPU (..), RunStatus (..), Emulator (..), getCSR, trapBreakpointM, MonadCPU (..), incPC)
+import Machine (CPU (..), RunStatus (..), Emulator (..), getCSR, trapBreakpointM, MonadCPU (..), incPC, Register (unReg))
 import Control.Monad (when)
 import Text.Printf (printf)
 import qualified Data.IntMap.Strict as M
 import Data.Word (Word32)
 import qualified Data.Vector as V
 import Data.Int (Int32)
+import Data.Char (toLower)
+import Decoder (decodeWord)
 
 data Debugger = Debugger 
     { past      :: [CPU]
@@ -95,7 +97,15 @@ runInteractive dbg = do
     putStrLn "\n----------------------------------------"
     
     let c = current dbg
-    printf "PC: 0x%08x | Cycle: %d\n" (pc c) (cycles c)
+    w <- evalStateT (runEmulator fetch) c
+
+    let instrStr = if w == 0
+                   then "NOP / HALTED"
+                   else case decodeWord w of
+                        Left err -> "<Decode Error: " ++ err ++ ">"
+                        Right inst -> disassemble inst
+
+    printf "PC: 0x%08x | Cycle: %d | %s\n" (pc c) (cycles c) instrStr
     
     print (viewRegisters $ regs c)
     putStrLn "CSRs:"
@@ -150,3 +160,34 @@ runInteractive dbg = do
                     runInteractive newDbg
         ""  -> runInteractive dbg 
         _   -> runInteractive dbg
+
+formatReg :: Register -> String
+formatReg r = "x" ++ show (unReg r)
+
+disassemble :: SomeInstruction Int -> String
+disassemble (SomeInstruction i) = case i of
+    RType op args ->
+        printf "%s %s, %s, %s" (low op) (f $ r_rd args) (f $ r_rs1 args) (f $ r_rs2 args)
+    ArithI op args -> 
+        printf "%s %s, %s, %d" (low op) (f $ i_rd args) (f $ i_rs1 args) (i_imm args)
+    LoadI op args -> 
+        printf "%s %s, %d(%s)" (low op) (f $ i_rd args) (i_imm args) (f $ i_rs1 args)
+    JumpI op args -> 
+        printf "%s %s, %s, %d" (low op) (f $ i_rd args) (f $ i_rs1 args) (i_imm args)
+    BType op args -> 
+        printf "%s %s, %s, %d" (low op) (f $ b_rs1 args) (f $ b_rs2 args) (b_imm args)
+    SType op args -> 
+        printf "%s %s, %d(%s)" (low op) (f $ s_rs2 args) (s_imm args) (f $ s_rs1 args)
+    UType op args -> 
+        printf "%s %s, 0x%x" (low op) (f $ u_rd args) (u_imm args)
+    JType op args -> 
+        printf "%s %s, %d" (low op) (f $ j_rd args) (j_imm args)
+    System op args -> 
+        printf "%s %s, %s, %s" (low op) (f $ c_rd args) (decodeCSRName $ c_csr args) (f $ c_rs1 args)
+    SystemI op args -> 
+        printf "%s %s, %s, %d" (low op) (f $ ci_rd args) (decodeCSRName $ ci_csr args) (ci_uimm args)
+    Trap op -> low op
+    where
+        low :: Show a => a -> String
+        low = map toLower . show
+        f = formatReg
