@@ -82,7 +82,7 @@ data BuildState = BuildState
     }
 
 buildSymTable :: ParsedProgram -> Either String BuildState
-buildSymTable = foldM step (BuildState 0 0x2000 TextSection M.empty)
+buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
     where
         step state (ml, ms) = do
             let currentPC = if b_section state == TextSection then b_textPC state else b_dataPC state
@@ -113,7 +113,7 @@ data EmitState = EmitState
     }
 
 emitSections :: ParsedProgram -> EmitState
-emitSections = foldl step (EmitState [] IM.empty 0 0x2000 TextSection)
+emitSections = foldl step (EmitState [] IM.empty 0 0x10000000 TextSection)
   where
     step state (_, Nothing) = state
     step state (_, Just (StmtDirective (DirSection sec))) = state { e_section = sec }
