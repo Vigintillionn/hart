@@ -17,21 +17,11 @@ formatFreq hz
 
 program :: String
 program = unlines
-    [ ".data"
-    , "my_text: .string \"Hello World!\\n\""
-    , ""
-    , ".text"
+    [ ".text"
     , "main:"
-    , "    # 1. Print the string"
-    , "    li a0, 1          # fd = 1 (stdout)"
-    , "    la a1, my_text    # buffer address"
-    , "    li a2, 14          # length of \"Hello\\n\""
-    , "    li a7, 64         # syscall 64 (sys_write)"
-    , "    ecall"
-    , ""
-    , "    # 2. Exit gracefully"
-    , "    li a0, 0          # exit code 0"
-    , "    li a7, 93         # syscall 93 (sys_exit)"
+    , "    li a1, 1          # Address 0x1 (Not a multiple of 4!)"
+    , "    lw a0, 0(a1)      # Try to load a word from 0x1... BOOM!"
+    , "    li a7, 93"
     , "    ecall"
     ]
  

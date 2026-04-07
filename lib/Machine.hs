@@ -16,6 +16,8 @@ module Machine (Register
                , a7
                , trapECallM
                , trapBreakpointM
+               , trapLoadMisaligned
+               , trapStoreMisaligned
                , entryPoint
                , stackTop
                , extractByte
@@ -40,6 +42,7 @@ import Data.Vector ((!), (//))
 import Data.Int (Int8, Int16)
 import Data.Bits (Bits(..))
 import System.IO (hFlush, stdout) 
+import Numeric (showHex)
 
 class Monad m => MonadCPU m where
     getReg     :: Register -> m Word32
@@ -122,9 +125,11 @@ a1 = Reg 11
 a2 = Reg 12
 a7 = Reg 17
 
-trapECallM, trapBreakpointM :: Word32
+trapECallM, trapBreakpointM, trapStoreMisaligned, trapLoadMisaligned :: Word32
 trapECallM      = 11
 trapBreakpointM = 3
+trapLoadMisaligned  = 4
+trapStoreMisaligned = 6
 
 mkRegister :: Int -> Maybe Register
 mkRegister n
@@ -189,13 +194,18 @@ zeroExt8 = fromIntegral
 zeroExt16 :: Word16 -> Word32
 zeroExt16 = fromIntegral
 
-takeTrap :: MonadCPU m => Word32 -> Word32 -> m PCUpdate
-takeTrap causeCode currentPC = do
+takeTrap :: MonadCPU m => Word32 -> Word32 -> Word32 -> m PCUpdate
+takeTrap causeCode currentPC tval = do
     setCSR 0x341 currentPC -- 0x341 is MEPC
     setCSR 0x342 causeCode -- 0x342 is MCAUSE
-    setCSR 0x343 0         -- 0x343 is MTVAL
+    setCSR 0x343 tval      -- 0x343 is MTVAL
     handlerAddr <- getCSR 0x305 
     
     let target = if handlerAddr == 0 then 0x80000000 else handlerAddr
+
+    case causeCode of
+            4 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Load Address Misaligned! (Bad address: 0x" ++ showHex tval "" ++ ")"
+            6 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Store Address Misaligned! (Bad address: 0x" ++ showHex tval "" ++ ")"
+            _ -> return ()
     
     return $ Jump target

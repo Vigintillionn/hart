@@ -75,20 +75,31 @@ runImmediateOp op args = do
     let imm = fromIntegral $ i_imm args
     setReg (i_rd args) (r `op` imm) 
 
-runLoadOp :: MonadCPU m => ILoadOp -> ITypeArgs Int -> m ()
+runLoadOp :: MonadCPU m => ILoadOp -> ITypeArgs Int -> m PCUpdate 
 runLoadOp op args = do
     base <- getReg (i_rs1 args)
     let off = fromIntegral (i_imm args) :: Word32
     let addr = base + off
 
-    val <- case op of
-        LB -> signExt8  <$> loadByte addr
-        LH -> signExt16 <$> loadHalf addr
-        LW -> loadWord addr
-        LBU -> zeroExt8  <$> loadByte addr
-        LHU -> zeroExt16 <$> loadHalf addr
+    let isMisaligned = case op of
+            LW  -> addr `mod` 4 /= 0
+            LH  -> addr `mod` 2 /= 0
+            LHU -> addr `mod` 2 /= 0
+            _   -> False
 
-    setReg (i_rd args) val
+    if isMisaligned then do
+        currentPC <- getPC
+        takeTrap trapLoadMisaligned currentPC addr
+    else do
+        val <- case op of
+            LB -> signExt8  <$> loadByte addr
+            LH -> signExt16 <$> loadHalf addr
+            LW -> loadWord addr
+            LBU -> zeroExt8  <$> loadByte addr
+            LHU -> zeroExt16 <$> loadHalf addr
+
+        setReg (i_rd args) val
+        return Advance
 
 executeIType :: MonadCPU m => Instruction 'I Int -> m PCUpdate 
 executeIType (ArithI op args) = do 
@@ -103,7 +114,7 @@ executeIType (ArithI op args) = do
         SLTI -> runImmediateOp lessThanSigned args
         SLTIU -> runImmediateOp lessThanUnsigned args
     return Advance
-executeIType (LoadI op args) = runLoadOp op args >> return Advance
+executeIType (LoadI op args) = runLoadOp op args
 executeIType (JumpI JALR args) = do
     currentPC <- getPC
     base      <- getReg (i_rs1 args)
@@ -144,11 +155,20 @@ executeSType (SType op args) = do
     let off = fromIntegral $ s_imm args
     let addr = base + off
 
-    case op of
-        SW -> storeWord addr val
-        SH -> storeHalf addr val
-        SB -> storeByte addr val
-    return Advance
+    let isMisaligned = case op of
+            SW -> addr `mod` 4 /= 0
+            SH -> addr `mod` 2 /= 0
+            _  -> False
+
+    if isMisaligned then do
+        currentPC <- getPC
+        takeTrap trapStoreMisaligned currentPC addr
+    else do
+        case op of
+            SW -> storeWord addr val
+            SH -> storeHalf addr val
+            SB -> storeByte addr val
+        return Advance
 
 executeUType :: MonadCPU m => Instruction 'U Int -> m PCUpdate
 executeUType (UType op args) = do
@@ -200,7 +220,7 @@ executeSystem (SystemI op args) = do
     return Advance
 executeSystem (Trap ECALL) = do
     currentPC <- getPC
-    _ <- takeTrap trapECallM currentPC
+    _ <- takeTrap trapECallM currentPC 0
 
     update <- Kernel.handleSyscall
 
@@ -210,7 +230,7 @@ executeSystem (Trap ECALL) = do
         _ -> return update
 executeSystem (Trap EBREAK) = do
         currentPC <- getPC
-        _ <- takeTrap trapBreakpointM currentPC
+        _ <- takeTrap trapBreakpointM currentPC 0
         consolePrintLn "--- BREAKPOINT ---"
         return Breakpoint 
 
