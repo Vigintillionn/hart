@@ -115,17 +115,17 @@ data EmitState = EmitState
 emitSections :: ParsedProgram -> EmitState
 emitSections = foldl step (EmitState [] IM.empty 0 0x10000000 TextSection)
   where
-    step state (_, Nothing) = state
-    step state (_, Just (StmtDirective (DirSection sec))) = state { e_section = sec }
-    step state (_, Just stmt) =
-        let currentPC = if e_section state == TextSection then e_textPC state else e_dataPC state
+    step st (_, Nothing) = st
+    step st (_, Just (StmtDirective (DirSection sec))) = st { e_section = sec }
+    step st (_, Just stmt) =
+        let currentPC = if e_section st == TextSection then e_textPC st else e_dataPC st
             sz = stmtSize currentPC stmt
         in case stmt of
             StmtInstr i ->
-                state { e_instrs = e_instrs state ++ [i], e_textPC = e_textPC state + sz }
+                st { e_instrs = e_instrs st ++ [i], e_textPC = e_textPC st + sz }
             StmtDirective dir ->
-                let newMem = insertDirective currentPC dir (e_dataMem state)
-                in state { e_dataMem = newMem, e_dataPC = e_dataPC state + sz }
+                let newMem = insertDirective currentPC dir (e_dataMem st)
+                in st { e_dataMem = newMem, e_dataPC = e_dataPC st + sz }
 
     insertDirective :: Int -> Directive -> IM.IntMap Word8 -> IM.IntMap Word8
     insertDirective pc dir memMap = case dir of
