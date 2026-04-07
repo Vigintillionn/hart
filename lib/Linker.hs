@@ -84,26 +84,25 @@ data BuildState = BuildState
 buildSymTable :: ParsedProgram -> Either String BuildState
 buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
     where
-        step state (ml, ms) = do
-            let currentPC = if b_section state == TextSection then b_textPC state else b_dataPC state
+        step st (ml, ms) = do
+            let currentPC = if b_section st == TextSection then b_textPC st else b_dataPC st
 
             newTable <- case ml of
-                Nothing -> Right (b_table state)
-                Just n  -> if M.member n (b_table state)
+                Nothing -> Right (b_table st)
+                Just n  -> if M.member n (b_table st)
                            then Left $ "Duplicate label: " ++ n
-                           else Right $ M.insert n currentPC (b_table state)
+                           else Right $ M.insert n currentPC (b_table st)
 
-            let state' = state { b_table = newTable }
+            let st' = st { b_table = newTable }
             case ms of
-                Nothing -> Right state'
-                Just (StmtDirective (DirSection sec)) -> Right $ state' { b_section = sec }
+                Nothing -> Right st'
+                Just (StmtDirective (DirSection sec)) -> Right $ st' { b_section = sec }
                 Just stmt -> do
                     let sz = stmtSize currentPC stmt
-                    if b_section state == TextSection
-                    then Right $ state' { b_textPC = b_textPC state' + sz }
-                    else Right $ state' { b_dataPC = b_dataPC state' + sz }
+                    if b_section st == TextSection
+                    then Right $ st' { b_textPC = b_textPC st' + sz }
+                    else Right $ st' { b_dataPC = b_dataPC st' + sz }
 
--- NEW: State for emitting data bytes
 data EmitState = EmitState
     { e_instrs  :: [ArchInstr 'Parsed]
     , e_dataMem :: IM.IntMap Word8
