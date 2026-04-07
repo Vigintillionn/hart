@@ -46,7 +46,21 @@ handleSyscall = do
             code <- getReg a0 
             consolePrintLn $ "\nProgram exited with code: " ++ show code
             return Terminate 
+        214 -> do -- sys_brk
+            requestedAddr <- getReg a0
+            currentBreak <- getHeapTop
+            currentSP <- getReg sp
             
+            if requestedAddr == 0 then do
+                setReg a0 currentBreak
+            else if requestedAddr >= currentSP then do
+                consolePrintLn "\n[Kernel] sys_brk failed: Out of Memory! (Heap collided with Stack)"
+                setReg a0 currentBreak
+            else do
+                setHeapTop requestedAddr
+                setReg a0 requestedAddr
+                
+            return Advance
         _ -> do
             consolePrintLn $ "Unknown Syscall: " ++ show a7
             return Advance

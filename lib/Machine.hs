@@ -9,6 +9,7 @@ module Machine (Register
                , emptyCPU
                , x0
                , x1
+               , sp
                , x6
                , a0
                , a1
@@ -65,6 +66,9 @@ class Monad m => MonadCPU m where
     consoleRead    :: m String 
     terminate      :: m ()
 
+    getHeapTop :: m Word32
+    setHeapTop :: Word32 -> m ()
+
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 
 data PCUpdate = Advance | Jump Word32 | Terminate | Breakpoint
@@ -73,12 +77,13 @@ data RunStatus = Running | Halted | Paused
     deriving (Show, Eq)
 
 data CPU = CPU 
-    { pc     :: Word32 
-    , regs   :: V.Vector Word32 
-    , csrs   :: M.IntMap Word32
-    , mem    :: M.IntMap Word8 
-    , cycles :: Int
-    , status :: RunStatus
+    { pc        :: Word32 
+    , regs      :: V.Vector Word32 
+    , csrs      :: M.IntMap Word32
+    , mem       :: M.IntMap Word8 
+    , cycles    :: Int
+    , status    :: RunStatus
+    , heapTop   :: Word32
     }
 
 newtype Emulator a = Emulator
@@ -116,9 +121,13 @@ instance MonadCPU Emulator where
     consoleRead = liftIO getLine
     terminate = modify $ \cpu -> cpu { status = Halted }
 
-x0, x1, x6, a0, a1, a2, a7 :: Register
+    getHeapTop = gets heapTop
+    setHeapTop addr = modify $ \cpu -> cpu { heapTop = addr }
+
+x0, x1, sp, x6, a0, a1, a2, a7 :: Register
 x0 = Reg 0
 x1 = Reg 1
+sp = Reg 2
 x6 = Reg 6
 a0 = Reg 10
 a1 = Reg 11
@@ -140,16 +149,17 @@ entryPoint :: Word32
 entryPoint = 0x0
 
 stackTop :: Word32
-stackTop = 0x100000 -- 1MB
+stackTop = 0x7FFFFFFF   -- ~ 2GB
 
 emptyCPU :: CPU
 emptyCPU = CPU 
-    { pc     = entryPoint 
-    , regs   = V.replicate 32 0 // [(2, stackTop)]
-    , csrs   = M.empty
-    , mem    = M.empty
-    , cycles = 0 
-    , status = Running
+    { pc        = entryPoint 
+    , regs      = V.replicate 32 0 // [(2, stackTop)]
+    , csrs      = M.empty
+    , mem       = M.empty
+    , cycles    = 0 
+    , status    = Running
+    , heapTop   = 0x20000000
     }
 
 incPC :: MonadCPU m => m ()
