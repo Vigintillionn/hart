@@ -206,7 +206,7 @@ executeSystem (Trap ECALL) = do
 executeSystem (Trap EBREAK) = do
         currentPC <- getPC
         _ <- takeTrap trapBreakpointM currentPC
-        consoleLog "--- BREAKPOINT ---"
+        consolePrintLn "--- BREAKPOINT ---"
         return Breakpoint 
 
 execute :: MonadCPU m => SomeInstruction Int -> m PCUpdate 
@@ -231,14 +231,14 @@ step = do
     else do
         w <- fetch
         if w == 0 then do
-            consoleLog ">> End of instructions (Implicit Halt)"
+            consolePrintLn ">> End of instructions (Implicit Halt)"
             setStatus Halted 
             return False
         else do 
             incCycles 
             case decodeWord w of
                 Left err -> do
-                    consoleLog $ "Decode Error: " ++ err
+                    consolePrintLn $ "Decode Error: " ++ err
                     setStatus Halted 
                     return False
                 Right instr -> do

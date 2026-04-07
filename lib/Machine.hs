@@ -39,6 +39,7 @@ import Control.Monad.State
 import Data.Vector ((!), (//))
 import Data.Int (Int8, Int16)
 import Data.Bits (Bits(..))
+import System.IO (hFlush, stdout) 
 
 class Monad m => MonadCPU m where
     getReg     :: Register -> m Word32
@@ -56,8 +57,10 @@ class Monad m => MonadCPU m where
     getStatus  :: m RunStatus
     setStatus  :: RunStatus -> m ()
 
-    consoleLog :: String -> m ()
-    terminate  :: m ()
+    consolePrintLn :: String -> m ()
+    consolePrint   :: String -> m ()
+    consoleRead    :: m String 
+    terminate      :: m ()
 
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 
@@ -103,7 +106,11 @@ instance MonadCPU Emulator where
     getStatus = gets status
     setStatus s = modify $ \cpu -> cpu { status = s }
 
-    consoleLog m = liftIO $ putStrLn m
+    consolePrintLn m = liftIO $ putStrLn m
+    consolePrint m = liftIO $ do
+        putStr m
+        hFlush stdout
+    consoleRead = liftIO getLine
     terminate = modify $ \cpu -> cpu { status = Halted }
 
 x0, x1, x6, a0, a1, a2, a7 :: Register
