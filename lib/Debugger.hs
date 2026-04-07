@@ -9,9 +9,10 @@ import qualified Data.IntMap.Strict as M
 import Data.Word (Word32)
 import qualified Data.Vector as V
 import Data.Int (Int32)
-import Data.Char (toLower)
+import Data.Char (toLower, isPrint, chr)
 import Decoder (decodeWord)
 import Linker (Executable)
+import Numeric (readHex)
 
 data Debugger = Debugger 
     { past      :: [CPU]
@@ -78,6 +79,13 @@ viewCSRs csrMap =
   where
     fmt (addr, val) = printf "  %s: 0x%08x" (decodeCSRName addr) val
 
+viewMemory :: CPU -> Int -> Int -> String
+viewMemory c startAddr len =
+    let bytes = map (\a -> M.findWithDefault 0 a (mem c)) [startAddr .. startAddr + len - 1]
+        hexPart = unwords $ map (printf "%02x") bytes
+        ascPart = map (\b -> let ch = chr (fromIntegral b) in if isPrint ch then ch else '.') bytes
+    in printf "0x%08x:  %-48s  |%s|" startAddr hexPart ascPart
+
 isAtBreakpoint :: CPU -> IO Bool
 isAtBreakpoint = evalStateT (runEmulator check)
   where
@@ -112,11 +120,13 @@ runInteractive dbg = do
     putStrLn "CSRs:"
     putStrLn (viewCSRs $ csrs c)
 
-    putStrLn "[p]rev, [n]ext, [c]ontinue, [r]ewind, [q]uit: " 
+    putStrLn "[p]rev, [n]ext, [c]ontinue, [r]ewind, [m]emory <address>, [q]uit: " 
     cmd <- getLine
-    case cmd of
-        "p" -> runInteractive (stepBack dbg)    
-        "n" -> case future dbg of
+    let tokens = words cmd
+
+    case tokens of
+        ["p"] -> runInteractive (stepBack dbg)    
+        ["n"] -> case future dbg of
             (_:_) -> runInteractive (stepForward dbg)
             []    -> case status c of
                 Halted -> do
@@ -137,9 +147,9 @@ runInteractive dbg = do
                            }
                     
                     runInteractive newDbg
-        "r" -> runInteractive (rewind dbg)      
-        "q" -> putStrLn "Exiting debugger."
-        "c" -> do
+        ["r"] -> runInteractive (rewind dbg)      
+        ["q"] -> putStrLn "Exiting debugger."
+        ["c"] -> do
             case status c of
                 Halted -> do
                     putStrLn ">> Execution Finished (Halted)."
@@ -159,7 +169,18 @@ runInteractive dbg = do
                     let newDbg = initDebuggerAtEnd fullTrace
                     
                     runInteractive newDbg
-        ""  -> runInteractive dbg 
+        ["m", addrStr] -> do
+            let parsedAddr = if take 2 addrStr == "0x" 
+                             then readHex (drop 2 addrStr) 
+                             else readHex addrStr
+            case parsedAddr of
+                [(addr, "")] -> do
+                    putStrLn $ viewMemory c addr 16
+                    runInteractive dbg
+                _ -> do
+                    putStrLn "Invalid address format. Use: m 0x2000"
+                    runInteractive dbg
+        []  -> runInteractive dbg 
         _   -> runInteractive dbg
 
 formatReg :: Register -> String
