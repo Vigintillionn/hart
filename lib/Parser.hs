@@ -2,7 +2,7 @@ module Parser where
 
 import Types
 import Control.Applicative
-import Data.Char (isDigit, isAlpha, isAlphaNum, isHexDigit)
+import Data.Char (isDigit, isAlphaNum, isHexDigit)
 import Control.Monad (void)
 import qualified Data.Map.Strict as M
 import Text.Read (readMaybe)
@@ -127,7 +127,7 @@ register = lexeme $ choice [abiName, xName]
     where
         xName = char 'x' *> integer >>= \n -> maybe (fail "Invalid register name") return (mkRegister n)
         abiName = do
-            name <- some (satisfy isAlpha)
+            name <- some (satisfy isAlphaNum)
             case M.lookup name abiMap of
                 Just n -> case mkRegister n of
                     Nothing  -> fail "Invalid register name"
