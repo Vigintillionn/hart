@@ -9,6 +9,8 @@ import Control.Monad
 import Data.Int
 import Kernel (handleSyscall) 
 import Machine
+import Linker (Executable(..))
+import qualified Data.IntMap.Strict as M
 
 shiftRA :: Word32 -> Int -> Word32
 shiftRA w i = fromIntegral (fromIntegral w `shiftR` i :: Int32)
@@ -37,11 +39,14 @@ incr w o = fromIntegral $ fromIntegral w + o
 fetch :: MonadCPU m => m Word32
 fetch = getPC >>= loadWord 
 
-loadProgram :: MonadCPU m => Program -> m ()
-loadProgram instr = do
+loadProgram :: MonadCPU m => Executable -> m ()
+loadProgram (Executable instr dataMem) = do
     setPC entryPoint
+
     let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
     traverse_ (uncurry storeWord) assembled 
+
+    traverse_ (\(addr, val) -> storeByte (fromIntegral addr) (fromIntegral val)) (M.toList dataMem)
 
 runBinaryOp :: MonadCPU m => (Word32 -> Word32 -> Word32) -> RTypeArgs -> m ()
 runBinaryOp op args = do
@@ -258,7 +263,7 @@ run = do
    running <- step
    when running run  
 
-runProgram :: MonadCPU m => Program -> m ()
+runProgram :: MonadCPU m => Executable -> m ()
 runProgram p = do
     loadProgram p
     run

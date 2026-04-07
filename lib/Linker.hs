@@ -1,17 +1,39 @@
 module Linker where
-import Types 
+import Types
 import qualified Data.Map.Strict as M
+import qualified Data.IntMap.Strict as IM
 import Control.Monad (foldM)
 import Control.Monad.State
 import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import Data.Bits (Bits(..))
 import Machine
+import Data.Word (Word8)
+import Data.Char (ord)
 
 type SymbolTable = M.Map String Int
 
+data Executable = Executable 
+    { execProgram :: Program
+    , execDataMem :: IM.IntMap Word8
+    } deriving (Show)
+
 instrSize :: SomeInstruction a -> Int
 instrSize _ = 4
+
+stmtSize :: Int -> Statement -> Int
+stmtSize _ (StmtInstr i) = sum (map (const 4) (NE.toList $ lower i))
+stmtSize _ (StmtDirective (DirSection _)) = 0
+stmtSize _ (StmtDirective (DirString s))  = length s + 1
+stmtSize _ (StmtDirective (DirAscii s))   = length s
+stmtSize _ (StmtDirective (DirByte l))    = length l
+stmtSize _ (StmtDirective (DirHalf l))    = length l * 2
+stmtSize _ (StmtDirective (DirWord l))    = length l * 4
+stmtSize _ (StmtDirective (DirSpace n))   = n
+stmtSize pc (StmtDirective (DirAlign n))  =
+    let alignVal = 2 ^ n
+        remAlign = pc `mod` alignVal
+    in if remAlign == 0 then 0 else alignVal - remAlign
 
 lower :: ArchInstr 'Parsed -> NonEmpty (SomeInstruction Operand)
 lower (RealInstr i) = i :| []
@@ -50,30 +72,85 @@ lower (PseudoInstr op) = case op of
                     [ SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (LabelLo lbl))) ]
 
 expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
-expandProgram = concatMap (NE.toList . lower) 
+expandProgram = concatMap (NE.toList . lower)
 
-resolve :: ParsedProgram -> Either String Program 
-resolve l = do
-    symbolTable <- buildSymTable l 
-    let instructions = [i | (_, Just i) <- l] -- Keep only the instructions
-    let realInstructions = expandProgram instructions
-    evalStateT (mapM (resolveInstruction symbolTable) realInstructions) 0 
+data BuildState = BuildState
+    { b_textPC :: Int
+    , b_dataPC :: Int
+    , b_section :: Section
+    , b_table :: SymbolTable
+    }
 
-buildSymTable :: ParsedProgram -> Either String SymbolTable 
-buildSymTable l = snd <$> foldM step (0, M.empty) l
+buildSymTable :: ParsedProgram -> Either String BuildState
+buildSymTable = foldM step (BuildState 0 0x2000 TextSection M.empty)
     where
-        step (pc, table) (ml, mi) = do
-            newTable <- case ml of
-                Nothing -> Right table
-                Just n  -> if M.member n table
-                           then Left $ "Duplicate label: " ++ n
-                           else Right $ M.insert n pc table
+        step state (ml, ms) = do
+            let currentPC = if b_section state == TextSection then b_textPC state else b_dataPC state
 
-            let size = case mi of
-                    Nothing -> 0
-                    Just i  -> sum (map instrSize (NE.toList $ lower i)) 
-            let !nextPC = pc + size
-            return (nextPC, newTable)
+            newTable <- case ml of
+                Nothing -> Right (b_table state)
+                Just n  -> if M.member n (b_table state)
+                           then Left $ "Duplicate label: " ++ n
+                           else Right $ M.insert n currentPC (b_table state)
+
+            let state' = state { b_table = newTable }
+            case ms of
+                Nothing -> Right state'
+                Just (StmtDirective (DirSection sec)) -> Right $ state' { b_section = sec }
+                Just stmt -> do
+                    let sz = stmtSize currentPC stmt
+                    if b_section state == TextSection
+                    then Right $ state' { b_textPC = b_textPC state' + sz }
+                    else Right $ state' { b_dataPC = b_dataPC state' + sz }
+
+-- NEW: State for emitting data bytes
+data EmitState = EmitState
+    { e_instrs  :: [ArchInstr 'Parsed]
+    , e_dataMem :: IM.IntMap Word8
+    , e_textPC  :: Int
+    , e_dataPC  :: Int
+    , e_section :: Section
+    }
+
+emitSections :: ParsedProgram -> EmitState
+emitSections = foldl step (EmitState [] IM.empty 0 0x2000 TextSection)
+  where
+    step state (_, Nothing) = state
+    step state (_, Just (StmtDirective (DirSection sec))) = state { e_section = sec }
+    step state (_, Just stmt) =
+        let currentPC = if e_section state == TextSection then e_textPC state else e_dataPC state
+            sz = stmtSize currentPC stmt
+        in case stmt of
+            StmtInstr i ->
+                state { e_instrs = e_instrs state ++ [i], e_textPC = e_textPC state + sz }
+            StmtDirective dir ->
+                let newMem = insertDirective currentPC dir (e_dataMem state)
+                in state { e_dataMem = newMem, e_dataPC = e_dataPC state + sz }
+
+    insertDirective :: Int -> Directive -> IM.IntMap Word8 -> IM.IntMap Word8
+    insertDirective pc dir memMap = case dir of
+        DirString s -> foldl (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0..] (s ++ "\0"))
+        DirAscii s  -> foldl (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0..] s)
+        DirByte xs  -> foldl (\m (i, x) -> IM.insert (pc + i) (fromIntegral x) m) memMap (zip [0..] xs)
+        DirWord xs  -> foldl (\m (i, x) ->
+                            let b0 = fromIntegral (x .&. 0xFF)
+                                b1 = fromIntegral ((x `shiftR` 8) .&. 0xFF)
+                                b2 = fromIntegral ((x `shiftR` 16) .&. 0xFF)
+                                b3 = fromIntegral ((x `shiftR` 24) .&. 0xFF)
+                            in IM.insert (pc + i*4 + 3) b3 $ IM.insert (pc + i*4 + 2) b2 $ IM.insert (pc + i*4 + 1) b1 $ IM.insert (pc + i*4) b0 m) memMap (zip [0..] xs)
+        _ -> memMap
+
+resolve :: ParsedProgram -> Either String Executable
+resolve l = do
+    buildState <- buildSymTable l
+    let symTable = b_table buildState
+
+    let emitted = emitSections l
+    let rawInstrs = e_instrs emitted
+    let expanded = expandProgram rawInstrs
+
+    program <- evalStateT (mapM (resolveInstruction symTable) expanded) 0
+    return $ Executable program (e_dataMem emitted)
 
 resolveImm :: String -> Operand -> Either String Int
 resolveImm _ (ImmVal v) = Right v
@@ -81,7 +158,7 @@ resolveImm e _  = Left e
 
 checkShiftBounds :: IArithOp -> Int -> Either String Int
 checkShiftBounds op val
-    | op `elem` [SLLI, SRLI, SRAI] && (val < 0 || val > 31) = 
+    | op `elem` [SLLI, SRLI, SRAI] && (val < 0 || val > 31) =
         Left $ "Shift amount out of range (0-31): " ++ show val
     | otherwise = Right val
 
@@ -102,47 +179,42 @@ resolveRelative pc table (LabelHi l) =
     case M.lookup l table of
         Just target -> Right $ (target - pc + 0x800) `shiftR` 12
         Nothing     -> Left $ "Undefined label (Hi): " ++ l
--- Compensation for the fact that this ADDI is 4 bytes ahead of the AUIPC 
--- that started the address calculation.
---
--- Ideally we make the linker more complex later on to link instructions together
--- such that we can allow for instructions like addi a0, a0, %lo(label)
 resolveRelative pc table (LabelLo l) =
     case M.lookup l table of
         Just target -> Right $ (target - pc + 4) .&. 0xFFF
         Nothing     -> Left $ "Undefined label (Lo): " ++ l
 
 resolveAbsolute :: SymbolTable -> Operand -> Either String Int
-resolveAbsolute table (Label l) = 
+resolveAbsolute table (Label l) =
     case M.lookup l table of
-        Just target -> Right target        -- Return actual address
+        Just target -> Right target
         Nothing     -> Left $ "Undefined label: " ++ l
-resolveAbsolute table (LabelHi l) = 
+resolveAbsolute table (LabelHi l) =
     case M.lookup l table of
         Just target -> Right $ (target + 0x800) `shiftR` 12
         Nothing     -> Left $ "Undefined label (Hi): " ++ l
-resolveAbsolute table (LabelLo l) = 
+resolveAbsolute table (LabelLo l) =
     case M.lookup l table of
         Just target -> Right $ target .&. 0xFFF
         Nothing     -> Left $ "Undefined label (Lo): " ++ l
 resolveAbsolute _ (ImmVal v) = Right v
 
 resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
-resolveOperand pc table (SomeInstruction (JType op args)) 
+resolveOperand pc table (SomeInstruction (JType op args))
     = SomeInstruction . JType op <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (BType op args))
     = SomeInstruction . BType op <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (UType AUIPC args))
     = SomeInstruction . UType AUIPC <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (LoadI op args)) = 
+resolveOperand pc table (SomeInstruction (LoadI op args)) =
     SomeInstruction . LoadI op <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (JumpI op args)) = 
+resolveOperand pc table (SomeInstruction (JumpI op args)) =
     SomeInstruction . JumpI op <$> traverse (resolveRelative pc table) args
 resolveOperand pc table (SomeInstruction (ArithI op args)) = do
-    val <- resolveRelative pc table (i_imm args) 
+    val <- resolveRelative pc table (i_imm args)
     validVal <- checkShiftBounds op val
     return $ SomeInstruction $ ArithI op (args { i_imm = validVal })
-resolveOperand pc table (SomeInstruction (SType op args)) = 
+resolveOperand pc table (SomeInstruction (SType op args)) =
     SomeInstruction . SType op <$> traverse (resolveRelative pc table) args
-resolveOperand _ table (SomeInstruction instr) = 
+resolveOperand _ table (SomeInstruction instr) =
     SomeInstruction <$> traverse (resolveAbsolute table) instr

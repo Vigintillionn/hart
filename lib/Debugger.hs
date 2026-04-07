@@ -11,6 +11,7 @@ import qualified Data.Vector as V
 import Data.Int (Int32)
 import Data.Char (toLower)
 import Decoder (decodeWord)
+import Linker (Executable)
 
 data Debugger = Debugger 
     { past      :: [CPU]
@@ -62,7 +63,7 @@ resumeTrace :: CPU -> IO [CPU]
 resumeTrace currentCpu = 
     loop [currentCpu] currentCpu
 
-runTrace :: Program -> CPU -> IO [CPU]
+runTrace :: Executable -> CPU -> IO [CPU]
 runTrace prog startCPU = do
     cpuReady <- execStateT (runEmulator $ loadProgram prog) startCPU
     loop [cpuReady] cpuReady

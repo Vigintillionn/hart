@@ -3,7 +3,7 @@ module Main where
 import Parser (parse)
 import Assembler (assemble)
 import Text.Printf (printf)
-import Linker (resolve)
+import Linker (resolve, execProgram)
 import Data.Time.Clock (getCurrentTime, diffUTCTime)
 import Debugger 
 import Machine (emptyCPU, cycles)
@@ -16,33 +16,24 @@ formatFreq hz
     | otherwise       = printf "%.0f Hz" hz
 
 program :: String
-program = 
-
- "      # 1. Manually build the string 'ABC\\n' in memory \n\
-           \      # ... (Rest of your program string) ... \n\
-           \      la   x6, msg                                    \n\
-           \      addi x5, x0, 65                                 \n\
-           \      sb   x5, 0(x6)                                  \n\
-           \      addi x5, x0, 66                                 \n\
-           \      sb   x5, 1(x6)                                  \n\
-           \      addi x5, x0, 67                                 \n\
-           \      sb   x5, 2(x6)                                  \n\
-           \      addi x5, x0, 10                                 \n\
-           \      sb   x5, 3(x6)                                  \n\
-           \      ebreak                                                \n\
-           \      # 2. Setup Syscall Write (64)                   \n\
-           \      addi x10, x0, 1                                 \n\
-           \      la   x11, msg                                   \n\
-           \      addi x12, x0, 4                                 \n\
-           \      addi x17, x0, 64                                \n\
-           \      ecall                                           \n\
-           \                                                      \n\
-           \      # 4. Setup Syscall Exit (93)                    \n\
-           \      addi x10, x0, 0                                 \n\
-           \      addi x17, x0, 93                                \n\
-           \      ecall                                           \n\
-           \                                                      \n\
-           \msg:  nop"
+program = unlines
+    [ ".data"
+    , "my_text: .string \"Hello World!\\n\""
+    , ""
+    , ".text"
+    , "main:"
+    , "    # 1. Print the string"
+    , "    li a0, 1          # fd = 1 (stdout)"
+    , "    la a1, my_text    # buffer address"
+    , "    li a2, 14          # length of \"Hello\\n\""
+    , "    li a7, 64         # syscall 64 (sys_write)"
+    , "    ecall"
+    , ""
+    , "    # 2. Exit gracefully"
+    , "    li a0, 0          # exit code 0"
+    , "    li a7, 93         # syscall 93 (sys_exit)"
+    , "    ecall"
+    ]
  
 main :: IO ()
 main = do 
@@ -53,7 +44,7 @@ main = do
                 Left err        -> putStrLn $ "ERROR: " ++ err
                 Right resolved -> do
                     putStrLn "---- ASSEMBLED ---"
-                    let assembled = assemble resolved 
+                    let assembled = assemble (execProgram resolved) 
                     mapM_ (putStrLn . printf "%032b") assembled 
 
                     putStrLn "---- EXECUTING ---"

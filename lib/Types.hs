@@ -92,6 +92,24 @@ data PseudoOp = P_NOP
               | P_CALL String
               | P_TAIL String
 
+data Section = TextSection | DataSection | BssSection
+    deriving (Show, Eq)
+
+data Directive
+    = DirSection Section
+    | DirString String
+    | DirAscii String
+    | DirByte [Int]
+    | DirHalf [Int]
+    | DirWord [Int]
+    | DirSpace Int
+    | DirAlign Int
+    deriving (Show, Eq)
+
+data Statement
+    = StmtInstr (ArchInstr 'Parsed)
+    | StmtDirective Directive
+
 deriving instance Show a => Show (Instruction k a)
 deriving instance Eq a => Eq (Instruction k a)
 
@@ -166,7 +184,7 @@ instance Traversable SomeInstruction where
     traverse f (SomeInstruction i) = SomeInstruction <$> traverse f i
 
 -- Line might have a label, instruction, or both
-type SourceLine = (Maybe String, Maybe (ArchInstr 'Parsed))
+type SourceLine = (Maybe String, Maybe Statement)
 type ParsedProgram = [SourceLine]
 type LoweredProgram = [SomeInstruction Operand]
 type Program = [SomeInstruction Int]

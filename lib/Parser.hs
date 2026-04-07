@@ -103,6 +103,8 @@ integer = do
         Just x  -> return x
         Nothing -> fail "Integer overflow or invalid number"
 
+sepBy1 :: Parser a -> Parser sep -> Parser [a]
+sepBy1 p sep = (:) <$> p <*> many (sep *> p)
 
 comma :: Parser ()
 comma = void $ lexeme (char ',')
@@ -115,6 +117,25 @@ lexeme p = p <* sc
 
 comment :: Parser ()
 comment = void $ char '#' *> many (satisfy (/= '\n'))
+
+escapeChar :: Parser Char
+escapeChar = do
+    void $ char '\\'
+    c <- satisfy (`elem` "nt0\\\"")
+    return $ case c of
+        'n'  -> '\n'
+        't'  -> '\t'
+        '0'  -> '\0'
+        '\\' -> '\\'
+        '"'  -> '"'
+        _    -> c
+        
+stringLiteral :: Parser String
+stringLiteral = lexeme $ do
+    void $ char '"'
+    str <- many (escapeChar <|> satisfy (/= '"'))
+    void $ char '"'
+    return str
 
 eof :: Parser ()
 eof = Parser $ \s ->
@@ -376,12 +397,39 @@ parseInstruction = choice $ concat
                     , ("call", P_CALL <$> lexeme (string "call")), ("tail", P_TAIL <$> lexeme (string "tail"))
                     ]
 
+parseSection :: Parser Directive
+parseSection = choice
+    [ DirSection TextSection <$ lexeme (string ".text")
+    , DirSection DataSection <$ lexeme (string ".data")
+    , DirSection BssSection  <$ lexeme (string ".bss")
+    ]
+
+parseDirective :: Parser Directive
+parseDirective = choice
+    [ parseSection
+    , lexeme (string ".string") *> (DirString <$> stringLiteral)
+    , lexeme (string ".asciz")  *> (DirString <$> stringLiteral)
+    , lexeme (string ".ascii")  *> (DirAscii  <$> stringLiteral)
+    , lexeme (string ".byte")   *> (DirByte   <$> sepBy1 immediate comma)
+    , lexeme (string ".half")   *> (DirHalf   <$> sepBy1 immediate comma)
+    , lexeme (string ".short")  *> (DirHalf   <$> sepBy1 immediate comma)
+    , lexeme (string ".word")   *> (DirWord   <$> sepBy1 immediate comma)
+    , lexeme (string ".space")  *> (DirSpace  <$> immediate)
+    , lexeme (string ".zero")   *> (DirSpace  <$> immediate)
+    , lexeme (string ".align")  *> (DirAlign  <$> immediate)
+    ]
+
+parseStatement :: Parser Statement
+parseStatement = 
+    (StmtDirective <$> parseDirective) <|> 
+    (StmtInstr     <$> parseInstruction)
+
 parseLine :: Parser SourceLine 
 parseLine = do
     sc
     l <- optional labelDef
     sc
-    i <- optional parseInstruction
+    i <- optional parseStatement 
     sc
     _ <- optional comment
 
