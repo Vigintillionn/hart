@@ -4,4 +4,5 @@ import type { CpuState } from "./CpuState";
 export type EmulatorResponse =
   | { type: "state"; data: CpuState }
   | { type: "loaded"; state: CpuState; sourceMap: Array<[number, number]> }
-  | { type: "error"; message: string };
+  | { type: "error"; message: string }
+  | { type: "need_input" };

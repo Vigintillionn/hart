@@ -24,20 +24,24 @@ jobs:
       with:
         path: |
           ~/.cabal/store
-          dist-newstyle
-        key: ${{ runner.os }}-ghc-9.6-${{ hashFiles('**/*.cabal', '**/cabal.project') }}
+          emulator/dist-newstyle
+        key: ${{ runner.os }}-ghc-9.6-${{ hashFiles('emulator/**/*.cabal', 'emulator/**/cabal.project') }}
         restore-keys: |
           ${{ runner.os }}-ghc-9.6-
 
     - name: Update Cabal
+      working-directory: ./emulator
       run: cabal update
 
     - name: Build dependencies
+      working-directory: ./emulator
       run: cabal build all --only-dependencies
 
     - name: Build project
+      working-directory: ./emulator
       run: cabal build all
 
     - name: Run Tests
+      working-directory: ./emulator
       # This runs the test suite we just defined
       run: cabal test all
