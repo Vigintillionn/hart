@@ -18,7 +18,7 @@ if [[ "$TARGET_TRIPLE" == *"windows"* ]]; then
 fi
 
 cd ../frontend
-DEST_DIR="./src/src-tauri/binaries"
+DEST_DIR="./src-tauri/binaries"
 mkdir -p "$DEST_DIR"
 
 DEST_FILE="$DEST_DIR/riscv-$TARGET_TRIPLE$EXT"
