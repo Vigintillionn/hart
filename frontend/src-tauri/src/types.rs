@@ -12,14 +12,24 @@ pub struct CpuState {
     pub mem: Vec<(u64, u8)>,
     #[serde(rename = "heapTop")]
     pub heap_top: u32,
+    #[serde(rename = "outputBuffer")]
+    pub output_buffer: String,
 }
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
 #[ts(export, export_to = "../src/bindings/")]
-#[serde(tag = "type", content = "data")]
+#[serde(tag = "type")]
 pub enum EmulatorResponse {
     #[serde(rename = "state")]
-    State(CpuState),
+    State { data: CpuState },
+    #[serde(rename = "loaded")]
+    Loaded {
+        state: CpuState,
+        #[serde(rename = "sourceMap")]
+        source_map: Vec<(u32, u32)>,
+    },
     #[serde(rename = "error")]
-    Error(String),
+    Error { message: String },
+    #[serde(rename = "need_input")]
+    NeedInput,
 }
