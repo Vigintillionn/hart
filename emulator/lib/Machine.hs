@@ -70,6 +70,9 @@ class Monad m => MonadCPU m where
     consoleRead    :: m String
     terminate      :: m ()
 
+    getInputBuffer :: m (Maybe String)
+    clearInputBuffer :: m ()
+
     getHeapTop  :: m Word32
     setHeapTop  :: Word32 -> m ()
 
@@ -80,15 +83,16 @@ class Monad m => MonadCPU m where
 
 newtype Register = Reg { unReg :: Int } deriving (Show, Eq, Ord)
 
-data PCUpdate = Advance | Jump Word32 | Terminate | Breakpoint
+data PCUpdate = Advance | Jump Word32 | Terminate | Breakpoint | RequestInput
 
-data RunStatus = Running | Halted | Paused
+data RunStatus = Running | Halted | Paused | WaitingForInput
     deriving (Show, Eq)
 
 instance ToJSON RunStatus where
     toJSON Running = "Running"
     toJSON Halted  = "Halted"
     toJSON Paused  = "Paused"
+    toJSON WaitingForInput = "WaitingForInput"
 
 data CPU = CPU
     { pc        :: Word32
@@ -100,6 +104,8 @@ data CPU = CPU
     , heapTop   :: Word32
     , fileMap   :: M.IntMap Handle
     , nextFD    :: Int
+    , outputBuffer :: String
+    , inputBuffer  :: Maybe String
     }
 
 instance ToJSON CPU where
@@ -111,6 +117,8 @@ instance ToJSON CPU where
         , "cycles"  .= cycles cpu
         , "status"  .= status cpu
         , "heapTop" .= heapTop cpu
+        , "outputBuffer" .= outputBuffer cpu
+        , "inputBuffer" .= inputBuffer cpu
         ]
 
 newtype Emulator a = Emulator
@@ -134,12 +142,13 @@ instance MonadCPU Emulator where
     getStatus = gets status
     setStatus s = modify $ \cpu -> cpu { status = s }
 
-    consolePrintLn m = liftIO $ putStrLn m
-    consolePrint m = liftIO $ do
-        putStr m
-        hFlush stdout
+    consolePrintLn m = modify $ \cpu -> cpu { outputBuffer = outputBuffer cpu ++ m ++ "\n" }
+    consolePrint m = modify $ \cpu -> cpu { outputBuffer = outputBuffer cpu ++ m }
     consoleRead = liftIO getLine
     terminate = modify $ \cpu -> cpu { status = Halted }
+
+    getInputBuffer = gets inputBuffer
+    clearInputBuffer = modify $ \cpu -> cpu { inputBuffer = Nothing }
 
     getHeapTop = gets heapTop
     setHeapTop addr = modify $ \cpu -> cpu { heapTop = addr }
@@ -251,6 +260,8 @@ emptyCPU = CPU
     , heapTop   = 0x20000000
     , fileMap   = M.empty
     , nextFD    = 3
+    , outputBuffer = ""
+    , inputBuffer  = Nothing
     }
 
 incPC :: MonadCPU m => m ()

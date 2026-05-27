@@ -187,7 +187,7 @@ instance Traversable SomeInstruction where
 
 -- Line might have a label, instruction, or both
 type SourceLine = (Maybe String, Maybe Statement)
-type ParsedProgram = [SourceLine]
+type ParsedProgram = [(Int, SourceLine)]
 type LoweredProgram = [SomeInstruction Operand]
 type Program = [SomeInstruction Int]
 

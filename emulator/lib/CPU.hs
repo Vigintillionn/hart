@@ -74,7 +74,7 @@ fetch :: MonadCPU m => m Word32
 fetch = getPC >>= loadWord 
 
 loadProgram :: MonadCPU m => Executable -> m ()
-loadProgram (Executable instr dataMem) = do
+loadProgram (Executable instr dataMem _) = do
     setPC entryPoint
 
     let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
@@ -318,6 +318,9 @@ step = do
                             return False 
                         Breakpoint -> do
                             setStatus Paused 
+                            return False
+                        RequestInput -> do
+                            setStatus WaitingForInput
                             return False
     
 run :: MonadCPU m => m ()

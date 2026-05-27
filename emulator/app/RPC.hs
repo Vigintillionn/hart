@@ -2,16 +2,17 @@
 module RPC (runRPC) where
 
 import Parser (parse)
-import Linker (resolve)
+import Linker (resolve, Executable(..))
 import CPU (loadProgram)
 import Machine (emptyCPU, Emulator(..), CPU(..), RunStatus(..), MonadCPU (..), incPC)
-import Control.Monad.State (execStateT)
+import Control.Monad.State (execStateT, modify)
 
 import Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as BL
 import System.IO (hFlush, stdout, isEOF)
 import Debugger (Debugger (..), isAtBreakpoint, resumeTrace, stepForward, stepBack, rewind, initDebugger)
 import Control.Monad (when)
+import Data.Word (Word32)
 
 data Command
     = CmdLoad String
@@ -19,6 +20,7 @@ data Command
     | CmdStepFwd
     | CmdStepBack
     | CmdRewind
+    | CmdInput String
     | CmdQuit
   deriving (Show, Eq)
 
@@ -31,19 +33,28 @@ instance FromJSON Command where
             "step_forward" -> return CmdStepFwd
             "step_back"    -> return CmdStepBack
             "rewind"       -> return CmdRewind
+            "input"        -> CmdInput <$> v .: "data"
             "quit"         -> return CmdQuit
             _              -> fail "Unknown command"
 
-data Response = ResState CPU | ResError String
+data Response = ResState CPU | ResLoaded CPU [(Word32, Int)] | ResError String | ResNeedInput
 
 instance ToJSON Response where
     toJSON (ResState cpu) = object
         [ "type" .= ("state" :: String)
         , "data" .= cpu
         ]
+    toJSON (ResLoaded cpu smap) = object
+        [ "type" .= ("loaded" :: String)
+        , "state" .= cpu
+        , "sourceMap" .= smap
+        ]
     toJSON (ResError msg) = object
         [ "type"    .= ("error" :: String)
         , "message" .= msg
+        ]
+    toJSON ResNeedInput = object
+        [ "type" .= ("need_input" :: String)
         ]
 
 sendResponse :: Response -> IO ()
@@ -57,7 +68,7 @@ runRPC _ = do
     let emptyDbg = Debugger [] emptyCPU []
     rpcLoop emptyDbg
 
-compileAndLoad :: String -> IO (Maybe Debugger)
+compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)]))
 compileAndLoad sourceCode = do
     case parse sourceCode of
         Left err -> do
@@ -69,7 +80,7 @@ compileAndLoad sourceCode = do
                 return Nothing
             Right executable -> do
                 readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
-                return $ Just (initDebugger [readyCpu])
+                return $ Just (initDebugger [readyCpu], execSourceMap executable)
 
 rpcLoop :: Debugger -> IO ()
 rpcLoop dbg = do
@@ -88,8 +99,8 @@ rpcLoop dbg = do
                 mNewDbg <- compileAndLoad sourceCode
                 case mNewDbg of
                     Nothing -> rpcLoop dbg
-                    Just newDbg -> do
-                        sendResponse (ResState $ current newDbg)
+                    Just (newDbg, smap) -> do
+                        sendResponse (ResLoaded (current newDbg) smap)
                         rpcLoop newDbg
 
             Just CmdRun -> do
@@ -111,8 +122,14 @@ rpcLoop dbg = do
                             (s:ss) -> Debugger ss s []
                             []     -> dbg
 
-                    sendResponse (ResState $ current newDbg)
-                    rpcLoop newDbg
+                    let cFinal = current newDbg
+                    if status cFinal == WaitingForInput then do
+                        sendResponse (ResState cFinal)
+                        sendResponse ResNeedInput
+                        rpcLoop newDbg
+                    else do
+                        sendResponse (ResState cFinal)
+                        rpcLoop newDbg
 
             Just CmdStepFwd -> do
                 let nextDbg = stepForward dbg
@@ -128,3 +145,33 @@ rpcLoop dbg = do
                 let startDbg = rewind dbg
                 sendResponse (ResState $ current startDbg)
                 rpcLoop startDbg
+
+            Just (CmdInput text) -> do
+                let c = current dbg
+                if status c == WaitingForInput then do
+                    startState <- execStateT (runEmulator $ do
+                                    modify $ \cpu -> cpu { 
+                                        inputBuffer = Just text, 
+                                        status = Running,
+                                        outputBuffer = outputBuffer cpu ++ text ++ "\n"
+                                    }
+                                  ) c
+
+                    newTrace <- resumeTrace startState
+
+                    let fullTrace = reverse (past dbg) ++ newTrace
+                    let newDbg = case reverse fullTrace of
+                            (s:ss) -> Debugger ss s []
+                            []     -> dbg
+
+                    let cFinal = current newDbg
+                    if status cFinal == WaitingForInput then do
+                        sendResponse (ResState cFinal)
+                        sendResponse ResNeedInput
+                        rpcLoop newDbg
+                    else do
+                        sendResponse (ResState cFinal)
+                        rpcLoop newDbg
+                else do
+                    sendResponse (ResError "Emulator is not waiting for input.")
+                    rpcLoop dbg

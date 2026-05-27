@@ -23,67 +23,58 @@ abiMap = M.fromList [
     ("t3", 28), ("t4", 29), ("t5", 30), ("t6", 31)
     ]
 
-newtype Parser a = Parser { runParser :: String -> Either AssemblyError (a, String) }
+newtype Parser a = Parser { runParser :: Int -> String -> Either AssemblyError (a, Int, String) }
 
 instance Functor Parser where
-    fmap :: (a -> b) -> Parser a -> Parser b 
-    fmap f (Parser pa) = Parser $ \input ->
-        case pa input of
+    fmap f (Parser pa) = Parser $ \l input ->
+        case pa l input of
             Left err -> Left err
-            Right (a, rest) -> Right (f a, rest)
+            Right (a, l', rest) -> Right (f a, l', rest)
 
 instance Applicative Parser where
-    pure :: a -> Parser a
-    pure a = Parser $ \s -> Right (a, s) 
+    pure a = Parser $ \l s -> Right (a, l, s) 
 
-    (<*>) :: Parser (a -> b) -> Parser a -> Parser b
-    (Parser pf) <*> (Parser pa) = Parser $ \input ->
-        case pf input of
+    (Parser pf) <*> (Parser pa) = Parser $ \l input ->
+        case pf l input of
             Left err -> Left err
-            Right (f, rest1) ->
-                case pa rest1 of
+            Right (f, l1, rest1) ->
+                case pa l1 rest1 of
                     Left err -> Left err
-                    Right (a, rest2) -> Right (f a, rest2)
+                    Right (a, l2, rest2) -> Right (f a, l2, rest2)
 
 instance Monad Parser where
-    return :: a -> Parser a
     return = pure
 
-    (>>=) :: Parser a -> (a -> Parser b) -> Parser b
-    (Parser pa) >>= f = Parser $ \input ->
-        case pa input of
+    (Parser pa) >>= f = Parser $ \l input ->
+        case pa l input of
             Left err -> Left err
-            Right (a, rest) ->
-                let newParser = f a
-                    (Parser pf) = newParser 
-                in pf rest 
+            Right (a, l1, rest) ->
+                let (Parser pf) = f a 
+                in pf l1 rest 
 
 instance Alternative Parser where
-    empty :: Parser a
-    empty = Parser $ \_ -> Left EmptyParserFailed
+    empty = Parser $ \_ _ -> Left EmptyParserFailed
 
-    (<|>) :: Parser a -> Parser a -> Parser a
-    (Parser pa) <|> (Parser pb) = Parser $ \input ->
-        case pa input of
-            Left _ -> pb input
+    (Parser pa) <|> (Parser pb) = Parser $ \l input ->
+        case pa l input of
+            Left _ -> pb l input
             Right res -> Right res
 
 instance MonadFail Parser where
-    fail :: String -> Parser a
-    fail msg = Parser $ \_ -> Left (ParserFail msg)
+    fail msg = Parser $ \_ _ -> Left (ParserFail msg)
 
 choice :: [Parser a] -> Parser a
 choice = asum 
 
 lookAhead :: Parser a -> Parser a
-lookAhead (Parser p) = Parser $ \input ->
-    case p input of
+lookAhead (Parser p) = Parser $ \l input ->
+    case p l input of
         Left err -> Left err
-        Right (a, _) -> Right (a, input)
+        Right (a, _, _) -> Right (a, l, input)
 
 satisfy :: (Char -> Bool) -> Parser Char 
-satisfy predicate = Parser $ \case 
-        (c:cs) | predicate c -> Right (c, cs)
+satisfy predicate = Parser $ \l str -> case str of 
+        (c:cs) | predicate c -> Right (c, if c == '\n' then l + 1 else l, cs)
         (c:_)           -> Left (UnexpectedChar c)
         []              -> Left EOF 
 
@@ -138,10 +129,10 @@ stringLiteral = lexeme $ do
     return str
 
 eof :: Parser ()
-eof = Parser $ \s ->
+eof = Parser $ \l s ->
     case s of
-        []  -> Right((), s)
-        _   -> Left (ParserFail $ "Expected end of file, but got: " ++ s)
+        []  -> Right((), l, s)
+        _   -> Left (ParserFail $ "Syntax error at line " ++ show l ++ ":\n    > " ++ takeWhile (/= '\n') s)
 
 register :: Parser Register 
 register = lexeme $ choice [abiName, xName]
@@ -426,8 +417,12 @@ parseStatement =
     (StmtDirective <$> parseDirective) <|> 
     (StmtInstr     <$> parseInstruction)
 
-parseLine :: Parser SourceLine 
+getLineNum :: Parser Int
+getLineNum = Parser $ \l s -> Right (l, l, s)
+
+parseLine :: Parser (Int, SourceLine) 
 parseLine = do
+    ln <- getLineNum
     sc
     l <- optional labelDef
     sc
@@ -438,21 +433,21 @@ parseLine = do
     case (l, i) of
         (Nothing, Nothing) -> void (char '\n')
         _                  -> void (char '\n') <|> eof
-    return (l, i)
+    return (ln, (l, i))
 
-parseProgram :: Parser [SourceLine]
+parseProgram :: Parser [(Int, SourceLine)]
 parseProgram = do
     l <- many parseLine 
     eof
     return $ filter (not . isEmpty) l
     where
-        isEmpty (Nothing, Nothing) = True
-        isEmpty _                  = False
+        isEmpty (_, (Nothing, Nothing)) = True
+        isEmpty _                       = False
 
-parse :: String -> Either AssemblyError [SourceLine] 
-parse src = case runParser parseProgram src of
-    Right (instr, left) -> case left of
+parse :: String -> Either AssemblyError [(Int, SourceLine)] 
+parse src = case runParser parseProgram 1 src of
+    Right (instr, finalLineNum, left) -> case left of
         []  -> Right instr
-        s   -> Left (ParserFail $ "Could not parse full source, left: " ++ s)
+        s   -> Left (ParserFail $ "Syntax error at line " ++ show finalLineNum ++ ":\n    > " ++ takeWhile (/= '\n') s)
     Left err          -> Left err
 

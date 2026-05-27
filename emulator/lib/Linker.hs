@@ -8,7 +8,7 @@ import Data.List.NonEmpty (NonEmpty(..))
 import qualified Data.List.NonEmpty as NE
 import Data.Bits (Bits(..))
 import Machine
-import Data.Word (Word8)
+import Data.Word (Word8, Word32)
 import Data.Char (ord)
 
 type SymbolTable = M.Map String Int
@@ -16,6 +16,7 @@ type SymbolTable = M.Map String Int
 data Executable = Executable 
     { execProgram :: Program
     , execDataMem :: IM.IntMap Word8
+    , execSourceMap :: [(Word32, Int)]
     } deriving (Show)
 
 instrSize :: SomeInstruction a -> Int
@@ -71,8 +72,8 @@ lower (PseudoInstr op) = case op of
     P_TAIL lbl -> SomeInstruction (UType AUIPC (UTypeArgs x6 (LabelHi lbl))) :|
                     [ SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (LabelLo lbl))) ]
 
-expandProgram :: [ArchInstr 'Parsed] -> [SomeInstruction Operand]
-expandProgram = concatMap (NE.toList . lower)
+expandProgram :: [(Int, ArchInstr 'Parsed)] -> [(Int, SomeInstruction Operand)]
+expandProgram = concatMap (\(ln, instr) -> map (ln,) (NE.toList . lower $ instr))
 
 data BuildState = BuildState
     { b_textPC :: Int
@@ -84,7 +85,7 @@ data BuildState = BuildState
 buildSymTable :: ParsedProgram -> Either String BuildState
 buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
     where
-        step st (ml, ms) = do
+        step st (_, (ml, ms)) = do
             let currentPC = if b_section st == TextSection then b_textPC st else b_dataPC st
 
             newTable <- case ml of
@@ -104,7 +105,7 @@ buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
                     else Right $ st' { b_dataPC = b_dataPC st' + sz }
 
 data EmitState = EmitState
-    { e_instrs  :: [ArchInstr 'Parsed]
+    { e_instrs  :: [(Int, ArchInstr 'Parsed)]
     , e_dataMem :: IM.IntMap Word8
     , e_textPC  :: Int
     , e_dataPC  :: Int
@@ -114,14 +115,14 @@ data EmitState = EmitState
 emitSections :: ParsedProgram -> EmitState
 emitSections = foldl step (EmitState [] IM.empty 0 0x10000000 TextSection)
   where
-    step st (_, Nothing) = st
-    step st (_, Just (StmtDirective (DirSection sec))) = st { e_section = sec }
-    step st (_, Just stmt) =
+    step st (_, (_, Nothing)) = st
+    step st (_, (_, Just (StmtDirective (DirSection sec)))) = st { e_section = sec }
+    step st (ln, (_, Just stmt)) =
         let currentPC = if e_section st == TextSection then e_textPC st else e_dataPC st
             sz = stmtSize currentPC stmt
         in case stmt of
             StmtInstr i ->
-                st { e_instrs = e_instrs st ++ [i], e_textPC = e_textPC st + sz }
+                st { e_instrs = e_instrs st ++ [(ln, i)], e_textPC = e_textPC st + sz }
             StmtDirective dir ->
                 let newMem = insertDirective currentPC dir (e_dataMem st)
                 in st { e_dataMem = newMem, e_dataPC = e_dataPC st + sz }
@@ -148,8 +149,15 @@ resolve l = do
     let rawInstrs = e_instrs emitted
     let expanded = expandProgram rawInstrs
 
-    program <- evalStateT (mapM (resolveInstruction symTable) expanded) 0
-    return $ Executable program (e_dataMem emitted)
+    programWithLines <- evalStateT (mapM (\(ln, instr) -> do
+        pc <- get
+        resolved <- resolveInstruction symTable instr
+        return (resolved, (fromIntegral pc :: Word32, ln))
+        ) expanded) 0
+        
+    let program = map fst programWithLines
+    let sourceMap = map snd programWithLines
+    return $ Executable program (e_dataMem emitted) sourceMap
 
 resolveImm :: String -> Operand -> Either String Int
 resolveImm _ (ImmVal v) = Right v
