@@ -144,102 +144,178 @@
     "0x" + (num >>> 0).toString(16).padStart(8, "0");
 </script>
 
-<div class="ide-layout">
-  <header class="toolbar">
-    <div class="branding">RISC-V Studio</div>
-    <div class="controls">
-      <button class="btn" onclick={handleOpenFile}>Open File</button>
-      <button class="btn" onclick={handleSaveFile}>Save</button>
-      <div class="divider"></div>
-      <button class="btn primary" onclick={handleLoad}>Load & Compile</button>
-      <div class="divider"></div>
-      <button class="btn" onclick={() => (showSettings = !showSettings)}
-        >🎨 Theme</button
+<div
+  class="flex flex-col h-screen w-screen relative bg-zinc-950 text-zinc-300 font-sans overflow-hidden"
+>
+  <header
+    class="flex items-center justify-between px-4 py-2 bg-zinc-900 border-b border-zinc-950 shadow-sm z-10"
+  >
+    <div class="font-semibold text-white text-lg tracking-wide">
+      RISC-V Studio
+    </div>
+    <div class="flex gap-2 items-center">
+      <button
+        class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
+        onclick={handleOpenFile}>Open File</button
       >
-      <div class="divider"></div>
-      <button class="btn" onclick={handleRun} disabled={!cpuState}>Run</button>
-      <button class="btn" onclick={handleStepFwd} disabled={!cpuState}
-        >Step ➡</button
+      <button
+        class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
+        onclick={handleSaveFile}>Save</button
       >
-      <button class="btn" onclick={handleStepBack} disabled={!cpuState}
-        >⬅ Step</button
+      <div class="w-px h-6 bg-zinc-700 mx-1"></div>
+      <button
+        class="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-sm font-medium text-white rounded shadow-sm transition-colors duration-200 border-none cursor-pointer"
+        onclick={handleLoad}>Load & Compile</button
       >
-      <button class="btn danger" onclick={handleRewind} disabled={!cpuState}
-        >Rewind</button
+      <div class="w-px h-6 bg-zinc-700 mx-1"></div>
+      <button
+        class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
+        onclick={() => (showSettings = !showSettings)}>🎨 Theme</button
+      >
+      <div class="w-px h-6 bg-zinc-700 mx-1"></div>
+      <button
+        class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
+        onclick={handleRun}
+        disabled={!cpuState}>Run</button
+      >
+      <button
+        class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
+        onclick={handleStepFwd}
+        disabled={!cpuState}>Step ➡</button
+      >
+      <button
+        class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
+        onclick={handleStepBack}
+        disabled={!cpuState}>⬅ Step</button
+      >
+      <button
+        class="px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 shadow-sm border-none cursor-pointer"
+        onclick={handleRewind}
+        disabled={!cpuState}>Rewind</button
       >
     </div>
-    <div class="status-indicator">
+    <div class="flex items-center">
       {#if cpuState}
-        <span class="badge {cpuState.status.toLowerCase()}"
-          >{cpuState.status}</span
+        <span
+          class="px-3 py-1 rounded-full text-xs font-bold tracking-wide {cpuState.status ===
+          'Running'
+            ? 'bg-green-900 text-green-300'
+            : cpuState.status === 'Halted'
+              ? 'bg-red-950 text-red-300'
+              : cpuState.status === 'WaitingForInput'
+                ? 'bg-amber-900 text-amber-200'
+                : 'bg-zinc-800 text-zinc-400'}">{cpuState.status}</span
         >
       {:else}
-        <span class="badge idle">Idle</span>
+        <span
+          class="px-3 py-1 rounded-full text-xs font-bold tracking-wide bg-zinc-800 text-zinc-400"
+          >Idle</span
+        >
       {/if}
     </div>
   </header>
 
   {#if showSettings}
-    <div class="settings-modal">
-      <div class="settings-header">
-        <h3>Theme Colors</h3>
-        <button class="close-btn" onclick={() => (showSettings = false)}
-          >×</button
+    <div
+      class="absolute top-15 right-5 w-72 bg-zinc-900 border border-zinc-800 rounded-lg shadow-xl z-50 flex flex-col overflow-hidden"
+    >
+      <div
+        class="flex justify-between items-center px-4 py-3 bg-zinc-950 border-b border-zinc-800"
+      >
+        <h3 class="m-0 text-sm font-semibold text-white">Theme Colors</h3>
+        <button
+          class="bg-transparent border-none text-zinc-400 hover:text-white text-xl leading-none cursor-pointer p-0 m-0"
+          onclick={() => (showSettings = false)}>×</button
         >
       </div>
-      <div class="settings-body">
-        <label>
+      <div class="flex flex-col gap-3 p-4">
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Background</span>
-          <input type="color" bind:value={themeColors.background} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.background}
+          />
         </label>
-        <label>
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Keywords (li, add)</span>
-          <input type="color" bind:value={themeColors.keyword} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.keyword}
+          />
         </label>
-        <label>
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Registers (x0, a0)</span>
-          <input type="color" bind:value={themeColors.register} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.register}
+          />
         </label>
-        <label>
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Directives (.text)</span>
-          <input type="color" bind:value={themeColors.directive} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.directive}
+          />
         </label>
-        <label>
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Numbers (100, 0x10)</span>
-          <input type="color" bind:value={themeColors.number} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.number}
+          />
         </label>
-        <label>
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Strings ("...")</span>
-          <input type="color" bind:value={themeColors.string} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.string}
+          />
         </label>
-        <label>
+        <label class="flex justify-between items-center text-zinc-300 text-sm">
           <span>Comments (#)</span>
-          <input type="color" bind:value={themeColors.comment} />
+          <input
+            type="color"
+            class="w-8 h-8 p-0 cursor-pointer rounded border border-zinc-700 bg-transparent"
+            bind:value={themeColors.comment}
+          />
         </label>
       </div>
     </div>
   {/if}
 
-  <main class="workspace">
-    <section class="pane editor-pane">
-      <div class="editor-tabs">
+  <main class="flex flex-1 overflow-hidden">
+    <!-- Editor Pane -->
+    <section
+      class="flex flex-col flex-2 min-w-0 bg-zinc-900 border-r border-zinc-800"
+    >
+      <div class="flex bg-zinc-950 border-b border-zinc-800">
         {#each openFiles as file}
           <!-- svelte-ignore a11y_click_events_have_key_events -->
           <!-- svelte-ignore a11y_no_static_element_interactions -->
           <div
-            class="tab {activeFileId === file.id ? 'active' : ''}"
+            class="flex items-center gap-2 px-4 py-2 cursor-pointer text-sm border-r border-zinc-800 select-none {activeFileId ===
+            file.id
+              ? 'bg-zinc-900 text-white border-t-2 border-t-sky-500'
+              : 'bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}"
             onclick={() => (activeFileId = file.id)}
           >
             {file.name}
             {#if openFiles.length > 1}
-              <button class="close-tab" onclick={(e) => closeFile(file.id, e)}
-                >×</button
+              <button
+                class="bg-transparent border-none text-zinc-500 hover:text-red-500 text-lg leading-none cursor-pointer p-0 m-0"
+                onclick={(e) => closeFile(file.id, e)}>×</button
               >
             {/if}
           </div>
         {/each}
       </div>
-      <div class="editor-wrapper">
+      <div class="flex-1 relative overflow-hidden">
         <Editor
           {activeFileId}
           files={openFiles}
@@ -250,42 +326,70 @@
       </div>
     </section>
 
-    <aside class="pane debugger-pane">
-      <div class="pane-header">CPU State</div>
-      <div class="debugger-content">
+    <!-- Debugger Pane -->
+    <aside class="flex flex-col flex-1 min-w-75 bg-zinc-900">
+      <div
+        class="bg-zinc-950 px-3 py-1.5 text-xs uppercase tracking-wider text-zinc-500 border-b border-zinc-800"
+      >
+        CPU State
+      </div>
+      <div class="p-4 overflow-y-auto">
         {#if cpuState}
-          <div class="cpu-metrics">
-            <div class="metric">
-              <span>PC</span> <strong>{cpuState.pc}</strong>
+          <div
+            class="flex justify-between bg-zinc-950 p-3 rounded-lg border border-zinc-800 mb-4 shadow-inner"
+          >
+            <div class="flex flex-col">
+              <span class="text-xs text-zinc-500 uppercase tracking-wide"
+                >PC</span
+              >
+              <strong class="text-lg text-amber-200 font-mono"
+                >{cpuState.pc}</strong
+              >
             </div>
-            <div class="metric">
-              <span>Cycles</span> <strong>{cpuState.cycles}</strong>
+            <div class="flex flex-col text-right">
+              <span class="text-xs text-zinc-500 uppercase tracking-wide"
+                >Cycles</span
+              >
+              <strong class="text-lg text-amber-200 font-mono"
+                >{cpuState.cycles}</strong
+              >
             </div>
           </div>
 
-          <div class="registers-grid">
+          <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
             {#each cpuState.regs as reg, i}
-              <div class="reg-cell">
-                <span class="reg-name">x{i}</span>
-                <span class="reg-value" title={reg.toString()}
+              <div
+                class="flex justify-between items-center bg-zinc-950 px-2 py-1.5 rounded border border-zinc-800 font-mono shadow-sm"
+              >
+                <span class="text-sky-400 font-bold text-sm">x{i}</span>
+                <span class="text-orange-300 text-sm" title={reg.toString()}
                   >{toHex(reg)}</span
                 >
               </div>
             {/each}
           </div>
         {:else}
-          <div class="empty-state">Awaiting compilation...</div>
+          <div
+            class="flex items-center justify-center h-32 text-zinc-600 italic text-sm"
+          >
+            Awaiting compilation...
+          </div>
         {/if}
       </div>
     </aside>
   </main>
 
-  <footer class="pane terminal-pane">
-    <div class="terminal-tabs">
+  <footer
+    class="flex flex-col h-[30%] min-h-50 bg-zinc-900 border-t border-zinc-800"
+  >
+    <div class="flex gap-px bg-zinc-950 border-b border-zinc-800">
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="term-tab {activeTerminalTab === 'system' ? 'active' : ''}"
+        class="px-4 py-1.5 cursor-pointer text-xs uppercase tracking-wider {activeTerminalTab ===
+        'system'
+          ? 'bg-zinc-900 text-white border-t border-t-sky-500'
+          : 'bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}"
         onclick={() => (activeTerminalTab = "system")}
       >
         Assembler Output
@@ -293,25 +397,28 @@
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="term-tab {activeTerminalTab === 'program' ? 'active' : ''}"
+        class="px-4 py-1.5 cursor-pointer text-xs uppercase tracking-wider {activeTerminalTab ===
+        'program'
+          ? 'bg-zinc-900 text-white border-t border-t-sky-500'
+          : 'bg-zinc-950 text-zinc-500 hover:text-zinc-300 hover:bg-zinc-900'}"
         onclick={() => (activeTerminalTab = "program")}
       >
         Program Console
       </div>
     </div>
 
-    <div class="terminals-container">
+    <div class="flex-1 relative overflow-hidden bg-zinc-950">
       <div
-        class="term-wrapper {activeTerminalTab === 'system'
-          ? 'active'
-          : 'hidden'}"
+        class="absolute inset-0 z-10 {activeTerminalTab === 'system'
+          ? 'visible'
+          : 'invisible'}"
       >
         <Terminal outputBuffer={systemOutput} waitingForInput={false} />
       </div>
       <div
-        class="term-wrapper {activeTerminalTab === 'program'
-          ? 'active'
-          : 'hidden'}"
+        class="absolute inset-0 z-10 {activeTerminalTab === 'program'
+          ? 'visible'
+          : 'invisible'}"
       >
         <Terminal
           outputBuffer={programOutput}
@@ -322,345 +429,3 @@
     </div>
   </footer>
 </div>
-
-<style>
-  :global(body) {
-    margin: 0;
-    padding: 0;
-    background-color: #1e1e1e;
-    color: #cccccc;
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-      Helvetica, Arial, sans-serif;
-    overflow: hidden;
-  }
-
-  .ide-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    width: 100vw;
-    position: relative;
-  }
-
-  .settings-modal {
-    position: absolute;
-    top: 50px;
-    right: 20px;
-    width: 300px;
-    background: #252526;
-    border: 1px solid #444;
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    z-index: 1000;
-    display: flex;
-    flex-direction: column;
-  }
-  .settings-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 16px;
-    background: #2d2d2d;
-    border-bottom: 1px solid #444;
-    border-radius: 8px 8px 0 0;
-  }
-  .settings-header h3 {
-    margin: 0;
-    font-size: 1rem;
-    color: #fff;
-  }
-  .close-btn {
-    background: none;
-    border: none;
-    color: #aaa;
-    font-size: 1.5rem;
-    cursor: pointer;
-    line-height: 1;
-  }
-  .close-btn:hover {
-    color: #fff;
-  }
-  .settings-body {
-    padding: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .settings-body label {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    color: #ccc;
-    font-size: 0.9rem;
-  }
-  .settings-body input[type="color"] {
-    background: none;
-    border: 1px solid #444;
-    border-radius: 4px;
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    cursor: pointer;
-  }
-
-  .pane {
-    display: flex;
-    flex-direction: column;
-    background-color: #252526;
-    border: 1px solid #333;
-  }
-
-  .pane-header {
-    background-color: #2d2d2d;
-    padding: 4px 12px;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #969696;
-    border-bottom: 1px solid #333;
-  }
-
-  .toolbar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 16px;
-    background-color: #333333;
-    border-bottom: 1px solid #111;
-  }
-
-  .branding {
-    font-weight: 600;
-    color: #ffffff;
-    font-size: 1.1rem;
-  }
-
-  .controls {
-    display: flex;
-    gap: 8px;
-    align-items: center;
-  }
-
-  .divider {
-    width: 1px;
-    height: 24px;
-    background-color: #555;
-    margin: 0 8px;
-  }
-
-  .btn {
-    background-color: #444;
-    color: #fff;
-    border: none;
-    padding: 6px 12px;
-    border-radius: 4px;
-    font-size: 0.9rem;
-    cursor: pointer;
-    transition: background 0.2s;
-  }
-
-  .btn:hover:not(:disabled) {
-    background-color: #555;
-  }
-  .btn:disabled {
-    color: #777;
-    cursor: not-allowed;
-  }
-
-  .btn.primary {
-    background-color: #0e639c;
-  }
-  .btn.primary:hover {
-    background-color: #1177bb;
-  }
-
-  .btn.danger {
-    background-color: #8a2a2a;
-  }
-  .btn.danger:hover {
-    background-color: #a03030;
-  }
-
-  .badge {
-    padding: 4px 8px;
-    border-radius: 12px;
-    font-size: 0.8rem;
-    font-weight: bold;
-  }
-  .badge.running {
-    background: #1b5e20;
-    color: #a5d6a7;
-  }
-  .badge.halted {
-    background: #b71c1c;
-    color: #ffcdd2;
-  }
-  .badge.waitingforinput {
-    background: #f57f17;
-    color: #fff9c4;
-  }
-  .badge.idle {
-    background: #424242;
-    color: #bdbdbd;
-  }
-
-  .workspace {
-    display: flex;
-    flex: 1;
-    overflow: hidden;
-  }
-
-  .editor-pane {
-    flex: 2;
-    border-right: none;
-    min-width: 0;
-  }
-
-  .editor-wrapper {
-    flex: 1;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .editor-tabs {
-    display: flex;
-    background-color: #2d2d2d;
-    border-bottom: 1px solid #111;
-  }
-  .tab {
-    padding: 8px 16px;
-    background-color: #2d2d2d;
-    color: #969696;
-    cursor: pointer;
-    font-size: 0.9rem;
-    border-right: 1px solid #111;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    user-select: none;
-  }
-  .tab.active {
-    background-color: #1e1e1e;
-    color: #fff;
-    border-top: 2px solid #0e639c;
-  }
-  .close-tab {
-    background: none;
-    border: none;
-    color: inherit;
-    cursor: pointer;
-    font-size: 1.1rem;
-    padding: 0;
-    line-height: 1;
-  }
-  .close-tab:hover {
-    color: #f44336;
-  }
-
-  .debugger-pane {
-    flex: 1;
-    min-width: 300px;
-  }
-
-  .debugger-content {
-    padding: 12px;
-    overflow-y: auto;
-  }
-
-  .cpu-metrics {
-    display: flex;
-    justify-content: space-between;
-    background: #1e1e1e;
-    padding: 12px;
-    border-radius: 6px;
-    margin-bottom: 16px;
-    border: 1px solid #333;
-  }
-
-  .metric {
-    display: flex;
-    flex-direction: column;
-  }
-
-  .metric span {
-    font-size: 0.8rem;
-    color: #888;
-  }
-  .metric strong {
-    font-size: 1.2rem;
-    color: #dcdcaa;
-    font-family: monospace;
-  }
-
-  .registers-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 8px;
-  }
-
-  .reg-cell {
-    display: flex;
-    justify-content: space-between;
-    background: #1e1e1e;
-    padding: 6px 10px;
-    border-radius: 4px;
-    border: 1px solid #333;
-    font-family: monospace;
-  }
-
-  .reg-name {
-    color: #569cd6;
-    font-weight: bold;
-  }
-  .reg-value {
-    color: #ce9178;
-  }
-
-  .terminal-pane {
-    height: 30%;
-    min-height: 200px;
-    border-top: none;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .terminal-tabs {
-    display: flex;
-    padding: 0;
-    gap: 1px;
-    background-color: #111;
-  }
-  .term-tab {
-    padding: 6px 16px;
-    background-color: #2d2d2d;
-    color: #888;
-    cursor: pointer;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-  .term-tab.active {
-    color: #fff;
-    background-color: #1e1e1e;
-    border-top: 1px solid #0e639c;
-  }
-
-  .terminals-container {
-    flex: 1;
-    position: relative;
-    overflow: hidden;
-  }
-  .term-wrapper {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    visibility: hidden;
-    z-index: 1;
-  }
-  .term-wrapper.active {
-    visibility: visible;
-    z-index: 2;
-  }
-</style>

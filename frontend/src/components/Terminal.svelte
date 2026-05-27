@@ -95,15 +95,4 @@
   });
 </script>
 
-<div class="terminal-container" bind:this={terminalContainer}></div>
-
-<style>
-  .terminal-container {
-    width: 100%;
-    height: 100%;
-    padding: 16px;
-    box-sizing: border-box;
-    background: #1e1e1e;
-    overflow: hidden;
-  }
-</style>
+<div class="w-full h-full p-4 box-border bg-zinc-950 overflow-hidden" bind:this={terminalContainer}></div>

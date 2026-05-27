@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  --color-zinc-850: #252526;
+  --color-zinc-950: #1e1e1e;
+}
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-300 font-sans antialiased overflow-hidden m-0 p-0;
+  }
+}
+
+@layer components {
+  .pc-highlight-line {
+    background-color: rgba(255, 255, 0, 0.2) !important;
+  }
+
+  .pc-highlight-gutter {
+    background-color: #ffd700;
+    border-radius: 50%;
+    width: 10px !important;
+    height: 10px !important;
+    margin-left: 5px;
+    margin-top: 4px;
+  }
+}

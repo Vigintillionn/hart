@@ -123,29 +123,4 @@
   });
 </script>
 
-<div class="monaco-container" bind:this={editorContainer}></div>
-
-<style global>
-  .monaco-container {
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    border-radius: 4px;
-    overflow: hidden;
-  }
-
-  :global(.pc-highlight-line) {
-    background-color: rgba(255, 255, 0, 0.2) !important;
-  }
-
-  :global(.pc-highlight-gutter) {
-    background-color: #ffd700;
-    border-radius: 50%;
-    width: 10px !important;
-    height: 10px !important;
-    margin-left: 5px;
-    margin-top: 4px;
-  }
-</style>
+<div class="absolute inset-0 w-full h-full rounded-md overflow-hidden" bind:this={editorContainer}></div>
