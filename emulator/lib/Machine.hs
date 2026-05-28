@@ -312,10 +312,10 @@ zeroExt16 = fromIntegral
 
 takeTrap :: (MonadCPU m) => Word32 -> Word32 -> Word32 -> m PCUpdate
 takeTrap causeCode currentPC tval = do
-  setCSR MEPC currentPC
-  setCSR MCAUSE causeCode
-  setCSR MTVAL tval
-  handlerAddr <- getCSR MTVEC
+  setCSR mepc currentPC
+  setCSR mcause causeCode
+  setCSR mtval tval
+  handlerAddr <- getCSR mtvec
 
   let target = if handlerAddr == 0 then 0x80000000 else handlerAddr
 
@@ -326,7 +326,7 @@ takeTrap causeCode currentPC tval = do
 
   return $ Jump target
   where
-    MEPC = 0x341
-    MCAUSE = 0x342
-    MTVAL = 0x343
-    MTVEC = 0x305
+    mepc = 0x341
+    mcause = 0x342
+    mtval = 0x343
+    mtvec = 0x305
