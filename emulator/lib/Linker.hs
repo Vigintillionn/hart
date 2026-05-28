@@ -41,6 +41,12 @@ lower (RealInstr i) = i :| []
 lower (PseudoInstr op) = case op of
     P_NOP -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs x0 x0 (ImmVal 0))
     P_MV rd rs  -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd rs (ImmVal 0))
+    P_LI rd (ImmVal v)
+        | v < -2048 || v > 2047 -> 
+            let hi = (v + 0x800) `shiftR` 12
+                lo = v .&. 0xFFF
+            in SomeInstruction (UType LUI (UTypeArgs rd (ImmVal hi))) :|
+               [ SomeInstruction (ArithI ADDI (ITypeArgs rd rd (ImmVal lo))) ]
     P_LI rd imm -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
     P_NEG rd rs -> pure $ SomeInstruction $ RType SUB (RTypeArgs rd x0 rs)
     P_NOT rd rs -> pure $ SomeInstruction $ ArithI XORI (ITypeArgs rd rs (ImmVal (-1)))
