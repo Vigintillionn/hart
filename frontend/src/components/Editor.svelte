@@ -102,9 +102,9 @@
   });
 
   $effect(() => {
-    if (editor && decorationsCollection) {
-      const targetLine = pcToLineMap.get(currentPc) || 1;
+    const targetLine = pcToLineMap.get(currentPc) || 0;
 
+    if (editor && decorationsCollection && targetLine) {
       decorationsCollection.set([
         {
           range: new monaco.Range(targetLine, 1, targetLine, 1),
@@ -123,4 +123,7 @@
   });
 </script>
 
-<div class="absolute inset-0 w-full h-full rounded-md overflow-hidden" bind:this={editorContainer}></div>
+<div
+  class="absolute inset-0 w-full h-full rounded-md overflow-hidden"
+  bind:this={editorContainer}
+></div>
