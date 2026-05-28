@@ -14,6 +14,7 @@
 @layer components {
   .pc-highlight-line {
     background-color: rgba(255, 255, 0, 0.2) !important;
+    box-shadow: inset 2px 0 0 0 rgba(255, 255, 0, 0.8) !important;
   }
 
   .pc-highlight-gutter {

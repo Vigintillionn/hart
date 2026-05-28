@@ -11,6 +11,27 @@
   let regsShowHex = $state(true);
   let showCanonicalNames = $state(false);
 
+  let prevRegisters = $state<number[]>([]);
+  let changedIndices = $state<Set<number>>(new Set());
+
+  import { untrack } from "svelte";
+
+  $effect(() => {
+    const currentRegs = registers;
+    untrack(() => {
+      if (prevRegisters.length > 0) {
+        const changed = new Set<number>();
+        for (let i = 0; i < currentRegs.length; i++) {
+          if (currentRegs[i] !== prevRegisters[i]) {
+            changed.add(i);
+          }
+        }
+        changedIndices = changed;
+      }
+      prevRegisters = [...currentRegs];
+    });
+  });
+
   const formatReg = (num: number) =>
     regsShowHex ? toHex(num) : num.toString();
 </script>
@@ -36,17 +57,28 @@
 <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
   {#each registers as value, i}
     <div
-      class="flex justify-between items-center bg-zinc-950 px-2 py-1.5 rounded border border-zinc-800 font-mono shadow-sm"
+      class="flex justify-between items-center px-2 py-1.5 rounded border font-mono shadow-sm transition-colors duration-300 {changedIndices.has(
+        i,
+      )
+        ? 'bg-sky-950/40 border-sky-800/60'
+        : 'bg-zinc-950 border-zinc-800'}"
     >
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <span
-        class="text-sky-400 font-bold text-sm cursor-pointer select-none hover:text-sky-300"
+        class="{changedIndices.has(i)
+          ? 'text-sky-300'
+          : 'text-sky-400'} font-bold text-sm cursor-pointer select-none hover:text-sky-200 transition-colors"
         title="Click to toggle canonical names"
         onclick={() => (showCanonicalNames = !showCanonicalNames)}
         >{getRegName(i, showCanonicalNames)}</span
       >
-      <span class="text-orange-300 text-sm">{formatReg(value)}</span>
+      <span
+        class="{changedIndices.has(i)
+          ? 'text-amber-200 font-semibold'
+          : 'text-orange-300'} text-sm transition-colors"
+        >{formatReg(value)}</span
+      >
     </div>
   {/each}
 </div>

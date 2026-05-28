@@ -1,15 +1,12 @@
 <script lang="ts">
-  import type { CpuHandlers, FileHandlers } from "$lib/types";
-  import type { CpuState } from "../bindings/CpuState";
+  import { fileStore } from "$lib/fileStore.svelte";
+  import { cpuStore } from "$lib/cpuStore.svelte";
 
   interface Props {
-    cpuHandlers: CpuHandlers;
-    fileHandlers: FileHandlers;
     showSettings: boolean;
-    cpuState: CpuState | null;
   }
 
-  let { cpuHandlers, fileHandlers, showSettings, cpuState }: Props = $props();
+  let { showSettings = $bindable() }: Props = $props();
 </script>
 
 <header
@@ -21,16 +18,16 @@
   <div class="flex gap-2 items-center">
     <button
       class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
-      onclick={fileHandlers.handleOpenFile}>Open File</button
+      onclick={() => fileStore.handleOpenFile()}>Open File</button
     >
     <button
       class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
-      onclick={fileHandlers.handleSaveFile}>Save</button
+      onclick={() => fileStore.handleSaveFile()}>Save</button
     >
     <div class="w-px h-6 bg-zinc-700 mx-1"></div>
     <button
       class="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-sm font-medium text-white rounded shadow-sm transition-colors duration-200 border-none cursor-pointer"
-      onclick={cpuHandlers.handleLoadProgram}>Load & Compile</button
+      onclick={() => cpuStore.handleLoadProgram()}>Load & Compile</button
     >
     <div class="w-px h-6 bg-zinc-700 mx-1"></div>
     <button
@@ -40,36 +37,36 @@
     <div class="w-px h-6 bg-zinc-700 mx-1"></div>
     <button
       class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
-      onclick={cpuHandlers.handleRun}
-      disabled={!cpuState}>Run</button
+      onclick={() => cpuStore.handleRun()}
+      disabled={!cpuStore.cpuState}>Run</button
     >
     <button
       class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
-      onclick={cpuHandlers.handleStepFwd}
-      disabled={!cpuState}>Step ➡</button
+      onclick={() => cpuStore.handleStepFwd()}
+      disabled={!cpuStore.cpuState}>Step ➡</button
     >
     <button
       class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 border-none cursor-pointer"
-      onclick={cpuHandlers.handleStepBack}
-      disabled={!cpuState}>⬅ Step</button
+      onclick={() => cpuStore.handleStepBack()}
+      disabled={!cpuStore.cpuState}>⬅ Step</button
     >
     <button
       class="px-3 py-1.5 bg-red-900 hover:bg-red-800 disabled:opacity-50 disabled:cursor-not-allowed text-sm text-white rounded transition-colors duration-200 shadow-sm border-none cursor-pointer"
-      onclick={cpuHandlers.handleRewind}
-      disabled={!cpuState}>Rewind</button
+      onclick={() => cpuStore.handleRewind()}
+      disabled={!cpuStore.cpuState}>Rewind</button
     >
   </div>
   <div class="flex items-center">
-    {#if cpuState}
+    {#if cpuStore.cpuState}
       <span
-        class="px-3 py-1 rounded-full text-xs font-bold tracking-wide {cpuState.status ===
+        class="px-3 py-1 rounded-full text-xs font-bold tracking-wide {cpuStore.cpuState.status ===
         'Running'
           ? 'bg-green-900 text-green-300'
-          : cpuState.status === 'Halted'
+          : cpuStore.cpuState.status === 'Halted'
             ? 'bg-red-950 text-red-300'
-            : cpuState.status === 'WaitingForInput'
+            : cpuStore.cpuState.status === 'WaitingForInput'
               ? 'bg-amber-900 text-amber-200'
-              : 'bg-zinc-800 text-zinc-400'}">{cpuState.status}</span
+              : 'bg-zinc-800 text-zinc-400'}">{cpuStore.cpuState.status}</span
       >
     {:else}
       <span

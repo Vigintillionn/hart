@@ -1,14 +1,7 @@
 <script lang="ts">
   import { terminalStore } from "$lib/terminalStore.svelte.js";
-  import type { CpuState } from "../bindings/CpuState";
+  import { cpuStore } from "$lib/cpuStore.svelte.js";
   import Terminal from "./Terminal.svelte";
-
-  interface Props {
-    cpuState: CpuState | null;
-    submitInput: (input: string) => void;
-  }
-
-  let { cpuState, submitInput } = $props();
 </script>
 
 {#snippet tab(id: string, label: string)}
@@ -23,38 +16,43 @@
   </button>
 {/snippet}
 
+{#snippet terminalPane(
+  id: string,
+  outputBuffer: string,
+  waitingForInput: boolean,
+  onSubmitInput?: (text: string) => void,
+)}
+  <div
+    class="absolute inset-0 z-10 {terminalStore.activeTab === id
+      ? 'visible'
+      : 'invisible'}"
+  >
+    <Terminal {outputBuffer} {waitingForInput} {onSubmitInput} />
+  </div>
+{/snippet}
+
 <div class="flex flex-col h-full">
   <div class="flex gap-px bg-zinc-950 border-b border-zinc-800">
     {@render tab("system", "Assembler Output")}
-    {#if cpuState}
+    {#if cpuStore.cpuState}
       {@render tab("program", "Program Console")}
     {/if}
   </div>
 
   <div class="flex-1 relative overflow-hidden bg-zinc-950">
-    <div
-      class="absolute inset-0 z-10 {terminalStore.activeTab === 'system'
-        ? 'visible'
-        : 'invisible'}"
-    >
-      <Terminal
-        outputBuffer={terminalStore.system.logs.join("\n")}
-        waitingForInput={false}
-      />
-    </div>
+    {@render terminalPane(
+      "system",
+      terminalStore.system.logs.join("\n"),
+      false,
+    )}
 
-    {#if cpuState}
-      <div
-        class="absolute inset-0 z-10 {terminalStore.activeTab === 'program'
-          ? 'visible'
-          : 'invisible'}"
-      >
-        <Terminal
-          outputBuffer={terminalStore.program.logs.join("\n")}
-          waitingForInput={cpuState.status === "WaitingForInput"}
-          onSubmitInput={submitInput}
-        />
-      </div>
+    {#if cpuStore.cpuState}
+      {@render terminalPane(
+        "program",
+        terminalStore.program.logs.join("\n"),
+        cpuStore.cpuState.status === "WaitingForInput",
+        (text) => cpuStore.submitInput(text),
+      )}
     {/if}
   </div>
 </div>

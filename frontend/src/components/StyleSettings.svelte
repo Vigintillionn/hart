@@ -5,7 +5,7 @@
     showSettings: boolean;
   }
 
-  let { showSettings }: Props = $props();
+  let { showSettings = $bindable() }: Props = $props();
 </script>
 
 <div
