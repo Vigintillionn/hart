@@ -142,6 +142,24 @@
 
   const toHex = (num: number) =>
     "0x" + (num >>> 0).toString(16).padStart(8, "0");
+
+  let pcShowHex = $state(true);
+  let regsShowHex = $state(true);
+  let showCanonicalNames = $state(false);
+
+  const formatPc = (num: number) => (pcShowHex ? toHex(num) : num.toString());
+  const formatReg = (num: number) => (regsShowHex ? toHex(num) : num.toString());
+
+  const getRegName = (index: number) => {
+    if (!showCanonicalNames) return `x${index}`;
+    const names = [
+      "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2",
+      "s0", "s1", "a0", "a1", "a2", "a3", "a4", "a5",
+      "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+      "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6",
+    ];
+    return names[index] || `x${index}`;
+  };
 </script>
 
 <div
@@ -338,12 +356,14 @@
           <div
             class="flex justify-between bg-zinc-950 p-3 rounded-lg border border-zinc-800 mb-4 shadow-inner"
           >
-            <div class="flex flex-col">
+            <!-- svelte-ignore a11y_click_events_have_key_events -->
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
+            <div class="flex flex-col cursor-pointer select-none" onclick={() => pcShowHex = !pcShowHex} title="Click to toggle Hex/Dec">
               <span class="text-xs text-zinc-500 uppercase tracking-wide"
                 >PC</span
               >
               <strong class="text-lg text-amber-200 font-mono"
-                >{cpuState.pc}</strong
+                >{formatPc(cpuState.pc)}</strong
               >
             </div>
             <div class="flex flex-col text-right">
@@ -356,15 +376,23 @@
             </div>
           </div>
 
+          <div class="flex justify-between items-center mb-2 px-1">
+            <span class="text-xs text-zinc-500 uppercase tracking-wide">Registers</span>
+            <div class="flex gap-1">
+              <button class="px-2 py-0.5 text-[10px] uppercase font-bold rounded {regsShowHex ? 'bg-sky-900 text-sky-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'} border-none cursor-pointer transition-colors" onclick={() => regsShowHex = true}>Hex</button>
+              <button class="px-2 py-0.5 text-[10px] uppercase font-bold rounded {!regsShowHex ? 'bg-sky-900 text-sky-200' : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700'} border-none cursor-pointer transition-colors" onclick={() => regsShowHex = false}>Dec</button>
+            </div>
+          </div>
+
           <div class="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-2">
             {#each cpuState.regs as reg, i}
               <div
                 class="flex justify-between items-center bg-zinc-950 px-2 py-1.5 rounded border border-zinc-800 font-mono shadow-sm"
               >
-                <span class="text-sky-400 font-bold text-sm">x{i}</span>
-                <span class="text-orange-300 text-sm" title={reg.toString()}
-                  >{toHex(reg)}</span
-                >
+                <!-- svelte-ignore a11y_click_events_have_key_events -->
+                <!-- svelte-ignore a11y_no_static_element_interactions -->
+                <span class="text-sky-400 font-bold text-sm cursor-pointer select-none hover:text-sky-300" title="Click to toggle canonical names" onclick={() => showCanonicalNames = !showCanonicalNames}>{getRegName(i)}</span>
+                <span class="text-orange-300 text-sm">{formatReg(reg)}</span>
               </div>
             {/each}
           </div>
