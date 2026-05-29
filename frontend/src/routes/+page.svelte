@@ -1,11 +1,13 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
+  import { PaneGroup, Pane, PaneResizer } from "paneforge";
   import Editor from "../components/Editor.svelte";
   import Header from "../components/Header.svelte";
   import StyleSettings from "../components/StyleSettings.svelte";
   import TerminalContainer from "../components/TerminalContainer.svelte";
   import DebugPanel from "../components/DebugPanel.svelte";
   import { cpuStore } from "$lib/cpuStore.svelte";
+  import { layoutStore } from "$lib/layoutStore.svelte";
 
   let showSettings = $state(false);
 
@@ -26,21 +28,69 @@
     <StyleSettings bind:showSettings />
   {/if}
 
-  <main class="flex flex-1 overflow-hidden">
-    <section
-      class="flex flex-col flex-2 min-w-0 bg-zinc-900 border-r border-zinc-800"
-    >
-      <Editor />
-    </section>
+  <div class="flex-1 overflow-hidden">
+    <PaneGroup direction="vertical" autoSaveId="app-layout-vertical">
+      <Pane defaultSize={70} minSize={20}>
+        <PaneGroup direction="horizontal" autoSaveId="app-layout-horizontal">
+          <Pane defaultSize={60} minSize={20}>
+            <section class="flex flex-col h-full min-w-0 bg-zinc-900">
+              <Editor />
+            </section>
+          </Pane>
 
-    <aside class="flex flex-col flex-1 min-w-75 bg-zinc-900">
-      <DebugPanel />
-    </aside>
-  </main>
+          <PaneResizer
+            class="w-1 bg-zinc-800 hover:bg-zinc-600 data-[resize-handle-state=drag]:bg-sky-500 transition-colors cursor-col-resize relative z-10 flex items-center justify-center"
+          >
+            <div
+              class="absolute inset-y-0 -left-1.5 -right-1.5"
+              ondblclick={() =>
+                layoutStore.cpuPaneRef?.isCollapsed()
+                  ? layoutStore.cpuPaneRef?.expand()
+                  : layoutStore.cpuPaneRef?.collapse()}
+            ></div>
+          </PaneResizer>
 
-  <footer
-    class="flex flex-col h-[30%] min-h-50 bg-zinc-900 border-t border-zinc-800"
-  >
-    <TerminalContainer />
-  </footer>
+          <Pane
+            defaultSize={40}
+            minSize={20}
+            collapsible={true}
+            collapsedSize={0}
+            bind:this={layoutStore.cpuPaneRef}
+            onCollapse={() => (layoutStore.isCpuVisible = false)}
+            onExpand={() => (layoutStore.isCpuVisible = true)}
+          >
+            <aside class="flex flex-col h-full min-w-0 bg-zinc-900">
+              <DebugPanel />
+            </aside>
+          </Pane>
+        </PaneGroup>
+      </Pane>
+
+      <PaneResizer
+        class="h-1 bg-zinc-800 hover:bg-zinc-600 data-[resize-handle-state=drag]:bg-sky-500 transition-colors cursor-row-resize relative z-10 flex items-center justify-center"
+      >
+        <div
+          class="absolute inset-x-0 -top-1.5 -bottom-1.5"
+          ondblclick={() =>
+            layoutStore.terminalPaneRef?.isCollapsed()
+              ? layoutStore.terminalPaneRef?.expand()
+              : layoutStore.terminalPaneRef?.collapse()}
+        ></div>
+      </PaneResizer>
+
+      <Pane
+        defaultSize={30}
+        minSize={10}
+        collapsible={true}
+        collapsedSize={0}
+        bind:this={layoutStore.terminalPaneRef}
+        onCollapse={() => (layoutStore.isTerminalVisible = false)}
+        onExpand={() => (layoutStore.isTerminalVisible = true)}
+      >
+        <footer class="flex flex-col h-full min-h-0 bg-zinc-900">
+          <TerminalContainer />
+        </footer>
+      </Pane>
+    </PaneGroup>
+  </div>
 </div>

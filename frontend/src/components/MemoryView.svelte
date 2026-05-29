@@ -150,14 +150,12 @@
   </div>
 
   <div class="flex flex-1 overflow-hidden">
-    <div class="p-4 overflow-y-hidden flex-1" onwheel={handleWheel}>
+    <div class="p-4 overflow-y-hidden overflow-x-auto flex-1" onwheel={handleWheel}>
       {#each displayLines as line}
-        <div class="flex items-center hover:bg-zinc-900/50 px-2 py-0.5 rounded">
-          <span class="text-zinc-500 w-24 select-none">{line.addrStr}</span>
-          <span class="text-sky-300 w-88 tracking-widest">{line.bytesStr}</span>
-          <span class="text-zinc-400 opacity-80 whitespace-pre"
-            >{line.ascii}</span
-          >
+        <div class="flex items-center hover:bg-zinc-900/50 px-2 py-0.5 rounded w-max gap-6">
+          <span class="text-zinc-500 shrink-0 select-none">{line.addrStr}</span>
+          <span class="text-sky-300 shrink-0 tracking-widest whitespace-nowrap">{line.bytesStr}</span>
+          <span class="text-zinc-400 opacity-80 shrink-0 whitespace-pre">{line.ascii}</span>
         </div>
       {/each}
     </div>
