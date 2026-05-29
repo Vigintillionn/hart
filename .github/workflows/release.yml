@@ -18,7 +18,7 @@ jobs:
       - name: setup node
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: install pnpm
         run: npm install -g pnpm
@@ -36,8 +36,8 @@ jobs:
       - name: setup haskell
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: '9.4.8'
-          cabal-version: '3.10.3.0'
+          ghc-version: 'latest'
+          cabal-version: 'latest'
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@stable

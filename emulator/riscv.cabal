@@ -67,7 +67,7 @@ common shared-properties
         StandaloneDeriving
         LambdaCase
     build-depends:
-        base ^>=4.18.3.0,
+        base >= 4.16 && < 5,
         mtl >= 2.3,
         containers >= 0.6,
         vector >= 0.13,
