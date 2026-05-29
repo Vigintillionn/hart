@@ -4,7 +4,7 @@
   "description": "",
   "type": "module",
   "scripts": {
-    "build-sidecar": "./build-sidecar.sh",
+    "build-sidecar": "bash ./build-sidecar.sh",
     "dev": "vite dev",
     "build": "pnpm run build-sidecar && vite build",
     "preview": "vite preview",
