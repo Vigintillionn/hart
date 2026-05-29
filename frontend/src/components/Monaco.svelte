@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount, onDestroy, untrack } from "svelte";
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
   import { riscvLanguageDef } from "../lib/riscvMonarch";
@@ -19,6 +19,10 @@
   let models = new Map<string, monaco.editor.ITextModel>();
 
   let pcToLineMap = $derived(new Map(sourceMap));
+  
+  let previousPc = $state<number | null>(null);
+  let oldPcVal = -1;
+  let clearPrevPcTimeout: number;
 
   if (typeof self !== "undefined") {
     self.MonacoEnvironment = {
@@ -48,6 +52,7 @@
     for (const model of models.values()) {
       model.dispose();
     }
+    clearTimeout(clearPrevPcTimeout);
   });
 
   $effect(() => {
@@ -102,10 +107,28 @@
   });
 
   $effect(() => {
+    const pc = currentPc;
+    untrack(() => {
+      if (pc !== oldPcVal) {
+        previousPc = oldPcVal;
+        oldPcVal = pc;
+        
+        clearTimeout(clearPrevPcTimeout);
+        if (previousPc !== -1) {
+          clearPrevPcTimeout = window.setTimeout(() => {
+            previousPc = -1;
+          }, 1500);
+        }
+      }
+    });
+  });
+
+  $effect(() => {
     const targetLine = pcToLineMap.get(currentPc) || 0;
+    const prevLine = previousPc !== null ? (pcToLineMap.get(previousPc) || 0) : 0;
 
     if (editor && decorationsCollection && targetLine) {
-      decorationsCollection.set([
+      const decs: monaco.editor.IModelDeltaDecoration[] = [
         {
           range: new monaco.Range(targetLine, 1, targetLine, 1),
           options: {
@@ -114,11 +137,25 @@
             glyphMarginClassName: "pc-highlight-gutter",
           },
         },
-      ]);
+      ];
+
+      if (prevLine && prevLine !== targetLine && previousPc !== -1 && currentPc !== 0) {
+        decs.push({
+          range: new monaco.Range(prevLine, 1, prevLine, 1),
+          options: {
+            isWholeLine: true,
+            className: "pc-previous-line",
+          },
+        });
+      }
+
+      decorationsCollection.set(decs);
 
       if (currentPc > 0) {
         editor.revealLineInCenter(targetLine, monaco.editor.ScrollType.Smooth);
       }
+    } else if (editor && decorationsCollection) {
+      decorationsCollection.clear();
     }
   });
 </script>
