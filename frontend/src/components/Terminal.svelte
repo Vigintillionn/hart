@@ -7,6 +7,7 @@
   let {
     outputBuffer = "",
     waitingForInput = false,
+    hideCursor = false,
     onSubmitInput = (text: string) => {},
   } = $props();
 
@@ -24,9 +25,10 @@
         foreground: "#4af626",
         cursor: "#f57f17",
       },
+      disableStdin: hideCursor,
       fontFamily: '"Courier New", Courier, monospace',
       fontSize: 14,
-      cursorBlink: true,
+      cursorBlink: !hideCursor,
       convertEol: true,
     });
 
@@ -41,21 +43,16 @@
 
       const char = data;
       if (char === "\r") {
-        // Enter pressed
         term.write("\r\n");
         onSubmitInput(localInputBuffer);
-        // Preemptively update localLastBuffer to prevent double-printing
-        // when the backend echoes this input back to us!
         localLastBuffer = (outputBuffer || "") + localInputBuffer + "\n";
         localInputBuffer = "";
       } else if (char === "\x7F") {
-        // Backspace
         if (localInputBuffer.length > 0) {
           localInputBuffer = localInputBuffer.slice(0, -1);
           term.write("\b \b");
         }
       } else {
-        // Normal char
         localInputBuffer += char;
         term.write(char);
       }
@@ -82,11 +79,9 @@
   $effect(() => {
     if (term && outputBuffer !== undefined) {
       if (!outputBuffer.startsWith(localLastBuffer)) {
-        // Buffer was reset or altered destructively (e.g., Rewind)
         term.reset();
         term.write(outputBuffer);
       } else if (outputBuffer.length > localLastBuffer.length) {
-        // Append only the new output
         const newText = outputBuffer.slice(localLastBuffer.length);
         term.write(newText);
       }
@@ -95,4 +90,18 @@
   });
 </script>
 
-<div class="w-full h-full p-4 box-border bg-zinc-950 overflow-hidden" bind:this={terminalContainer}></div>
+<div
+  class="w-full h-full p-4 box-border bg-zinc-950 overflow-hidden {hideCursor
+    ? 'hide-cursor'
+    : ''}"
+  bind:this={terminalContainer}
+></div>
+
+<style>
+  :global(.hide-cursor .xterm-cursor),
+  :global(.hide-cursor .xterm-cursor-layer) {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+</style>

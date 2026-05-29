@@ -21,13 +21,14 @@
   outputBuffer: string,
   waitingForInput: boolean,
   onSubmitInput?: (text: string) => void,
+  hideCursor: boolean = false,
 )}
   <div
     class="absolute inset-0 z-10 {terminalStore.activeTab === id
       ? 'visible'
       : 'invisible'}"
   >
-    <Terminal {outputBuffer} {waitingForInput} {onSubmitInput} />
+    <Terminal {outputBuffer} {waitingForInput} {onSubmitInput} {hideCursor} />
   </div>
 {/snippet}
 
@@ -44,6 +45,8 @@
       "system",
       terminalStore.system.logs.join("\n"),
       false,
+      undefined,
+      true
     )}
 
     {#if cpuStore.cpuState}
