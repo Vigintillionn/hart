@@ -1,12 +1,6 @@
 <script lang="ts">
+  import { cpuStore } from "$lib/cpuStore.svelte";
   import { toHex } from "$lib/util";
-
-  interface Props {
-    pc: number;
-    cycles: number;
-  }
-
-  let { pc, cycles }: Props = $props();
 
   let pcShowHex = $state(true);
 
@@ -14,20 +8,28 @@
 </script>
 
 <div
-  class="flex justify-between bg-zinc-950 p-3 rounded-lg border border-zinc-800 mb-4 shadow-inner"
+  class="bg-zinc-950 px-3 py-1.5 text-xs tracking-wider border-b border-zinc-800 shrink-0 flex items-baseline"
 >
-  <!-- svelte-ignore a11y_click_events_have_key_events -->
-  <!-- svelte-ignore a11y_no_static_element_interactions -->
-  <div
-    class="flex flex-col cursor-pointer select-none"
-    onclick={() => (pcShowHex = !pcShowHex)}
-    title="Click to toggle Hex/Dec"
-  >
-    <span class="text-xs text-zinc-500 uppercase tracking-wide">PC</span>
-    <strong class="text-lg text-amber-200 font-mono">{formatPc(pc)}</strong>
-  </div>
-  <div class="flex flex-col text-right">
-    <span class="text-xs text-zinc-500 uppercase tracking-wide">Cycles</span>
-    <strong class="text-lg text-amber-200 font-mono">{cycles}</strong>
-  </div>
+  <span class="text-zinc-500 uppercase">CPU State</span>
+  {#if cpuStore.cpuState}
+    <div class="ml-auto flex items-baseline gap-4">
+      <div
+        class="cursor-pointer flex items-baseline gap-1 w-28"
+        onclick={() => (pcShowHex = !pcShowHex)}
+        title="Click to toggle Hex/Dec"
+      >
+        <span class="text-zinc-500 shrink-0">PC:</span>
+        <strong class="text-amber-200 font-mono">
+          {formatPc(cpuStore.cpuState.pc || 0)}
+        </strong>
+      </div>
+
+      <div class="flex items-baseline gap-1">
+        <span class="text-zinc-500">Cycles:</span>
+        <strong class="text-amber-200 font-mono">
+          {cpuStore.cpuState.cycles || 0}
+        </strong>
+      </div>
+    </div>
+  {/if}
 </div>
