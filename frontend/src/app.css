@@ -1,4 +1,14 @@
 @import "tailwindcss";
+@import "@xterm/xterm/css/xterm.css";
+
+@layer components {
+  .hide-cursor .xterm-cursor,
+  .hide-cursor .xterm-cursor-layer {
+    display: none !important;
+    opacity: 0 !important;
+    visibility: hidden !important;
+  }
+}
 
 @theme {
   --color-zinc-850: #252526;

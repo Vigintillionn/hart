@@ -13,8 +13,9 @@
   <span class="text-zinc-500 uppercase">CPU State</span>
   {#if cpuStore.cpuState}
     <div class="ml-auto flex items-baseline gap-4">
-      <div
-        class="cursor-pointer flex items-baseline gap-1 w-28"
+      <button
+        type="button"
+        class="cursor-pointer flex items-baseline gap-1 w-28 text-left bg-transparent border-none p-0 focus:outline-none"
         onclick={() => (pcShowHex = !pcShowHex)}
         title="Click to toggle Hex/Dec"
       >
@@ -22,7 +23,7 @@
         <strong class="text-amber-200 font-mono">
           {formatPc(cpuStore.cpuState.pc || 0)}
         </strong>
-      </div>
+      </button>
 
       <div class="flex items-baseline gap-1">
         <span class="text-zinc-500">Cycles:</span>

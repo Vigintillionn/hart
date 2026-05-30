@@ -41,6 +41,7 @@
           <PaneResizer
             class="w-1 bg-zinc-800 hover:bg-zinc-600 data-[resize-handle-state=drag]:bg-sky-500 transition-colors cursor-col-resize relative z-10 flex items-center justify-center"
           >
+            <!-- svelte-ignore a11y_no_static_element_interactions -->
             <div
               class="absolute inset-y-0 -left-1.5 -right-1.5"
               ondblclick={() =>
@@ -69,6 +70,7 @@
       <PaneResizer
         class="h-1 bg-zinc-800 hover:bg-zinc-600 data-[resize-handle-state=drag]:bg-sky-500 transition-colors cursor-row-resize relative z-10 flex items-center justify-center"
       >
+        <!-- svelte-ignore a11y_no_static_element_interactions -->
         <div
           class="absolute inset-x-0 -top-1.5 -bottom-1.5"
           ondblclick={() =>

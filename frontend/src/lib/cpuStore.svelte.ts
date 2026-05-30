@@ -61,6 +61,10 @@ class CpuStore {
     sendToHaskell("run");
   }
 
+  public handlePause() {
+    sendToHaskell("pause");
+  }
+
   public handleStepFwd() {
     sendToHaskell("step_forward");
   }

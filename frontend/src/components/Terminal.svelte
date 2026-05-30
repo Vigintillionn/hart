@@ -1,8 +1,7 @@
 <script lang="ts">
-  import { onMount, onDestroy } from "svelte";
+  import { onMount } from "svelte";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
-  import "@xterm/xterm/css/xterm.css";
 
   let {
     outputBuffer = "",
@@ -91,17 +90,8 @@
 </script>
 
 <div
-  class="w-full h-full p-4 box-border bg-zinc-950 overflow-hidden {hideCursor
-    ? 'hide-cursor'
-    : ''}"
+  class="w-full h-full p-4 box-border bg-zinc-950 overflow-hidden"
+  class:hide-cursor={hideCursor}
   bind:this={terminalContainer}
 ></div>
 
-<style>
-  :global(.hide-cursor .xterm-cursor),
-  :global(.hide-cursor .xterm-cursor-layer) {
-    display: none !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-  }
-</style>
