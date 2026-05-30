@@ -144,7 +144,10 @@ rpcLoop dbg = do
                           )
                           c
                       (_, nextState) <- runStateT (runEmulator step) startState
-                      let finalState = nextState {status = Paused}
+                      let finalState =
+                            if status nextState == Running
+                              then nextState {status = Paused}
+                              else nextState
                       let newDbg = dbg {past = past dbg Seq.|> c, current = finalState, future = Seq.Empty}
                       sendResponse (ResState finalState)
                       rpcLoop newDbg

@@ -54,10 +54,15 @@ boundHistory t
   where
     extra = Seq.length t - maxHistory
 
+pauseIfRunning :: CPU -> CPU
+pauseIfRunning s
+  | status s == Running = s {status = Paused}
+  | otherwise = s
+
 stepForward :: Debugger -> Debugger
 stepForward dbg@(Debugger p c f) = case f of
   Empty -> dbg
-  f' :<| fs -> Debugger (p |> c) (f' {status = Paused}) fs
+  f' :<| fs -> Debugger (p |> c) (pauseIfRunning f') fs
 
 stepBack :: Debugger -> Debugger
 stepBack dbg@(Debugger p c f) = case p of
