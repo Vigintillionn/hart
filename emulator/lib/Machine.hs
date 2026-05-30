@@ -39,7 +39,7 @@ module Machine
 where
 
 import Control.Exception (SomeException, try)
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Data.Aeson (ToJSON (..), object, (.=))
 import Data.Bits (Bits (..))
 import Data.ByteString qualified as BS
@@ -97,17 +97,17 @@ instance ToJSON RunStatus where
   toJSON WaitingForInput = "WaitingForInput"
 
 data CPU = CPU
-  { pc :: Word32,
-    regs :: V.Vector Word32,
-    csrs :: M.IntMap Word32,
-    mem :: M.IntMap Word8,
-    cycles :: Int,
-    status :: RunStatus,
-    heapTop :: Word32,
-    fileMap :: M.IntMap Handle,
-    nextFD :: Int,
-    outputBuffer :: String,
-    inputBuffer :: Maybe String
+  { pc :: !Word32,
+    regs :: !(V.Vector Word32),
+    csrs :: !(M.IntMap Word32),
+    mem :: !(M.IntMap Word8),
+    cycles :: !Int,
+    status :: !RunStatus,
+    heapTop :: !Word32,
+    fileMap :: !(M.IntMap Handle),
+    nextFD :: !Int,
+    outputBuffer :: !String,
+    inputBuffer :: !(Maybe String)
   }
 
 instance ToJSON CPU where
@@ -260,7 +260,7 @@ emptyCPU =
       csrs = M.empty,
       mem = M.empty,
       cycles = 0,
-      status = Running,
+      status = Paused,
       heapTop = 0x20000000,
       fileMap = M.empty,
       nextFD = 3,

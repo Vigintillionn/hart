@@ -3,20 +3,23 @@ module RPC (runRPC) where
 
 import Parser (parse)
 import Linker (resolve, Executable(..))
-import CPU (loadProgram)
+import CPU (loadProgram, step)
 import Machine (emptyCPU, Emulator(..), CPU(..), RunStatus(..), MonadCPU (..), incPC)
-import Control.Monad.State (execStateT, modify)
+import Control.Monad.State.Strict (execStateT, modify)
 
 import Data.Aeson
 import qualified Data.ByteString.Lazy.Char8 as BL
-import System.IO (hFlush, stdout, isEOF)
-import Debugger (Debugger (..), isAtBreakpoint, resumeTrace, stepForward, stepBack, rewind, initDebugger)
+import System.IO (hFlush, stdout, stdin, hReady, isEOF)
+import Debugger (Debugger (..), isAtBreakpoint, resumeTrace, stepForward, stepBack, rewind, initDebugger, initDebuggerAtEnd)
 import Control.Monad (when)
+import Control.Monad.State.Strict (runStateT)
 import Data.Word (Word32)
+import qualified Data.Sequence as Seq
 
 data Command
     = CmdLoad String
     | CmdRun
+    | CmdPause
     | CmdStepFwd
     | CmdStepBack
     | CmdRewind
@@ -30,6 +33,7 @@ instance FromJSON Command where
         case cmd :: String of
             "load"         -> CmdLoad <$> v .: "data"
             "run"          -> return CmdRun
+            "pause"        -> return CmdPause
             "step_forward" -> return CmdStepFwd
             "step_back"    -> return CmdStepBack
             "rewind"       -> return CmdRewind
@@ -65,7 +69,7 @@ sendResponse res = do
 runRPC :: FilePath -> IO ()
 runRPC _ = do
     sendResponse (ResError "Backend ready. Awaiting code from Monaco...")
-    let emptyDbg = Debugger [] emptyCPU []
+    let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
     rpcLoop emptyDbg
 
 compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)]))
@@ -80,98 +84,130 @@ compileAndLoad sourceCode = do
                 return Nothing
             Right executable -> do
                 readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
-                return $ Just (initDebugger [readyCpu], execSourceMap executable)
+                return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable)
 
 rpcLoop :: Debugger -> IO ()
 rpcLoop dbg = do
     eof <- isEOF
     if eof then return () else do
-
-        rawInput <- getLine
-        case decode (BL.pack rawInput) of
-            Nothing -> do
-                sendResponse $ ResError "Invalid JSON command received."
-                rpcLoop dbg
-
-            Just CmdQuit -> return ()
-
-            Just (CmdLoad sourceCode) -> do
-                mNewDbg <- compileAndLoad sourceCode
-                case mNewDbg of
-                    Nothing -> rpcLoop dbg
-                    Just (newDbg, smap) -> do
-                        sendResponse (ResLoaded (current newDbg) smap)
-                        rpcLoop newDbg
-
-            Just CmdRun -> do
-                let c = current dbg
-                if status c == Halted then do
-                    sendResponse (ResState c)
+        let c = current dbg
+        ready <- if status c == Running then hReady stdin else return True
+        
+        if ready then do
+            rawInput <- getLine
+            case decode (BL.pack rawInput) of
+                Nothing -> do
+                    sendResponse $ ResError ("Invalid JSON command received: " ++ rawInput)
                     rpcLoop dbg
-                else do
-                    atBreak <- isAtBreakpoint c
-                    startState <- execStateT (runEmulator $ do
-                                    when atBreak incPC
-                                    setStatus Running
-                                  ) c
 
-                    newTrace <- resumeTrace startState
+                Just CmdQuit -> return ()
 
-                    let fullTrace = reverse (past dbg) ++ newTrace
-                    let newDbg = case reverse fullTrace of
-                            (s:ss) -> Debugger ss s []
-                            []     -> dbg
-
-                    let cFinal = current newDbg
-                    if status cFinal == WaitingForInput then do
-                        sendResponse (ResState cFinal)
-                        sendResponse ResNeedInput
+                Just CmdPause -> do
+                    if status c == Running then do
+                        let cPaused = c { status = Paused }
+                        let newDbg = dbg { current = cPaused }
+                        sendResponse (ResState cPaused)
                         rpcLoop newDbg
+                    else rpcLoop dbg
+
+                Just (CmdLoad sourceCode) -> do
+                    mNewDbg <- compileAndLoad sourceCode
+                    case mNewDbg of
+                        Nothing -> rpcLoop dbg
+                        Just (newDbg, smap) -> do
+                            sendResponse (ResLoaded (current newDbg) smap)
+                            rpcLoop newDbg
+
+                Just CmdRun -> executeRun dbg
+
+                Just CmdStepFwd -> do
+                    if not (Seq.null (future dbg)) then do
+                        let nextDbg = stepForward dbg
+                        sendResponse (ResState $ current nextDbg)
+                        rpcLoop nextDbg
                     else do
-                        sendResponse (ResState cFinal)
-                        rpcLoop newDbg
+                        let c = current dbg
+                        if status c == Halted then do
+                            sendResponse (ResState c)
+                            rpcLoop dbg
+                        else do
+                            atBreak <- isAtBreakpoint c
+                            startState <- execStateT (runEmulator $ do
+                                            when atBreak incPC
+                                            setStatus Running
+                                          ) c
+                            (_, nextState) <- runStateT (runEmulator step) startState
+                            let finalState = nextState { status = Paused }
+                            let newDbg = dbg { past = past dbg Seq.|> c, current = finalState, future = Seq.Empty }
+                            sendResponse (ResState finalState)
+                            rpcLoop newDbg
 
-            Just CmdStepFwd -> do
-                let nextDbg = stepForward dbg
-                sendResponse (ResState $ current nextDbg)
-                rpcLoop nextDbg
+                Just CmdStepBack -> do
+                    let prevDbg = stepBack dbg
+                    sendResponse (ResState $ current prevDbg)
+                    rpcLoop prevDbg
 
-            Just CmdStepBack -> do
-                let prevDbg = stepBack dbg
-                sendResponse (ResState $ current prevDbg)
-                rpcLoop prevDbg
+                Just CmdRewind -> do
+                    let startDbg = rewind dbg
+                    sendResponse (ResState $ current startDbg)
+                    rpcLoop startDbg
 
-            Just CmdRewind -> do
-                let startDbg = rewind dbg
-                sendResponse (ResState $ current startDbg)
-                rpcLoop startDbg
-
-            Just (CmdInput text) -> do
-                let c = current dbg
-                if status c == WaitingForInput then do
-                    startState <- execStateT (runEmulator $ do
+                Just (CmdInput text) -> do
+                    let c = current dbg
+                    if status c == WaitingForInput then do
+                        startState <- execStateT (runEmulator $ do
                                     modify $ \cpu -> cpu { 
                                         inputBuffer = Just text, 
                                         status = Running,
                                         outputBuffer = outputBuffer cpu ++ text ++ "\n"
                                     }
                                   ) c
+                                  
+                        sendResponse (ResState startState)
 
-                    newTrace <- resumeTrace startState
+                        newTrace <- resumeTrace startState
 
-                    let fullTrace = reverse (past dbg) ++ newTrace
-                    let newDbg = case reverse fullTrace of
-                            (s:ss) -> Debugger ss s []
-                            []     -> dbg
+                        let fullTrace = past dbg <> newTrace
+                        let newDbg = initDebuggerAtEnd fullTrace
 
-                    let cFinal = current newDbg
-                    if status cFinal == WaitingForInput then do
-                        sendResponse (ResState cFinal)
-                        sendResponse ResNeedInput
-                        rpcLoop newDbg
+                        let cFinal = current newDbg
+                        if status cFinal == WaitingForInput then do
+                            sendResponse (ResState cFinal)
+                            sendResponse ResNeedInput
+                            rpcLoop newDbg
+                        else do
+                            sendResponse (ResState cFinal)
+                            rpcLoop newDbg
                     else do
-                        sendResponse (ResState cFinal)
-                        rpcLoop newDbg
-                else do
-                    sendResponse (ResError "Emulator is not waiting for input.")
-                    rpcLoop dbg
+                        sendResponse (ResError "Emulator is not waiting for input.")
+                        rpcLoop dbg
+        else executeRun dbg
+
+executeRun :: Debugger -> IO ()
+executeRun dbg = do
+    let c = current dbg
+    if status c == Halted then do
+        sendResponse (ResState c)
+        rpcLoop dbg
+    else do
+        atBreak <- isAtBreakpoint c
+        startState <- execStateT (runEmulator $ do
+                        when atBreak incPC
+                        setStatus Running
+                      ) c
+                      
+        sendResponse (ResState startState)
+
+        newTrace <- resumeTrace startState
+
+        let fullTrace = past dbg <> newTrace
+        let newDbg = initDebuggerAtEnd fullTrace
+
+        let cFinal = current newDbg
+        if status cFinal == WaitingForInput then do
+            sendResponse (ResState cFinal)
+            sendResponse ResNeedInput
+            rpcLoop newDbg
+        else do
+            sendResponse (ResState cFinal)
+            rpcLoop newDbg
