@@ -9,7 +9,7 @@ import Data.Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
-import Debugger (Debugger (..), initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
+import Debugger (Debugger (..), disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
 import Linker (Executable (..), resolve)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, emptyCPU, incPC)
 import Parser (parse)
@@ -40,7 +40,7 @@ instance FromJSON Command where
       "quit" -> return CmdQuit
       _ -> fail "Unknown command"
 
-data Response = ResState CPU | ResLoaded CPU [(Word32, Int)] | ResError String | ResNeedInput
+data Response = ResState CPU | ResLoaded CPU [(Word32, Int)] [(Word32, String)] | ResError String | ResNeedInput
 
 instance ToJSON Response where
   toJSON (ResState cpu) =
@@ -48,11 +48,12 @@ instance ToJSON Response where
       [ "type" .= ("state" :: String),
         "data" .= cpu
       ]
-  toJSON (ResLoaded cpu smap) =
+  toJSON (ResLoaded cpu smap dmap) =
     object
       [ "type" .= ("loaded" :: String),
         "state" .= cpu,
-        "sourceMap" .= smap
+        "sourceMap" .= smap,
+        "disasmMap" .= dmap
       ]
   toJSON (ResError msg) =
     object
@@ -75,7 +76,7 @@ runRPC _ = do
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
   rpcLoop emptyDbg
 
-compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)]))
+compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)]))
 compileAndLoad sourceCode = do
   case parse sourceCode of
     Left err -> do
@@ -87,7 +88,12 @@ compileAndLoad sourceCode = do
         return Nothing
       Right executable -> do
         readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
-        return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable)
+        let disasmMap =
+              zipWith
+                (\instr (addr, _) -> (addr, disassemble instr))
+                (execProgram executable)
+                (execSourceMap executable)
+        return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap)
 
 rpcLoop :: Debugger -> IO ()
 rpcLoop dbg = do
@@ -118,8 +124,8 @@ rpcLoop dbg = do
               mNewDbg <- compileAndLoad sourceCode
               case mNewDbg of
                 Nothing -> rpcLoop dbg
-                Just (newDbg, smap) -> do
-                  sendResponse (ResLoaded (current newDbg) smap)
+                Just (newDbg, smap, dmap) -> do
+                  sendResponse (ResLoaded (current newDbg) smap dmap)
                   rpcLoop newDbg
             Just CmdRun -> executeRun dbg
             Just CmdStepFwd -> do
