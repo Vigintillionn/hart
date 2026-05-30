@@ -139,22 +139,22 @@ instance MonadCPU Emulator where
 
   -- TOOD: make others shared as well so we can have RPCEmulator easily reuse
   getPC = gets pc
-  setPC t = modify $ \cpu -> cpu {pc = t}
+  setPC t = modify' $ \cpu -> cpu {pc = t}
   getCycles = gets cycles
-  incCycles = modify $ \cpu -> cpu {cycles = cycles cpu + 1}
+  incCycles = modify' $ \cpu -> cpu {cycles = cycles cpu + 1}
   getStatus = gets status
-  setStatus s = modify $ \cpu -> cpu {status = s}
+  setStatus s = modify' $ \cpu -> cpu {status = s}
 
-  consolePrintLn m = modify $ \cpu -> cpu {outputBuffer = outputBuffer cpu ++ m ++ "\n"}
-  consolePrint m = modify $ \cpu -> cpu {outputBuffer = outputBuffer cpu ++ m}
+  consolePrintLn m = modify' $ \cpu -> cpu {outputBuffer = outputBuffer cpu ++ m ++ "\n"}
+  consolePrint m = modify' $ \cpu -> cpu {outputBuffer = outputBuffer cpu ++ m}
   consoleRead = liftIO getLine
-  terminate = modify $ \cpu -> cpu {status = Halted}
+  terminate = modify' $ \cpu -> cpu {status = Halted}
 
   getInputBuffer = gets inputBuffer
-  clearInputBuffer = modify $ \cpu -> cpu {inputBuffer = Nothing}
+  clearInputBuffer = modify' $ \cpu -> cpu {inputBuffer = Nothing}
 
   getHeapTop = gets heapTop
-  setHeapTop addr = modify $ \cpu -> cpu {heapTop = addr}
+  setHeapTop addr = modify' $ \cpu -> cpu {heapTop = addr}
 
   openHostFile path flags = do
     let mode
@@ -168,7 +168,7 @@ instance MonadCPU Emulator where
       Left _ -> return (-1)
       Right h -> do
         fd <- gets nextFD
-        modify $ \cpu -> cpu {fileMap = M.insert fd h (fileMap cpu), nextFD = fd + 1}
+        modify' $ \cpu -> cpu {fileMap = M.insert fd h (fileMap cpu), nextFD = fd + 1}
         return fd
   closeHostFile fd = do
     mmap <- gets fileMap
@@ -176,7 +176,7 @@ instance MonadCPU Emulator where
       Nothing -> return (-1)
       Just h -> do
         _ <- liftIO (try (hClose h) :: IO (Either SomeException ()))
-        modify $ \cpu -> cpu {fileMap = M.delete fd (fileMap cpu)}
+        modify' $ \cpu -> cpu {fileMap = M.delete fd (fileMap cpu)}
         return 0
   readHostFile fd len = do
     mmap <- gets fileMap
@@ -208,19 +208,19 @@ sharedGetReg r
 sharedSetReg :: (MonadState CPU m) => Register -> Word32 -> m ()
 sharedSetReg r v
   | unReg r == 0 = return ()
-  | otherwise = modify $ \cpu -> cpu {regs = regs cpu V.// [(unReg r, v)]}
+  | otherwise = modify' $ \cpu -> cpu {regs = regs cpu V.// [(unReg r, v)]}
 
 sharedGetCSR :: (MonadState CPU m) => Int -> m Word32
 sharedGetCSR addr = gets $ M.findWithDefault 0 addr . csrs
 
 sharedSetCSR :: (MonadState CPU m) => Int -> Word32 -> m ()
-sharedSetCSR addr val = modify $ \cpu -> cpu {csrs = M.insert addr val (csrs cpu)}
+sharedSetCSR addr val = modify' $ \cpu -> cpu {csrs = M.insert addr val (csrs cpu)}
 
 sharedLoadByte :: (MonadState CPU m) => Word32 -> m Word8
 sharedLoadByte a = gets $ M.findWithDefault 0 (fromIntegral a) . mem
 
 sharedStoreByte :: (MonadState CPU m) => Word32 -> Word32 -> m ()
-sharedStoreByte a w = modify $ \cpu ->
+sharedStoreByte a w = modify' $ \cpu ->
   cpu {mem = M.insert (fromIntegral a) (fromIntegral $ w .&. 0xFF) (mem cpu)}
 
 ---------------------------------------------------------------------------------

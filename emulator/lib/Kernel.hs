@@ -1,6 +1,7 @@
 module Kernel (handleSyscall) where
 
 import Control.Monad (zipWithM_)
+import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as C8
 import Data.Word (Word32)
@@ -54,7 +55,7 @@ handleSyscall = do
     11 -> do
       -- print_char
       charVal <- getReg a0
-      consolePrint [toEnum (fromIntegral charVal)]
+      consolePrint [toEnum (fromIntegral (charVal .&. 0xFF))]
       return Advance
     56 -> do
       -- sys_openat
@@ -110,7 +111,7 @@ handleSyscall = do
 
           setReg a0 len
         else do
-          bytes <- mapM (\i -> loadByte (ptrAddr + fromIntegral i)) [0 .. len - 1]
+          bytes <- mapM (\i -> loadByte (ptrAddr + i)) (take (fromIntegral len) [0 ..])
           res <- writeHostFile (fromIntegral fd) bytes
           setReg a0 (fromIntegral res)
 
