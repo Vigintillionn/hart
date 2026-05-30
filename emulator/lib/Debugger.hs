@@ -4,18 +4,17 @@ import CPU
 import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Char (chr, isPrint, toLower)
-import Data.Foldable (toList)
 import Data.Int (Int32)
-import System.IO (hReady, stdin)
 import Data.IntMap.Strict qualified as M
 import Data.Sequence (Seq (..), (<|), (|>))
 import Data.Sequence qualified as Seq
-import Data.Vector qualified as V
+import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Decoder (decodeWord)
 import Linker (Executable)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), getCSR, incPC, trapBreakpointM)
 import Numeric (readHex)
+import System.IO (hReady, stdin)
 import Text.Printf (printf)
 import Types
 
@@ -24,6 +23,9 @@ data Debugger = Debugger
     current :: CPU,
     future :: Seq CPU
   }
+
+maxHistory :: Int
+maxHistory = 10000
 
 initDebugger :: Seq CPU -> Debugger
 initDebugger Empty = error "Trace cannot be empty"
@@ -35,34 +37,37 @@ initDebugger (c :<| cs) =
     }
 
 initDebuggerAtEnd :: Seq CPU -> Debugger
-initDebuggerAtEnd Empty = error "Trace cannot be empty"
-initDebuggerAtEnd t =
-  case t of
+initDebuggerAtEnd t0 =
+  case boundHistory t0 of
+    Empty -> error "Trace cannot be empty"
     ss :|> s ->
       Debugger
         { past = ss,
           current = s,
           future = Empty
         }
-    _ -> error "unreachable"
+
+boundHistory :: Seq CPU -> Seq CPU
+boundHistory t
+  | extra > 0 = Seq.drop extra t
+  | otherwise = t
+  where
+    extra = Seq.length t - maxHistory
 
 stepForward :: Debugger -> Debugger
 stepForward dbg@(Debugger p c f) = case f of
   Empty -> dbg
-  f' :<| fs -> Debugger (p |> c) (f' { status = Paused }) fs
+  f' :<| fs -> Debugger (p |> c) (f' {status = Paused}) fs
 
 stepBack :: Debugger -> Debugger
 stepBack dbg@(Debugger p c f) = case p of
   Empty -> dbg
-  ps :|> p' -> Debugger ps (p' { status = Paused }) (c <| f)
+  ps :|> p' -> Debugger ps (p' {status = Paused}) (c <| f)
 
 rewind :: Debugger -> Debugger
 rewind dbg = case past dbg of
   Empty -> dbg
   _ -> rewind (stepBack dbg)
-
-maxHistory :: Int
-maxHistory = 1000
 
 loop :: Seq CPU -> CPU -> IO (Seq CPU)
 loop acc curr = do

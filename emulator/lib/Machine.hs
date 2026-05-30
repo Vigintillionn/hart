@@ -7,6 +7,10 @@ module Machine
     PCUpdate (..),
     RunStatus (..),
     CPU (..),
+    Output,
+    emptyOutput,
+    appendOutput,
+    renderOutput,
     Emulator (..),
     MonadCPU (..),
     emptyCPU,
@@ -45,11 +49,11 @@ import Data.Bits (Bits (..))
 import Data.ByteString qualified as BS
 import Data.Int (Int16, Int8)
 import Data.IntMap.Strict qualified as M
-import Data.Vector ((!), (//))
-import Data.Vector qualified as V
+import Data.Vector.Unboxed ((//))
+import Data.Vector.Unboxed qualified as V
 import Data.Word (Word16, Word32, Word8)
 import Numeric (showHex)
-import System.IO (Handle, IOMode (..), hClose, hFlush, openFile, stdout)
+import System.IO (Handle, IOMode (..), hClose, openFile)
 
 class (Monad m) => MonadCPU m where
   getReg :: Register -> m Word32
@@ -96,6 +100,20 @@ instance ToJSON RunStatus where
   toJSON Paused = "Paused"
   toJSON WaitingForInput = "WaitingForInput"
 
+newtype Output = Output [String]
+
+emptyOutput :: Output
+emptyOutput = Output []
+
+appendOutput :: String -> Output -> Output
+appendOutput s (Output chunks) = Output (s : chunks)
+
+renderOutput :: Output -> String
+renderOutput (Output chunks) = concat (reverse chunks)
+
+instance ToJSON Output where
+  toJSON = toJSON . renderOutput
+
 data CPU = CPU
   { pc :: !Word32,
     regs :: !(V.Vector Word32),
@@ -106,7 +124,7 @@ data CPU = CPU
     heapTop :: !Word32,
     fileMap :: !(M.IntMap Handle),
     nextFD :: !Int,
-    outputBuffer :: !String,
+    outputBuffer :: !Output,
     inputBuffer :: !(Maybe String)
   }
 
@@ -114,7 +132,7 @@ instance ToJSON CPU where
   toJSON cpu =
     object
       [ "pc" .= pc cpu,
-        "regs" .= regs cpu,
+        "regs" .= V.toList (regs cpu),
         "csrs" .= csrs cpu,
         "mem" .= mem cpu,
         "cycles" .= cycles cpu,
@@ -145,8 +163,8 @@ instance MonadCPU Emulator where
   getStatus = gets status
   setStatus s = modify' $ \cpu -> cpu {status = s}
 
-  consolePrintLn m = modify' $ \cpu -> cpu {outputBuffer = outputBuffer cpu ++ m ++ "\n"}
-  consolePrint m = modify' $ \cpu -> cpu {outputBuffer = outputBuffer cpu ++ m}
+  consolePrintLn m = modify' $ \cpu -> cpu {outputBuffer = appendOutput (m ++ "\n") (outputBuffer cpu)}
+  consolePrint m = modify' $ \cpu -> cpu {outputBuffer = appendOutput m (outputBuffer cpu)}
   consoleRead = liftIO getLine
   terminate = modify' $ \cpu -> cpu {status = Halted}
 
@@ -264,7 +282,7 @@ emptyCPU =
       heapTop = 0x20000000,
       fileMap = M.empty,
       nextFD = 3,
-      outputBuffer = "",
+      outputBuffer = emptyOutput,
       inputBuffer = Nothing
     }
 
