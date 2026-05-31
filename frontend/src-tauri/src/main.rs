@@ -51,7 +51,7 @@ fn main() {
                 while let Some(event) = rx.recv().await {
                     match event {
                         CommandEvent::Stdout(line) => {
-                            let json_str = String::from_utf8(line).unwrap();
+                            let json_str = String::from_utf8_lossy(&line);
 
                             match serde_json::from_str::<EmulatorResponse>(&json_str) {
                                 Ok(response) => {
@@ -67,7 +67,8 @@ fn main() {
                         }
                         CommandEvent::Terminated(payload) => {
                             eprintln!("Haskell sidecar terminated with code: {:?}", payload.code);
-                            app_handle.exit(1);
+                            *app_handle.state::<EmulatorState>().child.lock().unwrap() = None;
+                            let _ = app_handle.emit("sidecar-exit", payload.code);
                         }
                         _ => {}
                     }
