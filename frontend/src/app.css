@@ -34,9 +34,8 @@
   --color-amber: #e0a86a;
   --color-green: #7fce8f;
 
-  --font-sans: "Geist Variable", -apple-system, system-ui, sans-serif;
-  --font-mono:
-    "JetBrains Mono Variable", ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: "Geist Sans", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
 
   --radius-sm: 4px;
   --radius-md: 7px;

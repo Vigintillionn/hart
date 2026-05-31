@@ -48,7 +48,7 @@
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       glyphMargin: true,
-      fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace",
+      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
       fontSize: 13,
       lineHeight: 21,
       letterSpacing: 0,
@@ -60,6 +60,7 @@
     });
 
     decorationsCollection = editor.createDecorationsCollection([]);
+    document.fonts?.ready.then(() => monaco.editor.remeasureFonts());
   });
 
   $effect(() => {
