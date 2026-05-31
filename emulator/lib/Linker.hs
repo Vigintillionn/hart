@@ -194,6 +194,34 @@ checkShiftBounds op val
       Left $ "Shift amount out of range (0-31): " ++ show val
   | otherwise = Right val
 
+isReloc :: Operand -> Bool
+isReloc (LabelHi _) = True
+isReloc (LabelLo _) = True
+isReloc _ = False
+
+rangeErr :: String -> Int -> Int -> Int -> String
+rangeErr ctx lo hi v =
+  ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
+
+checkSigned :: String -> Int -> Bool -> Operand -> Int -> Either String Int
+checkSigned ctx bits aligned orig v
+  | isReloc orig = Right v
+  | aligned && odd v = Left $ ctx ++ " target is not 2-byte aligned: " ++ show v
+  | v < lo || v > hi = Left (rangeErr ctx lo hi v)
+  | otherwise = Right v
+  where
+    hi = bit (bits - 1) - 1
+    lo = negate (bit (bits - 1))
+
+checkUpper :: Operand -> Int -> Either String Int
+checkUpper orig v
+  | isReloc orig = Right v
+  | v < lo || v > hi = Left (rangeErr "upper immediate" lo hi v)
+  | otherwise = Right v
+  where
+    lo = negate (bit 19)
+    hi = bit 20 - 1
+
 resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either String) (SomeInstruction Int)
 resolveInstruction table instr = do
   pc <- get
@@ -232,21 +260,40 @@ resolveAbsolute table (LabelLo l) =
 resolveAbsolute _ (ImmVal v) = Right v
 
 resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
-resolveOperand pc table (SomeInstruction (JType op args)) =
-  SomeInstruction . JType op <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (BType op args)) =
-  SomeInstruction . BType op <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (UType AUIPC args)) =
-  SomeInstruction . UType AUIPC <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (LoadI op args)) =
-  SomeInstruction . LoadI op <$> traverse (resolveRelative pc table) args
-resolveOperand pc table (SomeInstruction (JumpI op args)) =
-  SomeInstruction . JumpI op <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (JType op args)) = do
+  v <- resolveRelative pc table (j_imm args)
+  v' <- checkSigned "jump" 21 True (j_imm args) v
+  return $ SomeInstruction $ JType op (args {j_imm = v'})
+resolveOperand pc table (SomeInstruction (BType op args)) = do
+  v <- resolveRelative pc table (b_imm args)
+  v' <- checkSigned "branch" 13 True (b_imm args) v
+  return $ SomeInstruction $ BType op (args {b_imm = v'})
+resolveOperand pc table (SomeInstruction (UType AUIPC args)) = do
+  v <- resolveRelative pc table (u_imm args)
+  v' <- checkUpper (u_imm args) v
+  return $ SomeInstruction $ UType AUIPC (args {u_imm = v'})
+resolveOperand _ table (SomeInstruction (UType LUI args)) = do
+  v <- resolveAbsolute table (u_imm args)
+  v' <- checkUpper (u_imm args) v
+  return $ SomeInstruction $ UType LUI (args {u_imm = v'})
+resolveOperand pc table (SomeInstruction (LoadI op args)) = do
+  v <- resolveRelative pc table (i_imm args)
+  v' <- checkSigned "load offset" 12 False (i_imm args) v
+  return $ SomeInstruction $ LoadI op (args {i_imm = v'})
+resolveOperand pc table (SomeInstruction (JumpI op args)) = do
+  v <- resolveRelative pc table (i_imm args)
+  v' <- checkSigned "jalr offset" 12 False (i_imm args) v
+  return $ SomeInstruction $ JumpI op (args {i_imm = v'})
 resolveOperand pc table (SomeInstruction (ArithI op args)) = do
   val <- resolveRelative pc table (i_imm args)
-  validVal <- checkShiftBounds op val
+  validVal <-
+    if op `elem` [SLLI, SRLI, SRAI]
+      then checkShiftBounds op val
+      else checkSigned "immediate" 12 False (i_imm args) val
   return $ SomeInstruction $ ArithI op (args {i_imm = validVal})
-resolveOperand pc table (SomeInstruction (SType op args)) =
-  SomeInstruction . SType op <$> traverse (resolveRelative pc table) args
+resolveOperand pc table (SomeInstruction (SType op args)) = do
+  v <- resolveRelative pc table (s_imm args)
+  v' <- checkSigned "store offset" 12 False (s_imm args) v
+  return $ SomeInstruction $ SType op (args {s_imm = v'})
 resolveOperand _ table (SomeInstruction instr) =
   SomeInstruction <$> traverse (resolveAbsolute table) instr
