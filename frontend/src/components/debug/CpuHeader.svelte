@@ -3,7 +3,6 @@
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { layoutStore } from "$lib/store/layoutStore.svelte";
   import { toHex, hex32 } from "$lib/util";
-  import StatusPill from "./StatusPill.svelte";
 
   const st = $derived(cpuStore.cpuState);
   const pcToLine = $derived(cpuStore.sourceLineMap);
@@ -32,8 +31,6 @@
       class="text-[11px] font-semibold uppercase tracking-[1.6px] text-text-dim"
       >CPU State</span
     >
-    <span class="flex-1"></span>
-    <StatusPill />
   </div>
 
   <div class="grid grid-cols-2 gap-2">
