@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
-  import { PaneGroup, Pane, PaneResizer } from "paneforge";
+  import { PaneGroup, Pane } from "paneforge";
   import { getCurrentWindow } from "@tauri-apps/api/window";
   import { confirm } from "@tauri-apps/plugin-dialog";
   import Toolbar from "../components/toolbar/Toolbar.svelte";
@@ -11,6 +11,7 @@
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { layoutStore, PANE_KEYS } from "$lib/store/layoutStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
+  import CollapsibleResizer from "../components/ui/CollapsibleResizer.svelte";
 
   onMount(() => {
     cpuStore.initListener();
@@ -49,18 +50,10 @@
           <Editor />
         </Pane>
 
-        <PaneResizer
-          class="relative z-10 h-px bg-border transition-colors data-[resize-handle-state=hover]:bg-primary-soft data-[resize-handle-state=drag]:bg-primary"
-        >
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="absolute inset-x-0 -top-1 -bottom-1 cursor-row-resize"
-            ondblclick={() =>
-              layoutStore.consolePaneRef?.isCollapsed()
-                ? layoutStore.consolePaneRef?.expand()
-                : layoutStore.consolePaneRef?.collapse()}
-          ></div>
-        </PaneResizer>
+        <CollapsibleResizer
+          direction="vertical"
+          pane={layoutStore.consolePaneRef}
+        />
 
         <Pane
           defaultSize={28}
@@ -76,18 +69,7 @@
       </PaneGroup>
     </Pane>
 
-    <PaneResizer
-      class="relative z-10 w-px bg-border transition-colors data-[resize-handle-state=hover]:bg-primary-soft data-[resize-handle-state=drag]:bg-primary"
-    >
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
-      <div
-        class="absolute inset-y-0 -left-1 -right-1 cursor-col-resize"
-        ondblclick={() =>
-          layoutStore.debugPaneRef?.isCollapsed()
-            ? layoutStore.debugPaneRef?.expand()
-            : layoutStore.debugPaneRef?.collapse()}
-      ></div>
-    </PaneResizer>
+    <CollapsibleResizer direction="horizontal" pane={layoutStore.debugPaneRef} />
 
     <Pane
       defaultSize={32}

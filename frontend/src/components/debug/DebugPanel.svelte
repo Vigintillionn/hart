@@ -1,10 +1,11 @@
 <script lang="ts">
-  import { PaneGroup, Pane, PaneResizer } from "paneforge";
+  import { PaneGroup, Pane } from "paneforge";
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import { layoutStore, PANE_KEYS } from "$lib/store/layoutStore.svelte";
   import CpuHeader from "./CpuHeader.svelte";
   import RegisterPane from "./RegisterPane.svelte";
   import MemoryView from "./MemoryView.svelte";
+  import CollapsibleResizer from "../ui/CollapsibleResizer.svelte";
 </script>
 
 <div class="flex h-full min-h-0 flex-col bg-surface-1">
@@ -28,18 +29,10 @@
           />
         </Pane>
 
-        <PaneResizer
-          class="relative z-10 h-px bg-border transition-colors data-[resize-handle-state=hover]:bg-primary-soft data-[resize-handle-state=drag]:bg-primary"
-        >
-          <!-- svelte-ignore a11y_no_static_element_interactions -->
-          <div
-            class="absolute inset-x-0 -top-1 -bottom-1 cursor-row-resize"
-            ondblclick={() =>
-              layoutStore.memoryPaneRef?.isCollapsed()
-                ? layoutStore.memoryPaneRef?.expand()
-                : layoutStore.memoryPaneRef?.collapse()}
-          ></div>
-        </PaneResizer>
+        <CollapsibleResizer
+          direction="vertical"
+          pane={layoutStore.memoryPaneRef}
+        />
 
         <Pane
           defaultSize={38}
