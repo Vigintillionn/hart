@@ -4,6 +4,7 @@
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import Terminal from "./Terminal.svelte";
   import Icon from "../Icon.svelte";
+  import IconButton from "../ui/IconButton.svelte";
 
   const tagColor: Record<string, string> = {
     info: "text-primary",
@@ -64,13 +65,12 @@
     {@render tab("program", "Output", "term", outputLineCount, false)}
 
     <div class="ml-auto flex items-center gap-0.5 pr-2">
-      <button
-        class="grid h-6.5 w-6.5 place-items-center rounded-[5px] text-text-faint transition-colors hover:bg-surface-3 hover:text-text-dim"
-        title="Clear"
-        onclick={() => terminalStore.clearAll()}
-      >
-        <Icon name="trash" class="h-3.5 w-3.5" />
-      </button>
+      <IconButton
+        name="trash"
+        size="sm"
+        title={`Clear ${terminalStore.activeTab === "system" ? "log" : "output"}`}
+        onclick={() => terminalStore.clearActive()}
+      />
     </div>
   </div>
 
@@ -84,7 +84,7 @@
           — system log empty · press Compile or Step —
         </div>
       {:else}
-        {#each logStore.entries as l}
+        {#each logStore.entries as l (l.id)}
           <div
             class="flex gap-2.5 px-3.5 py-px font-mono text-[11.5px] leading-4.5"
           >
