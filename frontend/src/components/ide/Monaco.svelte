@@ -4,22 +4,28 @@
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
   import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
   import { themeColors } from "../../lib/editor/theme.svelte";
+  import type { OpenFile } from "$lib/types";
 
   let {
     activeFileId = "",
-    files = [] as { id: string; content: string }[],
-    onContentChange = (id: string, newContent: string) => {},
+    files = [],
+    onContentChange = (_id: string, _newContent: string) => {},
     currentPc = 0,
-    sourceMap = [] as [number, number][],
+    pcToLine = new Map<number, number>(),
     readOnly = false,
+  }: {
+    activeFileId?: string;
+    files?: Pick<OpenFile, "id" | "content">[];
+    onContentChange?: (id: string, newContent: string) => void;
+    currentPc?: number;
+    pcToLine?: Map<number, number>;
+    readOnly?: boolean;
   } = $props();
 
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor;
   let decorationsCollection: monaco.editor.IEditorDecorationsCollection;
   let models = new Map<string, monaco.editor.ITextModel>();
-
-  let pcToLineMap = $derived(new Map(sourceMap));
 
   let previousPc = $state<number | null>(null);
   let oldPcVal = -1;
@@ -137,8 +143,8 @@
   });
 
   $effect(() => {
-    const targetLine = pcToLineMap.get(currentPc) || 0;
-    const prevLine = previousPc !== null ? pcToLineMap.get(previousPc) || 0 : 0;
+    const targetLine = pcToLine.get(currentPc) || 0;
+    const prevLine = previousPc !== null ? pcToLine.get(previousPc) || 0 : 0;
 
     if (editor && decorationsCollection && targetLine) {
       const decs: monaco.editor.IModelDeltaDecoration[] = [

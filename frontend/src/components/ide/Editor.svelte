@@ -26,32 +26,39 @@
     {#each fileStore.openFiles as file (file.id)}
       {@const parts = splitName(file.name)}
       {@const dirty = fileStore.isDirty(file)}
-      <!-- svelte-ignore a11y_click_events_have_key_events -->
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      {@const multiple = fileStore.openFiles.length > 1}
       <div
-        class="group relative flex h-9 cursor-default select-none items-center gap-2 border-r border-border px-4 text-[12.5px] transition-colors {fileStore.activeFileId ===
+        class="group relative flex h-9 select-none items-center border-r border-border text-[12.5px] transition-colors {fileStore.activeFileId ===
         file.id
           ? "bg-surface-0 text-text before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary before:content-['']"
           : 'text-text-dim hover:text-text'}"
-        onclick={() => fileStore.setActiveFileId(file.id)}
       >
-        <span>{parts.base}<span class="text-secondary">{parts.ext}</span></span>
-        {#if dirty}
-          <span
-            class="h-1.5 w-1.5 flex-none rounded-full bg-primary {fileStore
-              .openFiles.length > 1
-              ? 'group-hover:hidden'
-              : ''}"
-            title="unsaved changes"
-          ></span>
-        {/if}
-        {#if fileStore.openFiles.length > 1}
+        <button
+          class="flex h-full items-center gap-2 pl-4 {multiple
+            ? 'pr-1.5'
+            : 'pr-4'}"
+          title={file.name}
+          onclick={() => fileStore.setActiveFileId(file.id)}
+        >
+          <span>{parts.base}<span class="text-secondary">{parts.ext}</span
+            ></span
+          >
+          {#if dirty}
+            <span
+              class="h-1.5 w-1.5 flex-none rounded-full bg-primary {multiple
+                ? 'group-hover:hidden'
+                : ''}"
+              title="unsaved changes"
+            ></span>
+          {/if}
+        </button>
+        {#if multiple}
           <button
-            class="text-text-faint transition-colors hover:text-red {dirty
+            class="pr-3.5 pl-0.5 text-text-faint transition-colors hover:text-red {dirty
               ? 'hidden group-hover:block'
               : ''}"
-            onclick={(e) => fileStore.closeFile(file.id, e)}
-            title="Close">×</button
+            title="Close"
+            onclick={(e) => fileStore.closeFile(file.id, e)}>×</button
           >
         {/if}
       </div>
@@ -63,7 +70,7 @@
       {#if running}
         <Icon name="lock" class="h-3 w-3" /> running · read-only
       {:else}
-        <Icon name="pencil" class="h-3 w-3" /> editable · RV32I
+        <Icon name="pencil" class="h-3 w-3" /> editable · RV32IM
       {/if}
     </div>
   </div>
@@ -74,7 +81,7 @@
       files={fileStore.openFiles}
       onContentChange={handleEditorChange}
       currentPc={cpuStore.cpuState?.pc ?? 0}
-      sourceMap={cpuStore.sourceMap}
+      pcToLine={cpuStore.sourceLineMap}
       readOnly={running}
     />
   </div>
