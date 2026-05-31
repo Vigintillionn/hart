@@ -1,8 +1,7 @@
 <script lang="ts">
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
-  import type { IconName } from "$lib/types";
-  import Icon from "../../Icon.svelte";
+  import IconButton from "../../ui/IconButton.svelte";
   import StyleSettings from "./StyleSettings.svelte";
   import PanelControls from "./PanelControls.svelte";
 
@@ -11,55 +10,34 @@
 </script>
 
 <div class="flex items-center gap-0.5">
-  {#snippet control(
-    title: string,
-    iconName: IconName,
-    onClick: () => void,
-    isActive?: boolean,
-  )}
-    <button
-      class="grid h-8 w-8 place-items-center rounded-md transition-colors hover:bg-surface-3 {isActive
-        ? 'text-primary'
-        : 'text-text-faint hover:text-text-dim'}"
-      {title}
-      onclick={onClick}
-    >
-      <Icon name={iconName} class="h-3.75 w-3.75" />
-    </button>
-  {/snippet}
-
-  {@render control(
-    `Open file (${keymap.describe("open")})`,
-    "folder",
-    () => fileStore.handleOpenFile(),
-  )}
-  {@render control(
-    `Save file (${keymap.describe("save")})`,
-    "save",
-    () => fileStore.handleSaveFile(),
-  )}
+  <IconButton
+    name="folder"
+    title={`Open file (${keymap.describe("open")})`}
+    onclick={() => fileStore.handleOpenFile()}
+  />
+  <IconButton
+    name="save"
+    title={`Save file (${keymap.describe("save")})`}
+    onclick={() => fileStore.handleSaveFile()}
+  />
 
   <div class="relative">
-    {@render control(
-      "Panels",
-      "panels",
-      () => (viewOpen = !viewOpen),
-      viewOpen,
-    )}
-    {#if viewOpen}
-      <PanelControls bind:viewOpen />
-    {/if}
+    <IconButton
+      name="panels"
+      title="Panels"
+      active={viewOpen}
+      onclick={() => (viewOpen = !viewOpen)}
+    />
+    <PanelControls bind:open={viewOpen} />
   </div>
 
   <div class="relative">
-    {@render control(
-      "Theme",
-      "sliders",
-      () => (showSettings = !showSettings),
-      showSettings,
-    )}
-    {#if showSettings}
-      <StyleSettings bind:showSettings />
-    {/if}
+    <IconButton
+      name="sliders"
+      title="Theme"
+      active={showSettings}
+      onclick={() => (showSettings = !showSettings)}
+    />
+    <StyleSettings bind:open={showSettings} />
   </div>
 </div>
