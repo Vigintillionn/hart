@@ -37,7 +37,7 @@ fn main() {
 
             let (mut rx, child) = app
                 .shell()
-                .sidecar("riscv")
+                .sidecar("hart-emulator")
                 .expect("Failed to create sidecar command")
                 .args(["--rpc", "dummy.s"])
                 .spawn()
