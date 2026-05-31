@@ -59,7 +59,7 @@
       "system",
       "System",
       "logs",
-      logStore.errorCount || logStore.entries.length,
+      logStore.entries.length,
       logStore.errorCount > 0,
     )}
     {@render tab("program", "Output", "term", outputLineCount, false)}
