@@ -1,4 +1,5 @@
 import type { PaneAPI } from "paneforge";
+import { loadJSON, saveJSON } from "../persist";
 
 export const PANE_KEYS = {
   mainH: "hart-main-h", // [ editor+console | debug ]
@@ -6,9 +7,11 @@ export const PANE_KEYS = {
   debugV: "hart-debug-v", // [ registers / memory ]
 } as const;
 
+const HEX_KEY = "hart:hexMode";
+
 class LayoutStore {
   /** global HEX/DEC number base, shared by registers, memory & CPU header */
-  hexMode = $state(true);
+  hexMode = $state(loadJSON(HEX_KEY, true));
 
   isDebugVisible = $state(true);
   isConsoleVisible = $state(true);
@@ -19,6 +22,12 @@ class LayoutStore {
   consolePaneRef = $state<PaneAPI>();
   registersPaneRef = $state<PaneAPI>();
   memoryPaneRef = $state<PaneAPI>();
+
+  constructor() {
+    $effect.root(() => {
+      $effect(() => saveJSON(HEX_KEY, this.hexMode));
+    });
+  }
 
   public toggleDebug() {
     if (this.debugPaneRef?.isCollapsed()) {

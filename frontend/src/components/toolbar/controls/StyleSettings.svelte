@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { themeColors } from "$lib/editor/theme.svelte";
+  import { themeColors, resetTheme } from "$lib/editor/theme.svelte";
   import Popover from "../../ui/Popover.svelte";
 
   let { open = $bindable() }: { open: boolean } = $props();
@@ -29,5 +29,9 @@
         />
       </label>
     {/each}
+    <button
+      class="mt-1 self-start text-[11px] text-text-faint transition-colors hover:text-text"
+      onclick={() => resetTheme()}>↻ Reset to defaults</button
+    >
   </div>
 </Popover>
