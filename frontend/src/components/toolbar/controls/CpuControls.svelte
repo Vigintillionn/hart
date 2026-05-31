@@ -4,6 +4,7 @@
 
   const status = $derived(cpuStore.status);
   const loaded = $derived(cpuStore.isLoaded);
+  const dirty = $derived(cpuStore.isDirty);
   const running = $derived(status === "Running");
   const halted = $derived(status === "Halted");
 
@@ -14,7 +15,7 @@
         icon: "pause" as const,
         run: () => cpuStore.handlePause(),
       };
-    if (halted)
+    if (halted && !dirty)
       return {
         label: "Restart",
         icon: "rewind" as const,
@@ -30,12 +31,20 @@
 
 <div class="flex items-center gap-1">
   <button
-    class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-surface-3 px-2.5 text-[12.5px] font-medium text-secondary transition-colors hover:bg-surface-4 disabled:opacity-30"
-    title="Compile & load the current file"
+    class="relative inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-surface-3 px-2.5 text-[12.5px] font-medium text-secondary transition-colors hover:bg-surface-4 disabled:opacity-30"
+    title={dirty
+      ? "Source changed since last compile — Run will recompile"
+      : "Compile & load the current file"}
     onclick={() => cpuStore.handleLoadProgram()}
   >
     <Icon name="build" class="h-4 w-4" />
     <span>Compile</span>
+    {#if dirty}
+      <span
+        class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_0_2px_var(--color-surface-2)]"
+        aria-label="modified since last compile"
+      ></span>
+    {/if}
   </button>
 
   <button

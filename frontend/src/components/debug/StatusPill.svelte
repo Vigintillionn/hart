@@ -9,14 +9,15 @@
       case "Halted":
         return { label: "Halted", cls: "halt" };
       case "WaitingForInput":
-        return { label: "Waiting for input", cls: "live" };
+        return { label: "Waiting for input", cls: "paused" };
       default:
-        return { label: "Paused", cls: "live" };
+        return { label: "Paused", cls: "paused" };
     }
   });
 
   const tone: Record<string, string> = {
-    live: "before:bg-primary before:shadow-[0_0_8px_var(--primary-glow)]",
+    live: "before:bg-secondary before:shadow-[0_0_8px_var(--secondary-glow)]",
+    paused: "before:bg-primary before:shadow-[0_0_8px_var(--primary-glow)]",
     halt: "before:bg-text-faint",
     err: "before:bg-red before:shadow-[0_0_8px_var(--red-glow)]",
   };

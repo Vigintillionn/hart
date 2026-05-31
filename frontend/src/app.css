@@ -45,6 +45,7 @@
 
 :root {
   --primary-glow: rgba(253, 181, 21, 0.3);
+  --secondary-glow: rgba(98, 203, 201, 0.3);
   --red-glow: rgba(240, 114, 106, 0.5);
 }
 
