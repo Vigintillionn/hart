@@ -46,7 +46,7 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
-    let rows = 0;
+    let rows: number;
     if (e.key === "ArrowDown") rows = 1;
     else if (e.key === "ArrowUp") rows = -1;
     else if (e.key === "PageDown") rows = Math.max(1, visibleRows - 2);
@@ -214,21 +214,21 @@
           >
             <span class="mr-3.5 text-secondary opacity-85">{hex32(addr)}</span>
             <span class="text-text-dim">
-              {#each bytes as b, c}
+              {#each bytes as b, c (addr + c)}
                 <span
                   class={changed.has((addr + c) >>> 0)
                     ? "text-primary"
                     : b === 0
                       ? "text-text-ghost"
                       : ""}
-                  >{layoutStore.hexMode
+                  >{(layoutStore.hexMode
                     ? hex2(b)
-                    : b.toString().padStart(3, "0")}{" "}</span
+                    : b.toString().padStart(3, "0")) + " "}</span
                 >{#if c === 7}<span class="inline-block w-2"></span>{/if}
               {/each}
             </span>
             <span class="ml-3 text-text-faint">
-              {#each bytes as b, c}
+              {#each bytes as b, c (addr + c)}
                 {@const pr = b >= 32 && b < 127}
                 <span
                   class={changed.has((addr + c) >>> 0)
