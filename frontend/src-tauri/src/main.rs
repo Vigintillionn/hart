@@ -3,7 +3,7 @@
 mod types;
 
 use std::sync::Mutex;
-use tauri::{Emitter, Manager};
+use tauri::{Emitter, Manager, RunEvent};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use types::EmulatorResponse;
@@ -49,17 +49,27 @@ fn main() {
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 while let Some(event) = rx.recv().await {
-                    if let CommandEvent::Stdout(line) = event {
-                        let json_str = String::from_utf8(line).unwrap();
+                    match event {
+                        CommandEvent::Stdout(line) => {
+                            let json_str = String::from_utf8(line).unwrap();
 
-                        match serde_json::from_str::<EmulatorResponse>(&json_str) {
-                            Ok(response) => {
-                                app_handle.emit("emulator-update", response).unwrap();
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to parse Haskell JSON: {}\nRaw: {}", e, json_str);
+                            match serde_json::from_str::<EmulatorResponse>(&json_str) {
+                                Ok(response) => {
+                                    app_handle.emit("emulator-update", response).unwrap();
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "Failed to parse Haskell JSON: {}\nRaw: {}",
+                                        e, json_str
+                                    );
+                                }
                             }
                         }
+                        CommandEvent::Terminated(payload) => {
+                            eprintln!("Haskell sidecar terminated with code: {:?}", payload.code);
+                            app_handle.exit(1);
+                        }
+                        _ => {}
                     }
                 }
             });
@@ -67,6 +77,21 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![send_command])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app_handle, event| {
+            if let RunEvent::ExitRequested { .. } = event {
+                let child_to_kill = app_handle
+                    .state::<EmulatorState>()
+                    .child
+                    .lock()
+                    .unwrap()
+                    .take();
+
+                if let Some(child) = child_to_kill {
+                    let _ = child.kill();
+                    println!("Haskell sidecar safely terminated on exit.");
+                }
+            }
+        });
 }
