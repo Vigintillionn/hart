@@ -1,98 +1,76 @@
 <script lang="ts">
   import { onMount, onDestroy } from "svelte";
   import { PaneGroup, Pane, PaneResizer } from "paneforge";
-  import Editor from "../components/Editor.svelte";
-  import Header from "../components/Header.svelte";
-  import StyleSettings from "../components/StyleSettings.svelte";
-  import TerminalContainer from "../components/TerminalContainer.svelte";
-  import DebugPanel from "../components/DebugPanel.svelte";
-  import { cpuStore } from "$lib/cpuStore.svelte";
-  import { layoutStore } from "$lib/layoutStore.svelte";
+  import Toolbar from "../components/toolbar/Toolbar.svelte";
+  import Editor from "../components/ide/Editor.svelte";
+  import DebugPanel from "../components/debug/DebugPanel.svelte";
+  import TerminalContainer from "../components/ide/TerminalContainer.svelte";
+  import { cpuStore } from "$lib/store/cpuStore.svelte";
+  import { layoutStore, PANE_KEYS } from "$lib/store/layoutStore.svelte";
 
-  let showSettings = $state(false);
-
-  onMount(() => {
-    cpuStore.initListener();
-  });
-
-  onDestroy(() => {
-    cpuStore.cleanup();
-  });
+  onMount(() => cpuStore.initListener());
+  onDestroy(() => cpuStore.cleanup());
 </script>
 
-<div
-  class="flex flex-col h-screen w-screen relative bg-zinc-950 text-zinc-300 font-sans overflow-hidden"
->
-  <Header bind:showSettings />
-  {#if showSettings}
-    <StyleSettings bind:showSettings />
-  {/if}
+<Toolbar />
+<div class="min-h-0 flex-1">
+  <PaneGroup direction="horizontal" autoSaveId={PANE_KEYS.mainH}>
+    <Pane defaultSize={68} minSize={32}>
+      <PaneGroup direction="vertical" autoSaveId={PANE_KEYS.leftV}>
+        <Pane defaultSize={72} minSize={25}>
+          <Editor />
+        </Pane>
 
-  <div class="flex-1 overflow-hidden">
-    <PaneGroup direction="vertical" autoSaveId="app-layout-vertical">
-      <Pane defaultSize={70} minSize={20}>
-        <PaneGroup direction="horizontal" autoSaveId="app-layout-horizontal">
-          <Pane defaultSize={60} minSize={20}>
-            <section class="flex flex-col h-full min-w-0 bg-zinc-900">
-              <Editor />
-            </section>
-          </Pane>
+        <PaneResizer
+          class="relative z-10 h-px bg-border transition-colors data-[resize-handle-state=hover]:bg-primary-soft data-[resize-handle-state=drag]:bg-primary"
+        >
+          <!-- svelte-ignore a11y_no_static_element_interactions -->
+          <div
+            class="absolute inset-x-0 -top-1 -bottom-1 cursor-row-resize"
+            ondblclick={() =>
+              layoutStore.consolePaneRef?.isCollapsed()
+                ? layoutStore.consolePaneRef?.expand()
+                : layoutStore.consolePaneRef?.collapse()}
+          ></div>
+        </PaneResizer>
 
-          <PaneResizer
-            class="w-1 bg-zinc-800 hover:bg-zinc-600 data-[resize-handle-state=drag]:bg-sky-500 transition-colors cursor-col-resize relative z-10 flex items-center justify-center"
-          >
-            <!-- svelte-ignore a11y_no_static_element_interactions -->
-            <div
-              class="absolute inset-y-0 -left-1.5 -right-1.5"
-              ondblclick={() =>
-                layoutStore.cpuPaneRef?.isCollapsed()
-                  ? layoutStore.cpuPaneRef?.expand()
-                  : layoutStore.cpuPaneRef?.collapse()}
-            ></div>
-          </PaneResizer>
-
-          <Pane
-            defaultSize={40}
-            minSize={20}
-            collapsible={true}
-            collapsedSize={0}
-            bind:this={layoutStore.cpuPaneRef}
-            onCollapse={() => (layoutStore.isCpuVisible = false)}
-            onExpand={() => (layoutStore.isCpuVisible = true)}
-          >
-            <aside class="flex flex-col h-full min-w-0 bg-zinc-900">
-              <DebugPanel />
-            </aside>
-          </Pane>
-        </PaneGroup>
-      </Pane>
-
-      <PaneResizer
-        class="h-1 bg-zinc-800 hover:bg-zinc-600 data-[resize-handle-state=drag]:bg-sky-500 transition-colors cursor-row-resize relative z-10 flex items-center justify-center"
-      >
-        <!-- svelte-ignore a11y_no_static_element_interactions -->
-        <div
-          class="absolute inset-x-0 -top-1.5 -bottom-1.5"
-          ondblclick={() =>
-            layoutStore.terminalPaneRef?.isCollapsed()
-              ? layoutStore.terminalPaneRef?.expand()
-              : layoutStore.terminalPaneRef?.collapse()}
-        ></div>
-      </PaneResizer>
-
-      <Pane
-        defaultSize={30}
-        minSize={10}
-        collapsible={true}
-        collapsedSize={0}
-        bind:this={layoutStore.terminalPaneRef}
-        onCollapse={() => (layoutStore.isTerminalVisible = false)}
-        onExpand={() => (layoutStore.isTerminalVisible = true)}
-      >
-        <footer class="flex flex-col h-full min-h-0 bg-zinc-900">
+        <Pane
+          defaultSize={28}
+          minSize={10}
+          collapsible
+          collapsedSize={0}
+          bind:this={layoutStore.consolePaneRef}
+          onCollapse={() => (layoutStore.isConsoleVisible = false)}
+          onExpand={() => (layoutStore.isConsoleVisible = true)}
+        >
           <TerminalContainer />
-        </footer>
-      </Pane>
-    </PaneGroup>
-  </div>
+        </Pane>
+      </PaneGroup>
+    </Pane>
+
+    <PaneResizer
+      class="relative z-10 w-px bg-border transition-colors data-[resize-handle-state=hover]:bg-primary-soft data-[resize-handle-state=drag]:bg-primary"
+    >
+      <!-- svelte-ignore a11y_no_static_element_interactions -->
+      <div
+        class="absolute inset-y-0 -left-1 -right-1 cursor-col-resize"
+        ondblclick={() =>
+          layoutStore.debugPaneRef?.isCollapsed()
+            ? layoutStore.debugPaneRef?.expand()
+            : layoutStore.debugPaneRef?.collapse()}
+      ></div>
+    </PaneResizer>
+
+    <Pane
+      defaultSize={32}
+      minSize={20}
+      collapsible
+      collapsedSize={0}
+      bind:this={layoutStore.debugPaneRef}
+      onCollapse={() => (layoutStore.isDebugVisible = false)}
+      onExpand={() => (layoutStore.isDebugVisible = true)}
+    >
+      <DebugPanel />
+    </Pane>
+  </PaneGroup>
 </div>

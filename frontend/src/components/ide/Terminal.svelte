@@ -15,18 +15,18 @@
   let fitAddon: FitAddon;
 
   let localInputBuffer = "";
-  let lastOutputLength = 0;
 
   onMount(() => {
     term = new Terminal({
       theme: {
-        background: "#1e1e1e",
-        foreground: "#4af626",
-        cursor: "#f57f17",
+        background: "#0d0d10", // surface-0
+        foreground: "#e7e7ec", // text
+        cursor: "#fdb515", // primary
+        selectionBackground: "rgba(253, 181, 21, 0.14)", // primary soft
       },
       disableStdin: hideCursor,
-      fontFamily: '"Courier New", Courier, monospace',
-      fontSize: 14,
+      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontSize: 12.5,
       cursorBlink: !hideCursor,
       convertEol: true,
     });
@@ -90,8 +90,7 @@
 </script>
 
 <div
-  class="w-full h-full p-4 box-border bg-zinc-950 overflow-hidden"
+  class="box-border h-full w-full overflow-hidden bg-surface-0 px-3.5 py-2"
   class:hide-cursor={hideCursor}
   bind:this={terminalContainer}
 ></div>
-

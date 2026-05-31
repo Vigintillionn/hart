@@ -3,6 +3,11 @@ import type { CpuState } from "./CpuState";
 
 export type EmulatorResponse =
   | { type: "state"; data: CpuState }
-  | { type: "loaded"; state: CpuState; sourceMap: Array<[number, number]> }
+  | {
+      type: "loaded";
+      state: CpuState;
+      sourceMap: Array<[number, number]>;
+      disasmMap: Array<[number, string]>;
+    }
   | { type: "error"; message: string }
   | { type: "need_input" };

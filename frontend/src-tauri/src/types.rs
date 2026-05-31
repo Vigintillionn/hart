@@ -36,6 +36,8 @@ pub enum EmulatorResponse {
         state: CpuState,
         #[serde(rename = "sourceMap")]
         source_map: Vec<(u32, u32)>,
+        #[serde(rename = "disasmMap")]
+        disasm_map: Vec<(u32, String)>,
     },
     #[serde(rename = "error")]
     Error { message: String },

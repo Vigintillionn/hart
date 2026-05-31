@@ -2,8 +2,8 @@
   import { onMount, onDestroy, untrack } from "svelte";
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-  import { riscvLanguageDef } from "../lib/riscvMonarch";
-  import { themeColors } from "../lib/theme.svelte";
+  import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
+  import { themeColors } from "../../lib/editor/theme.svelte";
 
   let {
     activeFileId = "",
@@ -11,6 +11,7 @@
     onContentChange = (id: string, newContent: string) => {},
     currentPc = 0,
     sourceMap = [] as [number, number][],
+    readOnly = false,
   } = $props();
 
   let editorContainer: HTMLDivElement;
@@ -19,7 +20,7 @@
   let models = new Map<string, monaco.editor.ITextModel>();
 
   let pcToLineMap = $derived(new Map(sourceMap));
-  
+
   let previousPc = $state<number | null>(null);
   let oldPcVal = -1;
   let clearPrevPcTimeout: number;
@@ -42,9 +43,23 @@
       automaticLayout: true,
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
+      glyphMargin: true,
+      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontSize: 13,
+      lineHeight: 21,
+      letterSpacing: 0,
+      padding: { top: 12, bottom: 12 },
+      renderLineHighlight: "none",
+      smoothScrolling: true,
+      cursorBlinking: "smooth",
+      scrollbar: { verticalScrollbarSize: 9, horizontalScrollbarSize: 9 },
     });
 
     decorationsCollection = editor.createDecorationsCollection([]);
+  });
+
+  $effect(() => {
+    editor?.updateOptions({ readOnly });
   });
 
   onDestroy(() => {
@@ -80,7 +95,6 @@
 
   $effect(() => {
     if (editor && activeFileId && files) {
-      // Create models for new files
       for (const file of files) {
         if (!models.has(file.id)) {
           const newModel = monaco.editor.createModel(file.content, "riscv");
@@ -91,7 +105,6 @@
         }
       }
 
-      // Cleanup closed files
       for (const [id, model] of models.entries()) {
         if (!files.find((f) => f.id === id)) {
           model.dispose();
@@ -112,7 +125,7 @@
       if (pc !== oldPcVal) {
         previousPc = oldPcVal;
         oldPcVal = pc;
-        
+
         clearTimeout(clearPrevPcTimeout);
         if (previousPc !== -1) {
           clearPrevPcTimeout = window.setTimeout(() => {
@@ -125,7 +138,7 @@
 
   $effect(() => {
     const targetLine = pcToLineMap.get(currentPc) || 0;
-    const prevLine = previousPc !== null ? (pcToLineMap.get(previousPc) || 0) : 0;
+    const prevLine = previousPc !== null ? pcToLineMap.get(previousPc) || 0 : 0;
 
     if (editor && decorationsCollection && targetLine) {
       const decs: monaco.editor.IModelDeltaDecoration[] = [
@@ -139,7 +152,12 @@
         },
       ];
 
-      if (prevLine && prevLine !== targetLine && previousPc !== -1 && currentPc !== 0) {
+      if (
+        prevLine &&
+        prevLine !== targetLine &&
+        previousPc !== -1 &&
+        currentPc !== 0
+      ) {
         decs.push({
           range: new monaco.Range(prevLine, 1, prevLine, 1),
           options: {

@@ -1,6 +1,145 @@
+@import url("https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&display=swap");
 @import "tailwindcss";
 @import "@xterm/xterm/css/xterm.css";
 
+@theme {
+  /* structural neutrals */
+  --color-desktop: #08080a;
+  --color-win-edge: #2a2a31;
+  --color-surface-0: #0d0d10; /* editor canvas */
+  --color-surface-1: #111114; /* panels */
+  --color-surface-2: #161619; /* titlebar / toolbar / elevated */
+  --color-surface-3: #1d1d22; /* inputs / hover */
+  --color-surface-4: #26262d; /* active hover */
+
+  /* hairlines */
+  --color-border: rgba(255, 255, 255, 0.065);
+  --color-border-soft: rgba(255, 255, 255, 0.04);
+  --color-border-strong: rgba(255, 255, 255, 0.12);
+
+  /* text */
+  --color-text: #e7e7ec;
+  --color-text-dim: #9596a0;
+  --color-text-faint: #5c5d67;
+  --color-text-ghost: #3a3b44;
+
+  /* accents */
+  --color-primary: #fdb515; /* "alive": run, active, current line */
+  --color-primary-soft: rgba(253, 181, 21, 0.14);
+  --color-primary-line: rgba(253, 181, 21, 0.08);
+  --color-secondary: #62cbc9; /* identity / structure */
+  --color-secondary-soft: rgba(98, 203, 201, 0.14);
+
+  /* status */
+  --color-red: #f0726a;
+  --color-amber: #e0a86a;
+  --color-green: #7fce8f;
+
+  --font-sans: "Geist", -apple-system, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  --radius-sm: 4px;
+  --radius-md: 7px;
+  --radius-lg: 11px;
+}
+
+:root {
+  --primary-glow: rgba(253, 181, 21, 0.3);
+  --red-glow: rgba(240, 114, 106, 0.5);
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+    padding: 0;
+  }
+  body {
+    @apply bg-surface-1 text-text font-sans antialiased overflow-hidden;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection {
+    background: var(--color-primary-soft);
+    color: #fff;
+  }
+}
+
+/* Custom scrollbars */
+@layer components {
+  .scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.13) transparent;
+  }
+  .scroll::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  .scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 99px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  .scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.2);
+    background-clip: padding-box;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.12);
+    border: 1.5px solid transparent;
+    border-radius: 99px;
+    background-clip: padding-box;
+  }
+}
+
+/* Monaco */
+@layer components {
+  .monaco-editor,
+  .monaco-editor .margin,
+  .monaco-editor-background {
+    background-color: var(--color-surface-0) !important;
+  }
+
+  .pc-highlight-line {
+    background-color: var(--color-primary-line) !important;
+    box-shadow: inset 2px 0 0 0 var(--color-primary) !important;
+  }
+  .pc-highlight-gutter {
+    background-color: var(--color-primary);
+    border-radius: 50%;
+    width: 8px !important;
+    height: 8px !important;
+    margin-left: 6px;
+    margin-top: 6px;
+    box-shadow: 0 0 7px var(--primary-glow);
+  }
+  .pc-previous-line {
+    animation: pcFadeOut 1.2s forwards !important;
+  }
+  @keyframes pcFadeOut {
+    0% {
+      background-color: var(--color-primary-line);
+      box-shadow: inset 2px 0 0 0 var(--color-primary);
+    }
+    100% {
+      background-color: transparent;
+      box-shadow: inset 2px 0 0 0 transparent;
+    }
+  }
+}
+
+/* xterm */
 @layer components {
   .hide-cursor .xterm-cursor,
   .hide-cursor .xterm-cursor-layer {
@@ -8,46 +147,9 @@
     opacity: 0 !important;
     visibility: hidden !important;
   }
-}
-
-@theme {
-  --color-zinc-850: #252526;
-  --color-zinc-950: #1e1e1e;
-}
-
-@layer base {
-  body {
-    @apply bg-zinc-950 text-zinc-300 font-sans antialiased overflow-hidden m-0 p-0;
-  }
-}
-
-@layer components {
-  .pc-highlight-line {
-    background-color: rgba(255, 255, 0, 0.2) !important;
-    box-shadow: inset 2px 0 0 0 rgba(255, 255, 0, 0.8) !important;
-  }
-
-  .pc-highlight-gutter {
-    background-color: #ffd700;
-    border-radius: 50%;
-    width: 10px !important;
-    height: 10px !important;
-    margin-left: 5px;
-    margin-top: 4px;
-  }
-
-  .pc-previous-line {
-    animation: pcFadeOut 1.5s forwards !important;
-  }
-
-  @keyframes pcFadeOut {
-    0% {
-      background-color: rgba(14, 165, 233, 0.25);
-      box-shadow: inset 2px 0 0 0 rgba(14, 165, 233, 0.8);
-    }
-    100% {
-      background-color: rgba(14, 165, 233, 0);
-      box-shadow: inset 2px 0 0 0 rgba(14, 165, 233, 0);
-    }
+  .xterm .xterm-viewport {
+    background-color: transparent !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.13) transparent;
   }
 }

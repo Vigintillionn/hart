@@ -1,0 +1,78 @@
+<script lang="ts">
+  import { cpuStore } from "$lib/store/cpuStore.svelte";
+  import Icon from "../../Icon.svelte";
+
+  const status = $derived(cpuStore.status);
+  const loaded = $derived(cpuStore.isLoaded);
+  const running = $derived(status === "Running");
+  const halted = $derived(status === "Halted");
+
+  const primary = $derived.by(() => {
+    if (running)
+      return {
+        label: "Pause",
+        icon: "pause" as const,
+        run: () => cpuStore.handlePause(),
+      };
+    if (halted)
+      return {
+        label: "Restart",
+        icon: "rewind" as const,
+        run: () => cpuStore.handleRewind(),
+      };
+    return {
+      label: "Run",
+      icon: "play" as const,
+      run: () => cpuStore.handleRun(),
+    };
+  });
+</script>
+
+<div class="flex items-center gap-1">
+  <button
+    class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-surface-3 px-2.5 text-[12.5px] font-medium text-secondary transition-colors hover:bg-surface-4 disabled:opacity-30"
+    title="Compile & load the current file"
+    onclick={() => cpuStore.handleLoadProgram()}
+  >
+    <Icon name="build" class="h-4 w-4" />
+    <span>Compile</span>
+  </button>
+
+  <button
+    class="inline-flex h-8.5 items-center gap-1.5 rounded-md px-3.5 text-[12.5px] font-semibold text-[#06262c] transition-colors disabled:opacity-30 {running
+      ? 'bg-surface-3 text-primary! shadow-[inset_0_0_0_1px_var(--color-primary-soft)]'
+      : 'bg-primary hover:bg-[#fec23e] shadow-[0_0_0_1px_rgba(253,181,21,0.5),0_4px_16px_-4px_var(--gold-glow)]'}"
+    disabled={!loaded}
+    onclick={primary.run}
+  >
+    <Icon name={primary.icon} class="h-3.75 w-3.75" />
+    {primary.label}
+  </button>
+
+  <button
+    class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim"
+    title="Step forward one instruction"
+    disabled={!loaded || halted || running}
+    onclick={() => cpuStore.handleStepFwd()}
+  >
+    <Icon name="stepFwd" class="h-4 w-4" /><span>Step</span>
+  </button>
+
+  <button
+    class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim"
+    title="Step backward"
+    disabled={!loaded || running}
+    onclick={() => cpuStore.handleStepBack()}
+  >
+    <Icon name="stepBack" class="h-4 w-4" /><span>Back</span>
+  </button>
+
+  <button
+    class="group inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-red! disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim!"
+    title="Rewind to entry point"
+    disabled={!loaded || running}
+    onclick={() => cpuStore.handleRewind()}
+  >
+    <Icon name="rewind" class="h-4 w-4" /><span>Rewind</span>
+  </button>
+</div>

@@ -1,15 +1,26 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { CpuState } from "../bindings/CpuState";
-import type { EmulatorResponse } from "../bindings/EmulatorResponse";
-import type { SourceMap } from "./types";
+import type { CpuState } from "../../bindings/CpuState";
+import type { EmulatorResponse } from "../../bindings/EmulatorResponse";
+import type { SourceMap, DisasmMap } from "../types";
 import { terminalStore } from "./terminalStore.svelte";
+import { logStore } from "./logStore.svelte";
 import { fileStore } from "./fileStore.svelte";
-import { sendToHaskell } from "./util";
+import { sendToHaskell } from "../util";
 
 class CpuStore {
   cpuState = $state<CpuState | null>(null);
   sourceMap = $state<SourceMap>([]);
+  disasmMap = $state<DisasmMap>([]);
   unlisten: UnlistenFn | null = null;
+
+  /** @returns true once a program has been compiled & loaded */
+  get isLoaded() {
+    return this.cpuState !== null;
+  }
+
+  get status() {
+    return this.cpuState?.status ?? null;
+  }
 
   public async initListener() {
     if (this.unlisten) return;
@@ -21,23 +32,24 @@ class CpuStore {
 
         if (response.type === "state") {
           this.cpuState = response.data;
-          if ((this.cpuState as any).outputBuffer) {
-            terminalStore.program.set((this.cpuState as any).outputBuffer);
-          } else {
-            terminalStore.program.clear();
-          }
+          const out = (this.cpuState as any).outputBuffer;
+          if (out) terminalStore.program.set(out);
+          else terminalStore.program.clear();
         } else if (response.type === "loaded") {
           this.cpuState = response.state;
           this.sourceMap = response.sourceMap;
-          terminalStore.system.log(`[SUCCESS]: Program loaded successfully.`);
-          terminalStore.setActiveTab("program");
+          this.disasmMap = response.disasmMap;
+          logStore.log(
+            "info",
+            "BUILD",
+            "program assembled & loaded successfully",
+          );
+          terminalStore.setActiveTab("system");
         } else if (response.type === "error") {
-          terminalStore.system.log(`[ERROR]: ${response.message}`);
+          logStore.log("error", "ASM", response.message);
           terminalStore.setActiveTab("system");
         } else if (response.type === "need_input") {
-          if (this.cpuState) {
-            this.cpuState.status = "WaitingForInput";
-          }
+          if (this.cpuState) this.cpuState.status = "WaitingForInput";
           terminalStore.setActiveTab("program");
         }
       },
@@ -52,8 +64,8 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
+    logStore.log("info", "BUILD", "compiling program…");
     terminalStore.setActiveTab("system");
-    terminalStore.system.log("> Compiling program...");
     sendToHaskell("load", fileStore.activeFile.content);
   }
 

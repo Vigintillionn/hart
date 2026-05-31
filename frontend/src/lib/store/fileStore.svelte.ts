@@ -1,6 +1,6 @@
 import { open, save } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import type { OpenFile } from "./types";
+import type { OpenFile } from "../types";
 
 class FileStore {
   openFiles = $state<OpenFile[]>([
