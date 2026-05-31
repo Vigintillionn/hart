@@ -20,10 +20,13 @@ class LayoutStore {
   registersPaneRef = $state<PaneAPI>();
   memoryPaneRef = $state<PaneAPI>();
 
-  public toggleDebug(visible: boolean) {
-    if (visible) {
-      this.debugPaneRef?.expand();
-      if (!this.isRegistersVisible && !this.isMemoryVisible) {
+  public toggleDebug() {
+    if (this.debugPaneRef?.isCollapsed()) {
+      this.debugPaneRef.expand();
+      if (
+        this.registersPaneRef?.isCollapsed() &&
+        this.memoryPaneRef?.isCollapsed()
+      ) {
         this.registersPaneRef?.expand();
         this.memoryPaneRef?.expand();
       }
@@ -32,20 +35,21 @@ class LayoutStore {
     }
   }
 
-  public toggleConsole(visible: boolean) {
-    if (visible) this.consolePaneRef?.expand();
+  public toggleConsole() {
+    if (this.consolePaneRef?.isCollapsed()) this.consolePaneRef.expand();
     else this.consolePaneRef?.collapse();
   }
 
-  public toggleRegisters(visible: boolean) {
-    if (visible) this.registersPaneRef?.expand();
-    else if (!this.isMemoryVisible) this.toggleDebug(false);
+  public toggleRegisters() {
+    if (this.registersPaneRef?.isCollapsed()) this.registersPaneRef.expand();
+    else if (this.memoryPaneRef?.isCollapsed()) this.debugPaneRef?.collapse();
     else this.registersPaneRef?.collapse();
   }
 
-  public toggleMemory(visible: boolean) {
-    if (visible) this.memoryPaneRef?.expand();
-    else if (!this.isRegistersVisible) this.toggleDebug(false);
+  public toggleMemory() {
+    if (this.memoryPaneRef?.isCollapsed()) this.memoryPaneRef.expand();
+    else if (this.registersPaneRef?.isCollapsed())
+      this.debugPaneRef?.collapse();
     else this.memoryPaneRef?.collapse();
   }
 
