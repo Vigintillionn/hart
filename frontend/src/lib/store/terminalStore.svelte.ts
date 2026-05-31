@@ -11,9 +11,9 @@ class TerminalStore {
     this.activeTab = tab;
   }
 
-  public clearAll() {
-    logStore.clear();
-    this.program.clear();
+  public clearActive() {
+    if (this.activeTab === "system") logStore.clear();
+    else this.program.clear();
   }
 }
 
