@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy, untrack } from "svelte";
+  import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
   import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
@@ -27,9 +27,9 @@
   let decorationsCollection: monaco.editor.IEditorDecorationsCollection;
   let models = new Map<string, monaco.editor.ITextModel>();
 
-  let previousPc = $state<number | null>(null);
-  let oldPcVal = -1;
-  let clearPrevPcTimeout: number;
+  const currentLine = $derived(pcToLine.get(currentPc) || 0);
+  let lastLine = 0;
+  let fadeTimer: number;
 
   if (typeof self !== "undefined") {
     self.MonacoEnvironment = {
@@ -72,7 +72,7 @@
     for (const model of models.values()) {
       model.dispose();
     }
-    clearTimeout(clearPrevPcTimeout);
+    clearTimeout(fadeTimer);
   });
 
   $effect(() => {
@@ -124,62 +124,51 @@
     }
   });
 
+  function currentLineDecoration(
+    line: number,
+  ): monaco.editor.IModelDeltaDecoration {
+    return {
+      range: new monaco.Range(line, 1, line, 1),
+      options: {
+        isWholeLine: true,
+        className: "pc-highlight-line",
+        glyphMarginClassName: "pc-highlight-gutter",
+      },
+    };
+  }
+
   $effect(() => {
+    const line = currentLine;
     const pc = currentPc;
-    untrack(() => {
-      if (pc !== oldPcVal) {
-        previousPc = oldPcVal;
-        oldPcVal = pc;
+    if (!editor || !decorationsCollection) return;
 
-        clearTimeout(clearPrevPcTimeout);
-        if (previousPc !== -1) {
-          clearPrevPcTimeout = window.setTimeout(() => {
-            previousPc = -1;
-          }, 1500);
-        }
-      }
-    });
-  });
+    clearTimeout(fadeTimer);
 
-  $effect(() => {
-    const targetLine = pcToLine.get(currentPc) || 0;
-    const prevLine = previousPc !== null ? pcToLine.get(previousPc) || 0 : 0;
-
-    if (editor && decorationsCollection && targetLine) {
-      const decs: monaco.editor.IModelDeltaDecoration[] = [
-        {
-          range: new monaco.Range(targetLine, 1, targetLine, 1),
-          options: {
-            isWholeLine: true,
-            className: "pc-highlight-line",
-            glyphMarginClassName: "pc-highlight-gutter",
-          },
-        },
-      ];
-
-      if (
-        prevLine &&
-        prevLine !== targetLine &&
-        previousPc !== -1 &&
-        currentPc !== 0
-      ) {
-        decs.push({
-          range: new monaco.Range(prevLine, 1, prevLine, 1),
-          options: {
-            isWholeLine: true,
-            className: "pc-previous-line",
-          },
-        });
-      }
-
-      decorationsCollection.set(decs);
-
-      if (currentPc > 0) {
-        editor.revealLineInCenter(targetLine, monaco.editor.ScrollType.Smooth);
-      }
-    } else if (editor && decorationsCollection) {
+    if (!line) {
       decorationsCollection.clear();
+      lastLine = 0;
+      return;
     }
+
+    const decs = [currentLineDecoration(line)];
+
+    if (lastLine && lastLine !== line && pc !== 0) {
+      decs.push({
+        range: new monaco.Range(lastLine, 1, lastLine, 1),
+        options: { isWholeLine: true, className: "pc-previous-line" },
+      });
+      const settled = line;
+      fadeTimer = window.setTimeout(
+        () => decorationsCollection.set([currentLineDecoration(settled)]),
+        1500,
+      );
+    }
+
+    decorationsCollection.set(decs);
+    if (pc > 0) {
+      editor.revealLineInCenter(line, monaco.editor.ScrollType.Smooth);
+    }
+    lastLine = line;
   });
 </script>
 
