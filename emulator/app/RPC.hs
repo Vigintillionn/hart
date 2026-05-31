@@ -11,7 +11,7 @@ import Data.Sequence qualified as Seq
 import Data.Word (Word32)
 import Debugger (Debugger (..), disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
 import Linker (Executable (..), resolve)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, emptyCPU, incPC)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
 
@@ -142,21 +142,29 @@ rpcLoop dbg = do
                       rpcLoop dbg
                     else do
                       atBreak <- isAtBreakpoint c
-                      startState <-
-                        execStateT
-                          ( runEmulator $ do
-                              when atBreak incPC
-                              setStatus Running
-                          )
-                          c
-                      (_, nextState) <- runStateT (runEmulator step) startState
-                      let finalState =
-                            if status nextState == Running
-                              then nextState {status = Paused}
-                              else nextState
-                      let newDbg = dbg {past = past dbg Seq.|> c, current = finalState, future = Seq.Empty}
-                      sendResponse (ResState finalState)
-                      rpcLoop newDbg
+                      if atBreak
+                        then do
+                          steppedState <-
+                            execStateT
+                              ( runEmulator $ do
+                                  incPC
+                                  clearTrapState
+                                  setStatus Paused
+                              )
+                              c
+                          let newDbg = dbg {past = past dbg Seq.|> c, current = steppedState, future = Seq.Empty}
+                          sendResponse (ResState steppedState)
+                          rpcLoop newDbg
+                        else do
+                          startState <- execStateT (runEmulator $ setStatus Running) c
+                          (_, nextState) <- runStateT (runEmulator step) startState
+                          let finalState =
+                                if status nextState == Running
+                                  then nextState {status = Paused}
+                                  else nextState
+                          let newDbg = dbg {past = past dbg Seq.|> c, current = finalState, future = Seq.Empty}
+                          sendResponse (ResState finalState)
+                          rpcLoop newDbg
             Just CmdStepBack -> do
               let prevDbg = stepBack dbg
               sendResponse (ResState $ current prevDbg)
@@ -214,7 +222,9 @@ executeRun dbg = do
       startState <-
         execStateT
           ( runEmulator $ do
-              when atBreak incPC
+              when atBreak $ do
+                incPC
+                clearTrapState
               setStatus Running
           )
           c

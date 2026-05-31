@@ -26,6 +26,7 @@ module Machine
     trapBreakpointM,
     trapLoadMisaligned,
     trapStoreMisaligned,
+    clearTrapState,
     entryPoint,
     stackTop,
     extractByte,
@@ -258,6 +259,11 @@ trapECallM = 11
 trapBreakpointM = 3
 trapLoadMisaligned = 4
 trapStoreMisaligned = 6
+
+clearTrapState :: (MonadCPU m) => m ()
+clearTrapState = do
+  setCSR 0x342 0 -- mcause
+  setCSR 0x341 0 -- mepc
 
 mkRegister :: Int -> Maybe Register
 mkRegister n
