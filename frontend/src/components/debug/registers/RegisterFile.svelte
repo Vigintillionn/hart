@@ -11,7 +11,7 @@
 </script>
 
 <div class="grid grid-cols-2 gap-px bg-border-soft">
-  {#each registers as value, i}
+  {#each registers as value, i (i)}
     {@const isZero = value === 0}
     {@const isChanged = registerFlasher.changed.has(i)}
     <div
