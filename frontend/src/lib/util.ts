@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { logStore } from "./store/logStore.svelte";
 
 const CANONICAL_NAMES: string[] = [
   "zero",
@@ -43,7 +44,11 @@ export const STACK_TOP = 0x7fffffff;
 
 export async function sendToHaskell(command: string, data?: string) {
   const payload = data ? { command, data } : { command };
-  await invoke("send_command", { cmd: JSON.stringify(payload) });
+  try {
+    await invoke("send_command", { cmd: JSON.stringify(payload) });
+  } catch (e) {
+    logStore.log("error", "IPC", `failed to send "${command}": ${e}`);
+  }
 }
 
 /** @returns 8-digit hex word, e.g. 0x0001002a */

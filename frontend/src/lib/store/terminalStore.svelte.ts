@@ -5,7 +5,7 @@ export type ConsoleTab = "system" | "program";
 
 class TerminalStore {
   activeTab = $state<ConsoleTab>("system");
-  program = new TerminalState("program");
+  program = new TerminalState();
 
   public setActiveTab(tab: ConsoleTab) {
     this.activeTab = tab;

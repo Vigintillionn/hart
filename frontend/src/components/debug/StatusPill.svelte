@@ -19,7 +19,6 @@
     live: "before:bg-secondary before:shadow-[0_0_8px_var(--secondary-glow)]",
     paused: "before:bg-primary before:shadow-[0_0_8px_var(--primary-glow)]",
     halt: "before:bg-text-faint",
-    err: "before:bg-red before:shadow-[0_0_8px_var(--red-glow)]",
   };
 </script>
 

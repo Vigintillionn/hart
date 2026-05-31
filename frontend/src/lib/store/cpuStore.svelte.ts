@@ -11,7 +11,9 @@ class CpuStore {
   cpuState = $state<CpuState | null>(null);
   sourceMap = $state<SourceMap>([]);
   disasmMap = $state<DisasmMap>([]);
+  sidecarAlive = $state(true);
   unlisten: UnlistenFn | null = null;
+  unlistenSidecar: UnlistenFn | null = null;
 
   /** snapshot of the file (id + content) that the emulator currently holds */
   loadedSnapshot = $state<{ fileId: string; content: string } | null>(null);
@@ -46,6 +48,22 @@ class CpuStore {
   public async initListener() {
     if (this.unlisten) return;
 
+    this.unlistenSidecar = await listen<{ code: number | null }>(
+      "sidecar-exit",
+      (event) => {
+        this.sidecarAlive = false;
+        if (this.cpuState) this.cpuState.status = "Halted";
+        logStore.log(
+          "error",
+          "EMU",
+          `emulator process exited${
+            event.payload?.code != null ? ` (code ${event.payload.code})` : ""
+          } — your code is safe; save your work and restart the app`,
+        );
+        terminalStore.setActiveTab("system");
+      },
+    );
+
     this.unlisten = await listen<EmulatorResponse>(
       "emulator-update",
       (event) => {
@@ -53,7 +71,7 @@ class CpuStore {
 
         if (response.type === "state") {
           this.cpuState = response.data;
-          const out = (this.cpuState as any).outputBuffer;
+          const out = this.cpuState.outputBuffer;
           if (out) terminalStore.program.set(out);
           else terminalStore.program.clear();
         } else if (response.type === "loaded") {
@@ -87,6 +105,10 @@ class CpuStore {
     if (this.unlisten) {
       this.unlisten();
       this.unlisten = null;
+    }
+    if (this.unlistenSidecar) {
+      this.unlistenSidecar();
+      this.unlistenSidecar = null;
     }
   }
 

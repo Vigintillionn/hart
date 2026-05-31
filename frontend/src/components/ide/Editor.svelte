@@ -25,19 +25,31 @@
   >
     {#each fileStore.openFiles as file (file.id)}
       {@const parts = splitName(file.name)}
+      {@const dirty = fileStore.isDirty(file)}
       <!-- svelte-ignore a11y_click_events_have_key_events -->
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
-        class="relative flex h-9 cursor-default select-none items-center gap-2 border-r border-border px-4 text-[12.5px] transition-colors {fileStore.activeFileId ===
+        class="group relative flex h-9 cursor-default select-none items-center gap-2 border-r border-border px-4 text-[12.5px] transition-colors {fileStore.activeFileId ===
         file.id
           ? "bg-surface-0 text-text before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary before:content-['']"
           : 'text-text-dim hover:text-text'}"
         onclick={() => fileStore.setActiveFileId(file.id)}
       >
         <span>{parts.base}<span class="text-secondary">{parts.ext}</span></span>
+        {#if dirty}
+          <span
+            class="h-1.5 w-1.5 flex-none rounded-full bg-primary {fileStore
+              .openFiles.length > 1
+              ? 'group-hover:hidden'
+              : ''}"
+            title="unsaved changes"
+          ></span>
+        {/if}
         {#if fileStore.openFiles.length > 1}
           <button
-            class="text-text-faint transition-colors hover:text-red"
+            class="text-text-faint transition-colors hover:text-red {dirty
+              ? 'hidden group-hover:block'
+              : ''}"
             onclick={(e) => fileStore.closeFile(file.id, e)}
             title="Close">×</button
           >

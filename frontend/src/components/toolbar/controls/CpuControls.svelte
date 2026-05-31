@@ -1,5 +1,6 @@
 <script lang="ts">
   import { cpuStore } from "$lib/store/cpuStore.svelte";
+  import { keymap } from "$lib/keymap.svelte";
   import Icon from "../../Icon.svelte";
 
   const status = $derived(cpuStore.status);
@@ -14,17 +15,20 @@
         label: "Pause",
         icon: "pause" as const,
         run: () => cpuStore.handlePause(),
+        keys: keymap.describe("pause"),
       };
     if (halted && !dirty)
       return {
         label: "Restart",
         icon: "rewind" as const,
         run: () => cpuStore.handleRewind(),
+        keys: keymap.describe("rewind"),
       };
     return {
       label: "Run",
       icon: "play" as const,
       run: () => cpuStore.handleRun(),
+      keys: keymap.describe("run"),
     };
   });
 </script>
@@ -32,9 +36,9 @@
 <div class="flex items-center gap-1">
   <button
     class="relative inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-surface-3 px-2.5 text-[12.5px] font-medium text-secondary transition-colors hover:bg-surface-4 disabled:opacity-30"
-    title={dirty
+    title={(dirty
       ? "Source changed since last compile — Run will recompile"
-      : "Compile & load the current file"}
+      : "Compile & load the current file") + ` (${keymap.describe("compile")})`}
     onclick={() => cpuStore.handleLoadProgram()}
   >
     <Icon name="build" class="h-4 w-4" />
@@ -52,6 +56,7 @@
       ? 'bg-surface-3 text-primary! shadow-[inset_0_0_0_1px_var(--color-primary-soft)]'
       : 'bg-primary hover:bg-[#fec23e] shadow-[0_0_0_1px_rgba(253,181,21,0.5),0_4px_16px_-4px_var(--gold-glow)]'}"
     disabled={!loaded}
+    title={`${primary.label} (${primary.keys})`}
     onclick={primary.run}
   >
     <Icon name={primary.icon} class="h-3.75 w-3.75" />
@@ -60,7 +65,7 @@
 
   <button
     class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim"
-    title="Step forward one instruction"
+    title={`Step forward one instruction (${keymap.describe("stepForward")})`}
     disabled={!loaded || halted || running}
     onclick={() => cpuStore.handleStepFwd()}
   >
@@ -69,7 +74,7 @@
 
   <button
     class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim"
-    title="Step backward"
+    title={`Step backward (${keymap.describe("stepBack")})`}
     disabled={!loaded || running}
     onclick={() => cpuStore.handleStepBack()}
   >
@@ -78,7 +83,7 @@
 
   <button
     class="group inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-red! disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim!"
-    title="Rewind to entry point"
+    title={`Rewind to entry point (${keymap.describe("rewind")})`}
     disabled={!loaded || running}
     onclick={() => cpuStore.handleRewind()}
   >

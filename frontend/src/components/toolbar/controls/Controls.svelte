@@ -1,5 +1,6 @@
 <script lang="ts">
   import { fileStore } from "$lib/store/fileStore.svelte";
+  import { keymap } from "$lib/keymap.svelte";
   import type { IconName } from "$lib/types";
   import Icon from "../../Icon.svelte";
   import StyleSettings from "./StyleSettings.svelte";
@@ -27,8 +28,16 @@
     </button>
   {/snippet}
 
-  {@render control("Open file", "folder", () => fileStore.handleOpenFile())}
-  {@render control("Save file", "save", () => fileStore.handleSaveFile())}
+  {@render control(
+    `Open file (${keymap.describe("open")})`,
+    "folder",
+    () => fileStore.handleOpenFile(),
+  )}
+  {@render control(
+    `Save file (${keymap.describe("save")})`,
+    "save",
+    () => fileStore.handleSaveFile(),
+  )}
 
   <div class="relative">
     {@render control(

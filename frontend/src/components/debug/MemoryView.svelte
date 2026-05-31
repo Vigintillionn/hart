@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { untrack } from "svelte";
   import { layoutStore } from "$lib/store/layoutStore.svelte";
   import { hex32, hex2, TEXT_BASE, DATA_BASE, STACK_TOP } from "$lib/util";
+  import { createChangeFlasher } from "$lib/changeFlasher.svelte";
   import Icon from "../Icon.svelte";
 
   let { mem }: { mem: Array<[bigint | number, number]> } = $props();
@@ -57,27 +57,11 @@
     base = clampBase(base + rows * ROW_BYTES);
   }
 
-  let prevMem: Map<number, number> = new Map();
-  let changed = $state<Set<number>>(new Set());
-  let flashTimer: number;
+  const memFlasher = createChangeFlasher(() => memMap);
+  const changed = $derived(memFlasher.changed);
 
   $effect(() => {
-    const cur = memMap;
-    untrack(() => {
-      if (prevMem.size || cur.size) {
-        const diff = new Set<number>();
-        const keys = new Set([...prevMem.keys(), ...cur.keys()]);
-        for (const a of keys)
-          if ((prevMem.get(a) ?? 0) !== (cur.get(a) ?? 0)) diff.add(a >>> 0);
-        if (diff.size) {
-          changed = diff;
-          if (follow) base = clampBase(Math.min(...diff));
-          clearTimeout(flashTimer);
-          flashTimer = window.setTimeout(() => (changed = new Set()), 680);
-        }
-      }
-      prevMem = new Map(cur);
-    });
+    if (follow && changed.size) base = clampBase(Math.min(...changed));
   });
 
   const rows = $derived.by(() => {

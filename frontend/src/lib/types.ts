@@ -3,6 +3,7 @@ export type OpenFile = {
   name: string;
   path: string | null;
   content: string;
+  savedContent: string;
 };
 
 export type SourceMap = [number, number][];
