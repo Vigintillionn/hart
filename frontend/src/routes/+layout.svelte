@@ -1,5 +1,7 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
+  import "@fontsource-variable/geist";
+  import "@fontsource-variable/jetbrains-mono";
   import "../app.css";
   import Titlebar from "../components/Titlebar.svelte";
   let { children }: { children: Snippet } = $props();
