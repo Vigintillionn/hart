@@ -11,6 +11,8 @@ class CpuStore {
   cpuState = $state<CpuState | null>(null);
   sourceMap = $state<SourceMap>([]);
   disasmMap = $state<DisasmMap>([]);
+  sourceLineMap = $derived(new Map(this.sourceMap));
+  disasmTextMap = $derived(new Map(this.disasmMap));
   sidecarAlive = $state(true);
   unlisten: UnlistenFn | null = null;
   unlistenSidecar: UnlistenFn | null = null;

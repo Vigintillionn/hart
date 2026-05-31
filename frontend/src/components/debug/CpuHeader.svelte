@@ -6,8 +6,8 @@
   import StatusPill from "./StatusPill.svelte";
 
   const st = $derived(cpuStore.cpuState);
-  const pcToLine = $derived(new Map(cpuStore.sourceMap));
-  const pcToDisasm = $derived(new Map(cpuStore.disasmMap));
+  const pcToLine = $derived(cpuStore.sourceLineMap);
+  const pcToDisasm = $derived(cpuStore.disasmTextMap);
 
   const curInstr = $derived.by(() => {
     if (!st) return null;
