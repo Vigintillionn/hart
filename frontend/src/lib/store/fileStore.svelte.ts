@@ -42,7 +42,7 @@ class FileStore {
       if (!selected || typeof selected !== "string") return;
 
       const content = await readTextFile(selected);
-      const name = selected.split(/[\/\\]/).pop() || "untitled.s";
+      const name = selected.split(/[/\\]/).pop() || "untitled.s";
       const id = Date.now().toString();
 
       this.openFiles.push({
@@ -74,7 +74,7 @@ class FileStore {
 
       await writeTextFile(path, file.content);
       file.path = path;
-      file.name = path.split(/[\/\\]/).pop() || file.name;
+      file.name = path.split(/[/\\]/).pop() || file.name;
       file.savedContent = file.content;
     } catch (e) {
       logStore.log("error", "FILE", `could not save file: ${e}`);

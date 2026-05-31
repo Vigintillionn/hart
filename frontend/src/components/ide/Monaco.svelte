@@ -33,9 +33,7 @@
 
   if (typeof self !== "undefined") {
     self.MonacoEnvironment = {
-      getWorker: function (_moduleId: any, label: string) {
-        return new editorWorker();
-      },
+      getWorker: () => new editorWorker(),
     };
   }
 
@@ -50,7 +48,7 @@
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       glyphMargin: true,
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace",
       fontSize: 13,
       lineHeight: 21,
       letterSpacing: 0,

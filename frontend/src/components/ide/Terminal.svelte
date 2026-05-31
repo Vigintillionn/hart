@@ -7,7 +7,7 @@
     outputBuffer = "",
     waitingForInput = false,
     hideCursor = false,
-    onSubmitInput = (text: string) => {},
+    onSubmitInput = (_text: string) => {},
   } = $props();
 
   let terminalContainer: HTMLDivElement;
@@ -25,7 +25,7 @@
         selectionBackground: "rgba(253, 181, 21, 0.14)", // primary soft
       },
       disableStdin: hideCursor,
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
+      fontFamily: "'JetBrains Mono Variable', ui-monospace, monospace",
       fontSize: 12.5,
       cursorBlink: !hideCursor,
       convertEol: true,

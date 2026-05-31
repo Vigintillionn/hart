@@ -1,6 +1,6 @@
 import { untrack } from "svelte";
 
-export function createChangeFlasher<K = number, V = any>(
+export function createChangeFlasher<K = number, V = unknown>(
   getCollection: () => V[] | Map<K, V>,
   durationMs = 680,
 ) {
