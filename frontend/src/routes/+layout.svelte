@@ -1,7 +1,8 @@
-<script>
+<script lang="ts">
+  import type { Snippet } from "svelte";
   import "../app.css";
   import Titlebar from "../components/Titlebar.svelte";
-  let { children } = $props();
+  let { children }: { children: Snippet } = $props();
 </script>
 
 <div
