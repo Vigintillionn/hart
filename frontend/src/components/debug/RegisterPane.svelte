@@ -2,6 +2,7 @@
   import type { CpuState } from "../../bindings/CpuState";
   import CsrFile from "./registers/CsrFile.svelte";
   import RegisterFile from "./registers/RegisterFile.svelte";
+  import SegmentedControl from "../ui/SegmentedControl.svelte";
 
   let {
     registers,
@@ -21,18 +22,15 @@
         : 'bg-amber'}"
     ></span>
 
-    <div class="flex rounded-[5px] border border-border bg-surface-0 p-px">
-      {#snippet seg(label: string, active: boolean, onClick: () => void)}
-        <button
-          class="rounded-sm px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[1px] transition-colors {active
-            ? 'bg-surface-3 text-text'
-            : 'text-text-faint hover:text-text-dim'}"
-          onclick={onClick}>{label}</button
-        >
-      {/snippet}
-      {@render seg("Registers", view === "regs", () => (view = "regs"))}
-      {@render seg("CSRs", view === "csrs", () => (view = "csrs"))}
-    </div>
+    <SegmentedControl
+      bind:value={view}
+      size="sm"
+      accent="text"
+      options={[
+        { value: "regs", label: "Registers" },
+        { value: "csrs", label: "CSRs" },
+      ]}
+    />
 
     <span class="ml-auto font-mono text-[10px] text-text-faint">
       {view === "regs" ? "x0 – x31" : "control & status"}
