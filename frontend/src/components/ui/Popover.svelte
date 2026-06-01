@@ -12,7 +12,16 @@
     width?: string;
     children: Snippet;
   } = $props();
+
+  function onKeydown(e: KeyboardEvent) {
+    if (open && e.key === "Escape") {
+      e.preventDefault();
+      open = false;
+    }
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 {#if open}
   <button
