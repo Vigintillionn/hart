@@ -18,6 +18,7 @@
   let fitAddon: FitAddon;
 
   let localInputBuffer = "";
+  let localLastBuffer = "";
 
   onMount(() => {
     term = new Terminal({
@@ -74,8 +75,6 @@
       term.dispose();
     };
   });
-
-  let localLastBuffer = "";
 
   $effect(() => {
     if (term && outputBuffer !== undefined) {

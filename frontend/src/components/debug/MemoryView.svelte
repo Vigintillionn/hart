@@ -46,6 +46,18 @@
   }
 
   function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Home") {
+      e.preventDefault();
+      follow = false;
+      base = clampBase(0);
+      return;
+    }
+    if (e.key === "End") {
+      e.preventDefault();
+      follow = false;
+      base = clampBase(maxBase);
+      return;
+    }
     let rows: number;
     if (e.key === "ArrowDown") rows = 1;
     else if (e.key === "ArrowUp") rows = -1;
@@ -204,6 +216,7 @@
 
   <div class="relative flex min-h-0 flex-1 bg-surface-0">
     <div
+      id="memory-view-grid"
       class="scroll-thin min-h-0 flex-1 overflow-x-auto overflow-y-hidden outline-none"
       tabindex="0"
       role="grid"
@@ -249,15 +262,23 @@
       </div>
     </div>
 
-    <!-- svelte-ignore a11y_no_static_element_interactions -->
     <div
       bind:this={trackNode}
       bind:clientHeight={trackH}
-      class="relative w-2.5 flex-none cursor-pointer border-l border-border"
+      class="relative w-2.5 flex-none cursor-pointer border-l border-border outline-none focus-visible:bg-surface-2"
+      role="scrollbar"
+      aria-label="Memory scroll position — arrow, Page, Home/End keys"
+      aria-controls="memory-view-grid"
+      aria-orientation="vertical"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={Math.round(scrollFrac * 100)}
+      tabindex="0"
       onmousedown={onTrackDown}
+      onkeydown={onKeydown}
     >
-      <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
+        aria-hidden="true"
         class="absolute inset-x-0.5 rounded-full transition-colors {dragging
           ? 'bg-thumb-active'
           : 'bg-thumb hover:bg-thumb-hover'}"
