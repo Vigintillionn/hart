@@ -14,7 +14,7 @@ struct EmulatorState {
 
 #[tauri::command]
 fn send_command(state: tauri::State<'_, EmulatorState>, cmd: String) -> Result<(), String> {
-    let mut child_guard = state.child.lock().unwrap();
+    let mut child_guard = state.child.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(child) = child_guard.as_mut() {
         let payload = format!("{}\n", cmd);
         child.write(payload.as_bytes()).map_err(|e| e.to_string())?;
@@ -44,7 +44,7 @@ fn main() {
                 .expect("Failed to spawn sidecar");
 
             let state = app.state::<EmulatorState>();
-            *state.child.lock().unwrap() = Some(child);
+            *state.child.lock().unwrap_or_else(|e| e.into_inner()) = Some(child);
 
             let app_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -55,7 +55,9 @@ fn main() {
 
                             match serde_json::from_str::<EmulatorResponse>(&json_str) {
                                 Ok(response) => {
-                                    app_handle.emit("emulator-update", response).unwrap();
+                                    if let Err(e) = app_handle.emit("emulator-update", response) {
+                                        eprintln!("Failed to emit emulator-update: {}", e);
+                                    }
                                 }
                                 Err(e) => {
                                     eprintln!(
@@ -67,7 +69,11 @@ fn main() {
                         }
                         CommandEvent::Terminated(payload) => {
                             eprintln!("Haskell sidecar terminated with code: {:?}", payload.code);
-                            *app_handle.state::<EmulatorState>().child.lock().unwrap() = None;
+                            *app_handle
+                                .state::<EmulatorState>()
+                                .child
+                                .lock()
+                                .unwrap_or_else(|e| e.into_inner()) = None;
                             let _ = app_handle.emit("sidecar-exit", payload.code);
                         }
                         _ => {}
@@ -86,7 +92,7 @@ fn main() {
                     .state::<EmulatorState>()
                     .child
                     .lock()
-                    .unwrap()
+                    .unwrap_or_else(|e| e.into_inner())
                     .take();
 
                 if let Some(child) = child_to_kill {
