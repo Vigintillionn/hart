@@ -24,7 +24,71 @@ fn send_command(state: tauri::State<'_, EmulatorState>, cmd: String) -> Result<(
     Ok(())
 }
 
+/// Work around a Tauri AppImage packaging bug on Wayland.
+///
+/// The AppImage bundles its own (older) `libwayland-client.so.0`, which shadows
+/// the host's via the AppRun-set `LD_LIBRARY_PATH`. Modern Mesa on the host
+/// must use the host's matching `libwayland-client` to create an EGL display;
+/// with the bundled one, `eglGetPlatformDisplay` fails and WebKitGTK aborts with
+/// "Could not create default EGL display: EGL_BAD_PARAMETER" before any window
+/// appears. `libwayland-client` is on the AppImage excludelist for exactly this
+/// reason, but Tauri's bundler ships it anyway.
+///
+/// Fix: when launched from an AppImage on a Wayland session, re-exec ourselves
+/// once with the host's `libwayland-client.so.0` in `LD_PRELOAD` so it wins over
+/// the bundled copy. This is a no-op for native installs (deb/rpm/dev), pure-X11
+/// sessions, and systems without a host `libwayland-client`.
+#[cfg(target_os = "linux")]
+fn preload_system_wayland_if_appimage() {
+    use std::os::unix::process::CommandExt;
+
+    if std::env::var_os("APPIMAGE").is_none() {
+        return;
+    }
+    if std::env::var_os("WAYLAND_DISPLAY").is_none() {
+        return;
+    }
+    if std::env::var_os("HART_WAYLAND_PRELOADED").is_some() {
+        return;
+    }
+
+    let host_lib = [
+        "/usr/lib/x86_64-linux-gnu/libwayland-client.so.0",
+        "/usr/lib64/libwayland-client.so.0",
+        "/usr/lib/libwayland-client.so.0",
+        "/lib/x86_64-linux-gnu/libwayland-client.so.0",
+    ]
+    .into_iter()
+    .find(|p| std::path::Path::new(p).exists());
+    let Some(host_lib) = host_lib else {
+        return;
+    };
+
+    let preload = match std::env::var_os("LD_PRELOAD") {
+        Some(existing) if !existing.is_empty() => {
+            let mut s = std::ffi::OsString::from(host_lib);
+            s.push(":");
+            s.push(existing);
+            s
+        }
+        _ => std::ffi::OsString::from(host_lib),
+    };
+
+    let Ok(exe) = std::env::current_exe() else {
+        return;
+    };
+    let err = std::process::Command::new(exe)
+        .args(std::env::args_os().skip(1))
+        .env("LD_PRELOAD", preload)
+        .env("HART_WAYLAND_PRELOADED", "1")
+        .exec(); // returns only if exec failed
+    eprintln!("Failed to re-exec with host libwayland-client preloaded: {err}");
+}
+
 fn main() {
+    #[cfg(target_os = "linux")]
+    preload_system_wayland_if_appimage();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
