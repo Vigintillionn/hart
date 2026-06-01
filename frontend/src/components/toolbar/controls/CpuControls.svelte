@@ -39,6 +39,7 @@
     title={(dirty
       ? "Source changed since last compile — Run will recompile"
       : "Compile & load the current file") + ` (${keymap.describe("compile")})`}
+    disabled={running}
     onclick={() => cpuStore.handleLoadProgram()}
   >
     <Icon name="build" class="h-4 w-4" />
