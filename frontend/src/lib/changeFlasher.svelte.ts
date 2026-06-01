@@ -8,6 +8,13 @@ export function createChangeFlasher<K = number, V = unknown>(
   let timer: number;
   let prev: Map<K | number, V> | undefined;
 
+  // This is intentionally an $effect, not a $derived: the result depends on the
+  // *previous* value of the collection (to diff against) and on a timer that
+  // clears the highlight after `durationMs`. That temporal, self-clearing state
+  // can't be expressed as a pure derivation of the current input, we're
+  // observing change-over-time and writing a transient signal, which is exactly
+  // what an effect is for. `untrack` keeps the diff bookkeeping from making
+  // `changed`/`prev` reads into dependencies (only `getCollection()` should be).
   $effect(() => {
     const rawCur = getCollection();
 

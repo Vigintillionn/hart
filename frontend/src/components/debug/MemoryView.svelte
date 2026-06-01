@@ -60,6 +60,11 @@
   const memFlasher = createChangeFlasher(() => memMap);
   const changed = $derived(memFlasher.changed);
 
+  // Auto-follow writes. `base` can't be a $derived because it's also driven
+  // imperatively by the user (wheel / arrow keys / scrollbar drag set it
+  // directly). Here we only want to *react* to a new set of changed addresses
+  // by jumping there (and only while `follow` is on) so an effect that writes
+  // `base` is the right tool rather than turning it into a pure derivation.
   $effect(() => {
     if (follow && changed.size) base = clampBase(Math.min(...changed));
   });
@@ -254,8 +259,8 @@
       <!-- svelte-ignore a11y_no_static_element_interactions -->
       <div
         class="absolute inset-x-0.5 rounded-full transition-colors {dragging
-          ? 'bg-[rgba(255,255,255,0.28)]'
-          : 'bg-[rgba(255,255,255,0.13)] hover:bg-[rgba(255,255,255,0.22)]'}"
+          ? 'bg-thumb-active'
+          : 'bg-thumb hover:bg-thumb-hover'}"
         style="top: {thumbTop}px; height: {THUMB_H}px;"
         onmousedown={onThumbDown}
       ></div>

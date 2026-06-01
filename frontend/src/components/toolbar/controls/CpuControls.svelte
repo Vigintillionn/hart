@@ -53,9 +53,9 @@
   </button>
 
   <button
-    class="inline-flex h-8.5 items-center gap-1.5 rounded-md px-3.5 text-[12.5px] font-semibold text-[#06262c] transition-colors disabled:opacity-30 {running
+    class="inline-flex h-8.5 items-center gap-1.5 rounded-md px-3.5 text-[12.5px] font-semibold text-on-primary transition-colors disabled:opacity-30 {running
       ? 'bg-surface-3 text-primary! shadow-[inset_0_0_0_1px_var(--color-primary-soft)]'
-      : 'bg-primary hover:bg-[#fec23e] shadow-[0_0_0_1px_rgba(253,181,21,0.5),0_4px_16px_-4px_var(--gold-glow)]'}"
+      : 'bg-primary hover:bg-primary-hover'}"
     disabled={!loaded}
     title={`${primary.label} (${primary.keys})`}
     onclick={primary.run}

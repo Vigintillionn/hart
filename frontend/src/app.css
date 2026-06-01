@@ -24,10 +24,17 @@
 
   /* accents */
   --color-primary: #fdb515; /* "alive": run, active, current line */
+  --color-primary-hover: #fec23e; /* gold button hover */
   --color-primary-soft: rgba(253, 181, 21, 0.14);
   --color-primary-line: rgba(253, 181, 21, 0.08);
+  --color-on-primary: #06262c; /* text/icon on a solid gold fill */
   --color-secondary: #62cbc9; /* identity / structure */
   --color-secondary-soft: rgba(98, 203, 201, 0.14);
+
+  /* draggable scrollbar thumbs (memory view) */
+  --color-thumb: rgba(255, 255, 255, 0.13);
+  --color-thumb-hover: rgba(255, 255, 255, 0.22);
+  --color-thumb-active: rgba(255, 255, 255, 0.28);
 
   /* status */
   --color-red: #f0726a;
