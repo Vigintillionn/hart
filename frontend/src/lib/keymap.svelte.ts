@@ -1,5 +1,6 @@
 import { cpuStore } from "./store/cpuStore.svelte";
 import { fileStore } from "./store/fileStore.svelte";
+import { loadJSON, saveJSON } from "./persist";
 
 export interface Command {
   id: string;
@@ -122,18 +123,9 @@ function format(combo: string): string {
 const STORAGE_KEY = "hart:keybindings";
 
 class Keymap {
-  overrides = $state<Record<string, string>>({});
-
-  constructor() {
-    if (typeof localStorage !== "undefined") {
-      try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) this.overrides = JSON.parse(raw);
-      } catch {
-        // ignore malformed persisted bindings
-      }
-    }
-  }
+  overrides = $state<Record<string, string>>(
+    loadJSON<Record<string, string>>(STORAGE_KEY, {}),
+  );
 
   public keysFor(id: string): string {
     if (id in this.overrides) return this.overrides[id];
@@ -156,9 +148,7 @@ class Keymap {
   }
 
   private persist() {
-    if (typeof localStorage !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(this.overrides));
-    }
+    saveJSON(STORAGE_KEY, this.overrides);
   }
 
   public handleKeydown = (e: KeyboardEvent) => {
