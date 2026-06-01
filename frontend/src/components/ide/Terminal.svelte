@@ -2,6 +2,23 @@
   import { onMount } from "svelte";
   import { Terminal } from "@xterm/xterm";
   import { FitAddon } from "@xterm/addon-fit";
+  import { modeStore } from "$lib/store/mode.svelte";
+
+  // Kept in sync with the surface-0 / text / primary tokens in app.css.
+  const TERM_THEMES = {
+    dark: {
+      background: "#0d0d10",
+      foreground: "#e7e7ec",
+      cursor: "#fdb515",
+      selectionBackground: "rgba(253, 181, 21, 0.2)",
+    },
+    light: {
+      background: "#ffffff",
+      foreground: "#14213a",
+      cursor: "#b06f00",
+      selectionBackground: "rgba(253, 181, 21, 0.28)",
+    },
+  };
 
   let {
     outputBuffer = "",
@@ -22,12 +39,7 @@
 
   onMount(() => {
     term = new Terminal({
-      theme: {
-        background: "#0d0d10", // surface-0
-        foreground: "#e7e7ec", // text
-        cursor: "#fdb515", // primary
-        selectionBackground: "rgba(253, 181, 21, 0.14)", // primary soft
-      },
+      theme: TERM_THEMES[modeStore.mode],
       fontFamily: "'JetBrains Mono', ui-monospace, monospace",
       fontSize: 12.5,
       cursorBlink: true,
@@ -74,6 +86,10 @@
       resizeObserver.disconnect();
       term.dispose();
     };
+  });
+
+  $effect(() => {
+    if (term) term.options.theme = TERM_THEMES[modeStore.mode];
   });
 
   $effect(() => {

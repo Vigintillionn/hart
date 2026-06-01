@@ -26,6 +26,8 @@ export type IconName =
   | "save"
   | "sliders"
   | "panels"
+  | "sun"
+  | "moon"
   | "min"
   | "max"
   | "restore"

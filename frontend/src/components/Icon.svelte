@@ -98,6 +98,13 @@
   {:else if name === "panels"}
     <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
     <path d="M14 4.5v15" />
+  {:else if name === "sun"}
+    <circle cx="12" cy="12" r="4" />
+    <path
+      d="M12 2v2.5M12 19.5V22M4.22 4.22l1.77 1.77M18.01 18.01l1.77 1.77M2 12h2.5M19.5 12H22M4.22 19.78l1.77-1.77M18.01 5.99l1.77-1.77"
+    />
+  {:else if name === "moon"}
+    <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
   {:else if name === "min"}
     <path d="M5 12h14" stroke-width="1.5" />
   {:else if name === "max"}

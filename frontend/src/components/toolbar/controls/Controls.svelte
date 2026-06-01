@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
+  import { modeStore, toggleMode } from "$lib/store/mode.svelte";
   import IconButton from "../../ui/IconButton.svelte";
   import StyleSettings from "./StyleSettings.svelte";
   import PanelControls from "./PanelControls.svelte";
@@ -30,6 +31,14 @@
     />
     <PanelControls bind:open={viewOpen} />
   </div>
+
+  <IconButton
+    name={modeStore.mode === "light" ? "moon" : "sun"}
+    title={modeStore.mode === "light"
+      ? "Switch to dark mode"
+      : "Switch to light mode"}
+    onclick={toggleMode}
+  />
 
   <div class="relative">
     <IconButton

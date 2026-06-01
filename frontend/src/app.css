@@ -53,6 +53,55 @@
   --primary-glow: rgba(253, 181, 21, 0.3);
   --secondary-glow: rgba(98, 203, 201, 0.3);
   --red-glow: rgba(240, 114, 106, 0.5);
+  --scroll-thumb: rgba(255, 255, 255, 0.13);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.22);
+}
+
+:root[data-theme="light"] {
+  /* structural neutrals */
+  --color-desktop: #d7d8dd;
+  --color-win-edge: #c3c4cb;
+  --color-surface-0: #ffffff; /* editor canvas */
+  --color-surface-1: #f4f4f7; /* panels */
+  --color-surface-2: #ececef; /* titlebar / toolbar / elevated */
+  --color-surface-3: #e3e3e9; /* inputs / hover */
+  --color-surface-4: #d6d7de; /* active hover */
+
+  /* hairlines */
+  --color-border: rgba(0, 32, 64, 0.12);
+  --color-border-soft: rgba(0, 32, 64, 0.07);
+  --color-border-strong: rgba(0, 32, 64, 0.2);
+
+  /* text */
+  --color-text: #14213a;
+  --color-text-dim: #4a5169;
+  --color-text-faint: #7b8197;
+  --color-text-ghost: #b3b8c6;
+
+  /* accents */
+  --color-primary: #fdb515; /* California Gold */
+  --color-primary-hover: #e9a200;
+  --color-primary-soft: rgba(253, 181, 21, 0.2);
+  --color-primary-line: rgba(253, 181, 21, 0.18);
+  --color-on-primary: #003262; /* Berkeley Blue */
+  --color-secondary: #003262; /* Berkeley Blue */
+  --color-secondary-soft: rgba(0, 50, 98, 0.12);
+
+  /* draggable scrollbar thumbs (memory view) */
+  --color-thumb: rgba(0, 32, 64, 0.22);
+  --color-thumb-hover: rgba(0, 32, 64, 0.34);
+  --color-thumb-active: rgba(0, 32, 64, 0.42);
+
+  /* status */
+  --color-red: #d23b32;
+  --color-amber: #b3730c;
+  --color-green: #2f9e54;
+
+  --primary-glow: rgba(253, 181, 21, 0.45);
+  --secondary-glow: rgba(0, 50, 98, 0.32);
+  --red-glow: rgba(210, 59, 50, 0.4);
+  --scroll-thumb: rgba(0, 32, 64, 0.22);
+  --scroll-thumb-hover: rgba(0, 32, 64, 0.34);
 }
 
 @layer base {
@@ -71,7 +120,7 @@
   }
   ::selection {
     background: var(--color-primary-soft);
-    color: #fff;
+    color: var(--color-text);
   }
 }
 
@@ -79,7 +128,7 @@
 @layer components {
   .scroll {
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.13) transparent;
+    scrollbar-color: var(--scroll-thumb) transparent;
   }
   .scroll::-webkit-scrollbar {
     width: 9px;
@@ -89,13 +138,13 @@
     background: transparent;
   }
   .scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--scroll-thumb);
     border-radius: 99px;
     border: 2px solid transparent;
     background-clip: padding-box;
   }
   .scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--scroll-thumb-hover);
     background-clip: padding-box;
   }
   .scroll-thin::-webkit-scrollbar {
@@ -103,7 +152,7 @@
     height: 6px;
   }
   .scroll-thin::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.12);
+    background: var(--scroll-thumb);
     border: 1.5px solid transparent;
     border-radius: 99px;
     background-clip: padding-box;
@@ -166,6 +215,6 @@
   .xterm .xterm-viewport {
     background-color: transparent !important;
     scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.13) transparent;
+    scrollbar-color: var(--scroll-thumb) transparent;
   }
 }

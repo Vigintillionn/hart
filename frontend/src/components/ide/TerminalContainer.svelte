@@ -97,7 +97,7 @@
             <span
               class="flex-1 whitespace-pre-wrap wrap-break-word {l.level ===
               'error'
-                ? 'text-[#e9b6b2]'
+                ? 'text-red'
                 : 'text-text-dim'}">{l.msg}</span
             >
           </div>

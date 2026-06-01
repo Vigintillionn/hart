@@ -3,7 +3,8 @@
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
   import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
-  import { themeColors } from "../../lib/editor/theme.svelte";
+  import { activeTheme } from "../../lib/editor/theme.svelte";
+  import { modeStore } from "../../lib/store/mode.svelte";
   import type { OpenFile } from "$lib/types";
 
   let {
@@ -129,21 +130,22 @@
 
   $effect(() => {
     if (editor) {
+      const t = activeTheme();
       monaco.editor.defineTheme("riscv-theme", {
-        base: "vs-dark",
+        base: modeStore.mode === "light" ? "vs" : "vs-dark",
         inherit: true,
         rules: [
-          { token: "custom-keyword", foreground: themeColors.keyword },
-          { token: "custom-register", foreground: themeColors.register },
-          { token: "custom-directive", foreground: themeColors.directive },
-          { token: "custom-number", foreground: themeColors.number },
-          { token: "custom-comment", foreground: themeColors.comment },
-          { token: "custom-string", foreground: themeColors.string },
-          { token: "custom-string.quote", foreground: themeColors.string },
-          { token: "custom-string.escape", foreground: themeColors.string },
+          { token: "custom-keyword", foreground: t.keyword },
+          { token: "custom-register", foreground: t.register },
+          { token: "custom-directive", foreground: t.directive },
+          { token: "custom-number", foreground: t.number },
+          { token: "custom-comment", foreground: t.comment },
+          { token: "custom-string", foreground: t.string },
+          { token: "custom-string.quote", foreground: t.string },
+          { token: "custom-string.escape", foreground: t.string },
         ],
         colors: {
-          "editor.background": themeColors.background,
+          "editor.background": t.background,
         },
       });
       monaco.editor.setTheme("riscv-theme");

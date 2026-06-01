@@ -1,10 +1,18 @@
 <script lang="ts">
-  import { themeColors, resetTheme } from "$lib/editor/theme.svelte";
+  import {
+    darkTheme,
+    lightTheme,
+    resetActiveTheme,
+    type ThemeColors,
+  } from "$lib/editor/theme.svelte";
+  import { modeStore } from "$lib/store/mode.svelte";
   import Popover from "../../ui/Popover.svelte";
 
   let { open = $bindable() }: { open: boolean } = $props();
 
-  const fields: { key: keyof typeof themeColors; label: string }[] = [
+  const palette = $derived(modeStore.mode === "light" ? lightTheme : darkTheme);
+
+  const fields: { key: keyof ThemeColors; label: string }[] = [
     { key: "background", label: "Editor background" },
     { key: "keyword", label: "Instructions (li, add)" },
     { key: "register", label: "Registers (x0, a0)" },
@@ -15,7 +23,11 @@
   ];
 </script>
 
-<Popover bind:open title="Syntax Theme" width="w-72">
+<Popover
+  bind:open
+  title={`Syntax Theme · ${modeStore.mode === "light" ? "Light" : "Dark"}`}
+  width="w-72"
+>
   <div class="flex flex-col gap-2.5 p-4">
     {#each fields as { key, label } (key)}
       <label
@@ -25,13 +37,13 @@
         <input
           type="color"
           class="h-7 w-7 cursor-pointer rounded border border-border bg-transparent p-0"
-          bind:value={themeColors[key]}
+          bind:value={palette[key]}
         />
       </label>
     {/each}
     <button
       class="mt-1 self-start text-[11px] text-text-faint transition-colors hover:text-text"
-      onclick={() => resetTheme()}>↻ Reset to defaults</button
+      onclick={() => resetActiveTheme()}>↻ Reset to defaults</button
     >
   </div>
 </Popover>
