@@ -8,6 +8,7 @@
   const dirty = $derived(cpuStore.isDirty);
   const running = $derived(status === "Running");
   const halted = $derived(status === "Halted");
+  const atStart = $derived((cpuStore.cpuState?.cycles ?? 0) === 0);
 
   const primary = $derived.by(() => {
     if (running)
@@ -76,7 +77,7 @@
   <button
     class="inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-transparent px-2.5 text-[12.5px] font-medium text-text-dim transition-colors hover:bg-surface-3 hover:text-text disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-text-dim"
     title={`Step backward (${keymap.describe("stepBack")})`}
-    disabled={!loaded || running}
+    disabled={!loaded || running || atStart}
     onclick={() => cpuStore.handleStepBack()}
   >
     <Icon name="stepBack" class="h-4 w-4" /><span>Back</span>
