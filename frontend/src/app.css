@@ -156,12 +156,6 @@
 
 /* xterm */
 @layer components {
-  .hide-cursor .xterm-cursor,
-  .hide-cursor .xterm-cursor-layer {
-    display: none !important;
-    opacity: 0 !important;
-    visibility: hidden !important;
-  }
   .xterm .xterm-viewport {
     background-color: transparent !important;
     scrollbar-width: thin;
