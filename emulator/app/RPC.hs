@@ -7,9 +7,11 @@ import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT, modify, runStateT)
 import Data.Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
+import Data.IntSet (IntSet)
+import Data.IntSet qualified as IntSet
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
-import Debugger (Debugger (..), disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
+import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
 import Linker (Executable (..), resolve)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC)
 import Parser (parse)
@@ -23,6 +25,7 @@ data Command
   | CmdStepBack
   | CmdRewind
   | CmdInput String
+  | CmdSetBreakpoints [Word32]
   | CmdQuit
   deriving (Show, Eq)
 
@@ -37,6 +40,7 @@ instance FromJSON Command where
       "step_back" -> return CmdStepBack
       "rewind" -> return CmdRewind
       "input" -> CmdInput <$> v .: "data"
+      "set_breakpoints" -> CmdSetBreakpoints <$> v .: "data"
       "quit" -> return CmdQuit
       _ -> fail "Unknown command"
 
@@ -74,7 +78,7 @@ runRPC :: FilePath -> IO ()
 runRPC _ = do
   sendResponse (ResError "Backend ready. Awaiting code from Monaco...")
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
-  rpcLoop emptyDbg
+  rpcLoop IntSet.empty emptyDbg
 
 compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)]))
 compileAndLoad sourceCode = do
@@ -95,8 +99,8 @@ compileAndLoad sourceCode = do
                 (execSourceMap executable)
         return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap)
 
-rpcLoop :: Debugger -> IO ()
-rpcLoop dbg = do
+rpcLoop :: IntSet -> Debugger -> IO ()
+rpcLoop bps dbg = do
   eof <- isEOF
   if eof
     then return ()
@@ -110,36 +114,38 @@ rpcLoop dbg = do
           case decode (BL.pack rawInput) of
             Nothing -> do
               sendResponse $ ResError ("Invalid JSON command received: " ++ rawInput)
-              rpcLoop dbg
+              rpcLoop bps dbg
             Just CmdQuit -> return ()
+            Just (CmdSetBreakpoints addrs) ->
+              rpcLoop (IntSet.fromList (map fromIntegral addrs)) dbg
             Just CmdPause -> do
               if status c == Running
                 then do
                   let cPaused = c {status = Paused}
                   let newDbg = dbg {current = cPaused}
                   sendResponse (ResState cPaused)
-                  rpcLoop newDbg
-                else rpcLoop dbg
+                  rpcLoop bps newDbg
+                else rpcLoop bps dbg
             Just (CmdLoad sourceCode) -> do
               mNewDbg <- compileAndLoad sourceCode
               case mNewDbg of
-                Nothing -> rpcLoop dbg
+                Nothing -> rpcLoop bps dbg
                 Just (newDbg, smap, dmap) -> do
                   sendResponse (ResLoaded (current newDbg) smap dmap)
-                  rpcLoop newDbg
-            Just CmdRun -> executeRun dbg
+                  rpcLoop bps newDbg
+            Just CmdRun -> executeRun bps dbg
             Just CmdStepFwd -> do
               if not (Seq.null (future dbg))
                 then do
                   let nextDbg = stepForward dbg
                   sendResponse (ResState $ current nextDbg)
-                  rpcLoop nextDbg
+                  rpcLoop bps nextDbg
                 else do
                   let c = current dbg
                   if status c == Halted
                     then do
                       sendResponse (ResState c)
-                      rpcLoop dbg
+                      rpcLoop bps dbg
                     else do
                       atBreak <- isAtBreakpoint c
                       if atBreak
@@ -154,7 +160,7 @@ rpcLoop dbg = do
                               c
                           let newDbg = dbg {past = past dbg Seq.|> c, current = steppedState, future = Seq.Empty}
                           sendResponse (ResState steppedState)
-                          rpcLoop newDbg
+                          rpcLoop bps newDbg
                         else do
                           startState <- execStateT (runEmulator $ setStatus Running) c
                           (_, nextState) <- runStateT (runEmulator step) startState
@@ -164,15 +170,15 @@ rpcLoop dbg = do
                                   else nextState
                           let newDbg = dbg {past = past dbg Seq.|> c, current = finalState, future = Seq.Empty}
                           sendResponse (ResState finalState)
-                          rpcLoop newDbg
+                          rpcLoop bps newDbg
             Just CmdStepBack -> do
               let prevDbg = stepBack dbg
               sendResponse (ResState $ current prevDbg)
-              rpcLoop prevDbg
+              rpcLoop bps prevDbg
             Just CmdRewind -> do
               let startDbg = rewind dbg
               sendResponse (ResState $ current startDbg)
-              rpcLoop startDbg
+              rpcLoop bps startDbg
             Just (CmdInput text) -> do
               let c = current dbg
               if status c == WaitingForInput
@@ -191,7 +197,7 @@ rpcLoop dbg = do
 
                   sendResponse (ResState startState)
 
-                  newTrace <- resumeTrace startState
+                  newTrace <- resumeTrace bps (atBreakpoint bps startState) startState
 
                   let fullTrace = past dbg <> newTrace
                   let newDbg = initDebuggerAtEnd fullTrace
@@ -201,22 +207,22 @@ rpcLoop dbg = do
                     then do
                       sendResponse (ResState cFinal)
                       sendResponse ResNeedInput
-                      rpcLoop newDbg
+                      rpcLoop bps newDbg
                     else do
                       sendResponse (ResState cFinal)
-                      rpcLoop newDbg
+                      rpcLoop bps newDbg
                 else do
                   sendResponse (ResError "Emulator is not waiting for input.")
-                  rpcLoop dbg
-        else executeRun dbg
+                  rpcLoop bps dbg
+        else executeRun bps dbg
 
-executeRun :: Debugger -> IO ()
-executeRun dbg = do
+executeRun :: IntSet -> Debugger -> IO ()
+executeRun bps dbg = do
   let c = current dbg
   if status c == Halted
     then do
       sendResponse (ResState c)
-      rpcLoop dbg
+      rpcLoop bps dbg
     else do
       atBreak <- isAtBreakpoint c
       startState <-
@@ -230,8 +236,7 @@ executeRun dbg = do
           c
 
       sendResponse (ResState startState)
-
-      newTrace <- resumeTrace startState
+      newTrace <- resumeTrace bps (atBreakpoint bps startState) startState
 
       let fullTrace = past dbg <> newTrace
       let newDbg = initDebuggerAtEnd fullTrace
@@ -241,7 +246,7 @@ executeRun dbg = do
         then do
           sendResponse (ResState cFinal)
           sendResponse ResNeedInput
-          rpcLoop newDbg
+          rpcLoop bps newDbg
         else do
           sendResponse (ResState cFinal)
-          rpcLoop newDbg
+          rpcLoop bps newDbg

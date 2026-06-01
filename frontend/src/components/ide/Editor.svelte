@@ -82,6 +82,8 @@
       onContentChange={handleEditorChange}
       currentPc={cpuStore.cpuState?.pc ?? 0}
       pcToLine={cpuStore.sourceLineMap}
+      breakpoints={cpuStore.breakpoints}
+      onToggleBreakpoint={(line) => cpuStore.toggleBreakpoint(line)}
       readOnly={running}
     />
   </div>

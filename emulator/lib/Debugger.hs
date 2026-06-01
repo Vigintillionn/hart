@@ -6,6 +6,8 @@ import Control.Monad.State.Strict
 import Data.Char (chr, isPrint, toLower)
 import Data.Int (Int32)
 import Data.IntMap.Strict qualified as M
+import Data.IntSet (IntSet)
+import Data.IntSet qualified as IntSet
 import Data.Sequence (Seq (..), (<|), (|>))
 import Data.Sequence qualified as Seq
 import Data.Vector.Unboxed qualified as V
@@ -74,34 +76,44 @@ rewind dbg = case past dbg of
   Empty -> dbg
   _ -> rewind (stepBack dbg)
 
-loop :: Seq CPU -> CPU -> IO (Seq CPU)
-loop acc curr = do
-  (running, next) <- runStateT (runEmulator step) curr
+loop :: IntSet -> Bool -> Seq CPU -> CPU -> IO (Seq CPU)
+loop bps skipFirst acc curr
+  | not skipFirst && status curr == Running && atBreakpoint bps curr =
+      return (markLastPaused acc)
+  | otherwise = do
+      (running, next) <- runStateT (runEmulator step) curr
 
-  let newAcc =
-        if Seq.length acc >= maxHistory
-          then Seq.drop 1 acc |> next
-          else acc |> next
+      let newAcc =
+            if Seq.length acc >= maxHistory
+              then Seq.drop 1 acc |> next
+              else acc |> next
 
-  if running
-    then do
-      if cycles next `mod` 10000 == 0
+      if running
         then do
-          ready <- hReady stdin
-          if ready
-            then return (newAcc `seq` newAcc)
-            else newAcc `seq` loop newAcc next
-        else newAcc `seq` loop newAcc next
-    else return newAcc
+          if cycles next `mod` 10000 == 0
+            then do
+              ready <- hReady stdin
+              if ready
+                then return (newAcc `seq` newAcc)
+                else newAcc `seq` loop bps False newAcc next
+            else newAcc `seq` loop bps False newAcc next
+        else return newAcc
 
-resumeTrace :: CPU -> IO (Seq CPU)
-resumeTrace currentCpu =
-  loop (Seq.singleton currentCpu) currentCpu
+atBreakpoint :: IntSet -> CPU -> Bool
+atBreakpoint bps c = IntSet.member (fromIntegral (pc c)) bps
+
+markLastPaused :: Seq CPU -> Seq CPU
+markLastPaused (rest :|> c) = rest |> c {status = Paused}
+markLastPaused Empty = Empty
+
+resumeTrace :: IntSet -> Bool -> CPU -> IO (Seq CPU)
+resumeTrace bps skipFirst currentCpu =
+  loop bps skipFirst (Seq.singleton currentCpu) currentCpu
 
 runTrace :: Executable -> CPU -> IO (Seq CPU)
 runTrace prog startCPU = do
   cpuReady <- execStateT (runEmulator $ loadProgram prog) startCPU
-  loop (Seq.singleton cpuReady) cpuReady
+  loop IntSet.empty False (Seq.singleton cpuReady) cpuReady
 
 viewRegisters :: V.Vector Word32 -> [Int32]
 viewRegisters regs = map fromIntegral (V.toList regs)
@@ -205,7 +217,7 @@ runInteractive dbg = do
                   setStatus Running
               )
               c
-          newTrace <- resumeTrace startState
+          newTrace <- resumeTrace IntSet.empty False startState
 
           let fullTrace = past dbg <> newTrace
           let newDbg = initDebuggerAtEnd fullTrace

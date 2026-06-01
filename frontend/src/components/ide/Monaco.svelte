@@ -12,6 +12,8 @@
     onContentChange = (_id: string, _newContent: string) => {},
     currentPc = 0,
     pcToLine = new Map<number, number>(),
+    breakpoints = new Set<number>(),
+    onToggleBreakpoint = (_line: number) => {},
     readOnly = false,
   }: {
     activeFileId?: string;
@@ -19,17 +21,36 @@
     onContentChange?: (id: string, newContent: string) => void;
     currentPc?: number;
     pcToLine?: Map<number, number>;
+    breakpoints?: Set<number>;
+    onToggleBreakpoint?: (line: number) => void;
     readOnly?: boolean;
   } = $props();
 
   let editorContainer: HTMLDivElement;
   let editor: monaco.editor.IStandaloneCodeEditor;
   let decorationsCollection: monaco.editor.IEditorDecorationsCollection;
+  let breakpointDecorations: monaco.editor.IEditorDecorationsCollection;
+  let hoverDecorations: monaco.editor.IEditorDecorationsCollection;
   let models = new Map<string, monaco.editor.ITextModel>();
 
   const currentLine = $derived(pcToLine.get(currentPc) || 0);
   let lastLine = 0;
   let fadeTimer: number;
+
+  const breakpointableLines = $derived(new Set(pcToLine.values()));
+  let hoverLine = $state<number | null>(null);
+
+  const activeContent = $derived(
+    files.find((f) => f.id === activeFileId)?.content ?? "",
+  );
+  const ebreakLines = $derived.by(() => {
+    const set = new Set<number>();
+    activeContent.split("\n").forEach((raw, i) => {
+      const code = raw.split("#")[0]; // ignore line comments
+      if (/\bebreak\b/i.test(code)) set.add(i + 1);
+    });
+    return set;
+  });
 
   if (typeof self !== "undefined") {
     self.MonacoEnvironment = {
@@ -48,6 +69,8 @@
       minimap: { enabled: false },
       scrollBeyondLastLine: false,
       glyphMargin: true,
+      lineNumbersMinChars: 3,
+      lineDecorationsWidth: 6,
       fontFamily: "'JetBrains Mono', ui-monospace, monospace",
       fontSize: 13,
       lineHeight: 21,
@@ -60,6 +83,35 @@
     });
 
     decorationsCollection = editor.createDecorationsCollection([]);
+    breakpointDecorations = editor.createDecorationsCollection([]);
+    hoverDecorations = editor.createDecorationsCollection([]);
+
+    editor.onMouseDown((e) => {
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const line = e.target.position?.lineNumber;
+        if (line && !ebreakLines.has(line)) onToggleBreakpoint(line);
+      }
+    });
+
+    editor.onMouseMove((e) => {
+      let next: number | null = null;
+      if (e.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN) {
+        const line = e.target.position?.lineNumber;
+        if (
+          line &&
+          breakpointableLines.has(line) &&
+          !breakpoints.has(line) &&
+          !ebreakLines.has(line)
+        ) {
+          next = line;
+        }
+      }
+      if (next !== hoverLine) hoverLine = next;
+    });
+    editor.onMouseLeave(() => {
+      if (hoverLine !== null) hoverLine = null;
+    });
+
     document.fonts?.ready.then(() => monaco.editor.remeasureFonts());
   });
 
@@ -132,7 +184,6 @@
       options: {
         isWholeLine: true,
         className: "pc-highlight-line",
-        glyphMarginClassName: "pc-highlight-gutter",
       },
     };
   }
@@ -169,6 +220,54 @@
       editor.revealLineInCenter(line, monaco.editor.ScrollType.Smooth);
     }
     lastLine = line;
+  });
+
+  function breakpointDecoration(
+    line: number,
+    ebreak: boolean,
+  ): monaco.editor.IModelDeltaDecoration {
+    return {
+      range: new monaco.Range(line, 1, line, 1),
+      options: {
+        glyphMarginClassName: ebreak
+          ? "breakpoint-glyph breakpoint-glyph-ebreak"
+          : "breakpoint-glyph",
+        glyphMarginHoverMessage: {
+          value: ebreak ? "Breakpoint (`ebreak`)" : "Breakpoint",
+        },
+        stickiness:
+          monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+      },
+    };
+  }
+
+  $effect(() => {
+    void activeFileId;
+    if (!editor || !breakpointDecorations) return;
+    const decs: monaco.editor.IModelDeltaDecoration[] = [];
+    for (const line of breakpoints)
+      decs.push(breakpointDecoration(line, false));
+    for (const line of ebreakLines) {
+      if (!breakpoints.has(line)) decs.push(breakpointDecoration(line, true));
+    }
+    breakpointDecorations.set(decs);
+  });
+
+  $effect(() => {
+    if (!editor || !hoverDecorations) return;
+    const line = hoverLine;
+    const show =
+      line !== null && !breakpoints.has(line) && !ebreakLines.has(line);
+    hoverDecorations.set(
+      show && line !== null
+        ? [
+            {
+              range: new monaco.Range(line, 1, line, 1),
+              options: { glyphMarginClassName: "breakpoint-glyph-hover" },
+            },
+          ]
+        : [],
+    );
   });
 </script>
 

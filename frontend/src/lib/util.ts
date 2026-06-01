@@ -42,8 +42,11 @@ export const DATA_BASE = 0x10000000;
 export const HEAP_BASE = 0x20000000;
 export const STACK_TOP = 0x7fffffff;
 
-export async function sendToHaskell(command: string, data?: string) {
-  const payload = data ? { command, data } : { command };
+export async function sendToHaskell(
+  command: string,
+  data?: string | number[],
+) {
+  const payload = data !== undefined ? { command, data } : { command };
   try {
     await invoke("send_command", { cmd: JSON.stringify(payload) });
   } catch (e) {

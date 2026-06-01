@@ -115,14 +115,29 @@
     background-color: var(--color-primary-line) !important;
     box-shadow: inset 2px 0 0 0 var(--color-primary) !important;
   }
-  .pc-highlight-gutter {
-    background-color: var(--color-primary);
+  .breakpoint-glyph {
+    background-color: var(--color-red, #f0726a);
     border-radius: 50%;
-    width: 8px !important;
-    height: 8px !important;
-    margin-left: 6px;
+    width: 9px !important;
+    height: 9px !important;
+    margin-left: 9px;
     margin-top: 6px;
-    box-shadow: 0 0 7px var(--primary-glow);
+    box-shadow: 0 0 6px rgba(240, 114, 106, 0.6);
+    cursor: pointer;
+  }
+  .breakpoint-glyph-ebreak {
+    background-color: transparent;
+    border: 2px solid var(--color-red, #f0726a);
+    box-shadow: none;
+    cursor: default;
+  }
+  .breakpoint-glyph-hover {
+    cursor: pointer;
+    background: radial-gradient(
+      circle 4.5px at 13.5px 50%,
+      rgba(240, 114, 106, 0.4) 99%,
+      transparent 100%
+    );
   }
   .pc-previous-line {
     animation: pcFadeOut 1.2s forwards !important;

@@ -13,6 +13,15 @@ class CpuStore {
   disasmMap = $state<DisasmMap>([]);
   sourceLineMap = $derived(new Map(this.sourceMap));
   disasmTextMap = $derived(new Map(this.disasmMap));
+  breakpoints = $state(new Set<number>());
+  lineToAddr = $derived.by(() => {
+    const m = new Map<number, number>();
+    for (const [addr, line] of this.sourceMap) {
+      const cur = m.get(line);
+      if (cur === undefined || addr < cur) m.set(line, addr);
+    }
+    return m;
+  });
   sidecarAlive = $state(true);
   unlisten: UnlistenFn | null = null;
   unlistenSidecar: UnlistenFn | null = null;
@@ -87,6 +96,7 @@ class CpuStore {
             "program assembled & loaded successfully",
           );
           terminalStore.setActiveTab("system");
+          if (this.breakpoints.size) this.sendBreakpoints();
           if (this.runAfterLoad) {
             this.runAfterLoad = false;
             sendToHaskell("run");
@@ -149,6 +159,27 @@ class CpuStore {
 
   public submitInput(text: string) {
     sendToHaskell("input", text);
+  }
+
+  public toggleBreakpoint(line: number) {
+    const next = new Set(this.breakpoints);
+    if (next.has(line)) {
+      next.delete(line);
+    } else {
+      if (!this.lineToAddr.has(line)) return; // no instruction on this line
+      next.add(line);
+    }
+    this.breakpoints = next;
+    this.sendBreakpoints();
+  }
+
+  private sendBreakpoints() {
+    const addrs: number[] = [];
+    for (const line of this.breakpoints) {
+      const addr = this.lineToAddr.get(line);
+      if (addr !== undefined) addrs.push(addr);
+    }
+    sendToHaskell("set_breakpoints", addrs);
   }
 }
 
