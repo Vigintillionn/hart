@@ -8,6 +8,9 @@
 
   const ROW_BYTES = 16;
   const ROW_PX = 20;
+  const MEM_TOP = 0xffffffff;
+
+  const align16 = (x: number) => Math.floor(x / 16) * 16;
 
   let base = $state(DATA_BASE);
   let follow = $state(true);
@@ -26,10 +29,10 @@
 
   function clampBase(b: number): number {
     const span = visibleRows * ROW_BYTES;
-    const maxBase = (STACK_TOP + 1 - span) & ~0xf;
+    const maxBase = align16(MEM_TOP + 1 - span);
     if (b < 0) return 0;
     if (b > maxBase) return maxBase;
-    return b & ~0xf;
+    return align16(b);
   }
 
   let wheelAccum = 0;
@@ -108,7 +111,7 @@
   let trackH = $state(0);
   let dragging = $state(false);
 
-  const maxBase = $derived((STACK_TOP + 1 - visibleRows * ROW_BYTES) & ~0xf);
+  const maxBase = $derived(align16(MEM_TOP + 1 - visibleRows * ROW_BYTES));
   const scrollFrac = $derived(
     maxBase > 0 ? Math.min(1, Math.max(0, base / maxBase)) : 0,
   );
@@ -206,7 +209,7 @@
         follow = false;
         base = clampBase(DATA_BASE);
       })}
-      {@render chip("stack", false, () => {
+      {@render chip("stack", base === clampBase(STACK_TOP - 0xf0), () => {
         follow = false;
         base = clampBase(STACK_TOP - 0xf0);
       })}
