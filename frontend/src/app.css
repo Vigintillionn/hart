@@ -171,6 +171,10 @@
     background-color: var(--color-primary-line) !important;
     box-shadow: inset 2px 0 0 0 var(--color-primary) !important;
   }
+  .pc-highlight-line-number {
+    color: var(--color-primary) !important;
+    font-weight: 600;
+  }
   .breakpoint-glyph {
     background-color: var(--color-red, #f0726a);
     border-radius: 50%;

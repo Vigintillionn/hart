@@ -186,6 +186,7 @@
       options: {
         isWholeLine: true,
         className: "pc-highlight-line",
+        lineNumberClassName: "pc-highlight-line-number",
       },
     };
   }
