@@ -6,8 +6,11 @@
   let {
     outputBuffer = "",
     waitingForInput = false,
-    hideCursor = false,
     onSubmitInput = (_text: string) => {},
+  }: {
+    outputBuffer?: string;
+    waitingForInput?: boolean;
+    onSubmitInput?: (text: string) => void;
   } = $props();
 
   let terminalContainer: HTMLDivElement;
@@ -24,10 +27,9 @@
         cursor: "#fdb515", // primary
         selectionBackground: "rgba(253, 181, 21, 0.14)", // primary soft
       },
-      disableStdin: hideCursor,
       fontFamily: "'JetBrains Mono', ui-monospace, monospace",
       fontSize: 12.5,
-      cursorBlink: !hideCursor,
+      cursorBlink: true,
       convertEol: true,
     });
 
@@ -91,6 +93,5 @@
 
 <div
   class="box-border h-full w-full overflow-hidden bg-surface-0 px-3.5 py-2"
-  class:hide-cursor={hideCursor}
   bind:this={terminalContainer}
 ></div>
