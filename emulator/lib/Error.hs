@@ -28,6 +28,7 @@ data AssemblyError
   | EmptyParserFailed
   | ParserFail String
   | EOF
+  | Located Int AssemblyError
   deriving (Show, Eq)
 
 -- | Link-time failures produced by "Linker" (symbol resolution + range checks).
@@ -39,6 +40,8 @@ data LinkError
     ImmOutOfRange String Int Int Int
   | -- | context, offending value
     MisalignedTarget String Int
+  | -- | source line + the underlying failure that occurred there
+    LocatedLink Int LinkError
   deriving (Show, Eq)
 
 data EmulatorError
@@ -102,6 +105,7 @@ instance ToJSON AssemblyError where
     EmptyParserFailed -> kind "EmptyParserFailed"
     ParserFail t -> object ["kind" .= s "ParserFail", "text" .= t]
     EOF -> kind "EOF"
+    Located ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON LinkError where
   toJSON e = case e of
@@ -112,6 +116,7 @@ instance ToJSON LinkError where
       object ["kind" .= s "ImmOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
     MisalignedTarget ctx v ->
       object ["kind" .= s "MisalignedTarget", "context" .= ctx, "value" .= v]
+    LocatedLink ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON EmulatorError where
   toJSON e = case e of

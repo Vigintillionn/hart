@@ -2,7 +2,7 @@ module Parser where
 
 import Control.Applicative
 import Control.Monad (void)
-import Data.Char (isAlphaNum, isDigit, isHexDigit)
+import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit)
 import Data.Map.Strict qualified as M
 import Error (AssemblyError (..))
 import GHC.Base (when)
@@ -49,7 +49,14 @@ abiMap =
       ("t6", 31)
     ]
 
-newtype Parser a = Parser {runParser :: Int -> String -> Either AssemblyError (a, Int, String)}
+-- | A parser failure, tagged with whether it is /committed/. A @Soft@ failure
+-- means "this alternative didn't match, backtrack and try the next one"; a
+-- @Hard@ failure means "we matched far enough to know this is the intended
+-- production, so the error is real and must not be swallowed by '<|>',
+-- 'optional', or 'many'". The 'Int' is the source line at the point of failure.
+data PErr = PErr !Bool !Int !AssemblyError
+
+newtype Parser a = Parser {runParser :: Int -> String -> Either PErr (a, Int, String)}
 
 instance Functor Parser where
   fmap f (Parser pa) = Parser $ \l input ->
@@ -79,15 +86,28 @@ instance Monad Parser where
          in pf l1 rest
 
 instance Alternative Parser where
-  empty = Parser $ \_ _ -> Left EmptyParserFailed
+  empty = Parser $ \l _ -> Left (PErr False l EmptyParserFailed)
 
   (Parser pa) <|> (Parser pb) = Parser $ \l input ->
     case pa l input of
-      Left _ -> pb l input
+      Left (PErr False _ _) -> pb l input
+      Left hard -> Left hard
       Right res -> Right res
 
 instance MonadFail Parser where
-  fail msg = Parser $ \_ _ -> Left (ParserFail msg)
+  fail msg = Parser $ \l _ -> Left (PErr False l (ParserFail msg))
+
+failWith :: AssemblyError -> Parser a
+failWith e = Parser $ \l _ -> Left (PErr False l e)
+
+failHard :: AssemblyError -> Parser a
+failHard e = Parser $ \l _ -> Left (PErr True l e)
+
+commit :: Parser a -> Parser a
+commit (Parser p) = Parser $ \l s ->
+  case p l s of
+    Left (PErr _ el e) -> Left (PErr True el e)
+    ok -> ok
 
 choice :: [Parser a] -> Parser a
 choice = asum
@@ -101,8 +121,8 @@ lookAhead (Parser p) = Parser $ \l input ->
 satisfy :: (Char -> Bool) -> Parser Char
 satisfy predicate = Parser $ \l str -> case str of
   (c : cs) | predicate c -> Right (c, if c == '\n' then l + 1 else l, cs)
-  (c : _) -> Left (UnexpectedChar c)
-  [] -> Left EOF
+  (c : _) -> Left (PErr False l (UnexpectedChar c))
+  [] -> Left (PErr False l EOF)
 
 char :: Char -> Parser Char
 char c = satisfy (== c)
@@ -110,8 +130,20 @@ char c = satisfy (== c)
 string :: String -> Parser String
 string = traverse char
 
+isIdentChar :: Char -> Bool
+isIdentChar c = isAlphaNum c || c == '_'
+
+notFollowedBy :: Parser a -> Parser ()
+notFollowedBy (Parser p) = Parser $ \l s ->
+  case p l s of
+    Left _ -> Right ((), l, s)
+    Right _ -> Left (PErr False l EmptyParserFailed)
+
+keyword :: String -> Parser ()
+keyword n = lexeme (void (string n) <* notFollowedBy (satisfy isIdentChar))
+
 identifier :: Parser String
-identifier = some (satisfy (\c -> isAlphaNum c || c == '_'))
+identifier = some (satisfy isIdentChar)
 
 integer :: Parser Int
 integer = do
@@ -158,19 +190,19 @@ eof :: Parser ()
 eof = Parser $ \l s ->
   case s of
     [] -> Right ((), l, s)
-    _ -> Left (ParserFail $ "Syntax error at line " ++ show l ++ ":\n    > " ++ takeWhile (/= '\n') s)
+    _ -> Left (PErr False l (ParserFail (takeWhile (/= '\n') s)))
 
 register :: Parser Register
-register = lexeme $ choice [abiName, xName]
+register = lexeme $ do
+  name <- some (satisfy isAlphaNum)
+  case classify name of
+    Just reg -> return reg
+    Nothing -> failWith (InvalidRegister name)
   where
-    xName = char 'x' *> integer >>= \n -> maybe (fail "Invalid register name") return (mkRegister n)
-    abiName = do
-      name <- some (satisfy isAlphaNum)
-      case M.lookup name abiMap of
-        Just n -> case mkRegister n of
-          Nothing -> fail "Invalid register name"
-          Just reg -> return reg
-        Nothing -> fail "Invalid register name"
+    classify name =
+      (M.lookup name abiMap >>= mkRegister) <|> xName name
+    xName ('x' : ds@(_ : _)) | all isDigit ds = readMaybe ds >>= mkRegister
+    xName _ = Nothing
 
 operand :: Parser Operand
 operand =
@@ -290,31 +322,35 @@ parseJTypeOperands = explicit <|> implicit
         <$> operand
 
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (ArchInstr 'Parsed)
-rType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseRTypeOperands
+rType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseRTypeOperands
 
 iArithType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
-iArithType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseIArithTypeOperands
+iArithType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseIArithTypeOperands
 
+-- | Load/store mnemonics are overloaded: the same word (@lw@, @sw@, …) is also
+-- a pseudo-instruction taking a label. We must therefore /not/ commit here, so
+-- a memory-operand mismatch can backtrack to the global-load/store pseudo.
 iLoadType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
-iLoadType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseILoadTypeOperands
+iLoadType n c = RealInstr . SomeInstruction . c <$ keyword n <*> parseILoadTypeOperands
 
 iJmpType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
-iJmpType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseIJumpTypeOperands
+iJmpType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseIJumpTypeOperands
 
 bType :: String -> (BTypeArgs Operand -> Instruction 'B Operand) -> Parser (ArchInstr 'Parsed)
-bType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseBTypeOperands
+bType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseBTypeOperands
 
+-- | See 'iLoadType' for why store operands are not committed.
 sType :: String -> (STypeArgs Operand -> Instruction 'S Operand) -> Parser (ArchInstr 'Parsed)
-sType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseSTypeOperands
+sType n c = RealInstr . SomeInstruction . c <$ keyword n <*> parseSTypeOperands
 
 uType :: String -> (UTypeArgs Operand -> Instruction 'U Operand) -> Parser (ArchInstr 'Parsed)
-uType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseUTypeOperands
+uType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseUTypeOperands
 
 jType :: String -> (JTypeArgs Operand -> Instruction 'J Operand) -> Parser (ArchInstr 'Parsed)
-jType n c = RealInstr . SomeInstruction . c <$ lexeme (string n) <*> parseJTypeOperands
+jType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseJTypeOperands
 
 pseudoType :: String -> Parser PseudoOp -> Parser (ArchInstr 'Parsed)
-pseudoType n p = PseudoInstr <$> (lexeme (string n) *> p)
+pseudoType n p = PseudoInstr <$> (keyword n *> commit p)
 
 parseSystem :: SysOp -> Parser (ArchInstr 'Parsed)
 parseSystem op = do
@@ -392,9 +428,9 @@ parseInstruction =
         map (\(n, op) -> uType n (UType op)) uOps,
         map (\(n, op) -> jType n (JType op)) jOps,
         map (uncurry pseudoType) pseudoOps,
-        map (\(n, op) -> lexeme (string n) >> parseSystemImm op) sysImmOps,
-        map (\(n, op) -> lexeme (string n) >> parseSystem op) sysOps,
-        map (\(n, op) -> lexeme (string n) >> parseTrap op) trapOps
+        map (\(n, op) -> keyword n >> commit (parseSystemImm op)) sysImmOps,
+        map (\(n, op) -> keyword n >> commit (parseSystem op)) sysOps,
+        map (\(n, op) -> keyword n >> parseTrap op) trapOps
       ]
   where
     rOps =
@@ -462,6 +498,8 @@ parseInstruction =
         ("sgtz", parsePseudoDoubleReg P_SGTZ),
         ("la", parseLa),
         ("j", P_J <$> operand),
+        ("jr", P_JR <$> register),
+        ("ret", pure P_RET),
         ("lw", parseLoadGlobal LW),
         ("lb", parseLoadGlobal LB),
         ("lbu", parseLoadGlobal LBU),
@@ -480,8 +518,8 @@ parseInstruction =
         ("ble", parsePseudoBranchCompare P_BLE),
         ("bgtu", parsePseudoBranchCompare P_BGTU),
         ("bleu", parsePseudoBranchCompare P_BLEU),
-        ("call", P_CALL <$> lexeme (string "call")),
-        ("tail", P_TAIL <$> lexeme (string "tail"))
+        ("call", P_CALL <$> identifier),
+        ("tail", P_TAIL <$> identifier)
       ]
 
 parseSection :: Parser Directive
@@ -512,6 +550,12 @@ parseStatement :: Parser Statement
 parseStatement =
   (StmtDirective <$> parseDirective)
     <|> (StmtInstr <$> parseInstruction)
+    <|> unknownInstr
+
+unknownInstr :: Parser Statement
+unknownInstr = lookAhead mnemonicLike >>= failHard . UnknownInstruction
+  where
+    mnemonicLike = (:) <$> satisfy isAlpha <*> many (satisfy isIdentChar)
 
 getLineNum :: Parser Int
 getLineNum = Parser $ \l s -> Right (l, l, s)
@@ -542,7 +586,5 @@ parseProgram = do
 
 parse :: String -> Either AssemblyError [(Int, SourceLine)]
 parse src = case runParser parseProgram 1 src of
-  Right (instr, finalLineNum, left) -> case left of
-    [] -> Right instr
-    s -> Left (ParserFail $ "Syntax error at line " ++ show finalLineNum ++ ":\n    > " ++ takeWhile (/= '\n') s)
-  Left err -> Left err
+  Right (instr, _, _) -> Right instr
+  Left (PErr _ ln e) -> Left (Located ln e)

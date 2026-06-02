@@ -1,11 +1,30 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { CpuState } from "../../bindings/CpuState";
 import type { EmulatorResponse } from "../../bindings/EmulatorResponse";
+import type { Severity } from "../../bindings/Severity";
 import type { SourceMap, DisasmMap } from "../types";
 import { terminalStore } from "./terminalStore.svelte";
-import { logStore } from "./logStore.svelte";
+import { logStore, type LogLevel } from "./logStore.svelte";
 import { fileStore } from "./fileStore.svelte";
 import { sendToHaskell } from "../util";
+import {
+  emulatorErrorLine,
+  emulatorErrorTag,
+  formatEmulatorError,
+  formatSystemEvent,
+  systemEventTag,
+} from "../errorFormat";
+
+function severityToLevel(sev: Severity): LogLevel {
+  switch (sev) {
+    case "warning":
+      return "warn";
+    case "error":
+      return "error";
+    default:
+      return "info";
+  }
+}
 
 class CpuStore {
   cpuState = $state<CpuState | null>(null);
@@ -23,6 +42,11 @@ class CpuStore {
     return m;
   });
   sidecarAlive = $state(true);
+  compileError = $state<{
+    fileId: string;
+    line: number | null;
+    message: string;
+  } | null>(null);
   unlisten: UnlistenFn | null = null;
   unlistenSidecar: UnlistenFn | null = null;
 
@@ -32,6 +56,7 @@ class CpuStore {
   private pendingSnapshot: { fileId: string; content: string } | null = null;
   /** set when a `run` should fire automatically after a recompile succeeds */
   private runAfterLoad = false;
+  private systemLogShown = 0;
 
   /** @returns true once a program has been compiled & loaded */
   get isLoaded() {
@@ -85,16 +110,15 @@ class CpuStore {
           const out = this.cpuState.outputBuffer;
           if (out) terminalStore.program.set(out);
           else terminalStore.program.clear();
+          this.mirrorSystemLog();
         } else if (response.type === "loaded") {
           this.cpuState = response.state;
           this.sourceMap = response.sourceMap;
           this.disasmMap = response.disasmMap;
           this.loadedSnapshot = this.pendingSnapshot;
-          logStore.log(
-            "info",
-            "BUILD",
-            "program assembled & loaded successfully",
-          );
+          this.compileError = null;
+          this.systemLogShown = 0;
+          this.mirrorSystemLog();
           terminalStore.setActiveTab("system");
           if (this.breakpoints.size) this.sendBreakpoints();
           if (this.runAfterLoad) {
@@ -103,14 +127,49 @@ class CpuStore {
           }
         } else if (response.type === "error") {
           this.runAfterLoad = false;
-          logStore.log("error", "ASM", response.message);
+          if (response.error) {
+            const message = formatEmulatorError(response.error);
+            const line = emulatorErrorLine(response.error);
+            logStore.log(
+              "error",
+              emulatorErrorTag(response.error),
+              line !== null ? `At line ${line}: ${message}` : message,
+            );
+            const fileId =
+              this.pendingSnapshot?.fileId ?? fileStore.activeFile.id;
+            this.compileError = { fileId, line, message };
+          } else {
+            logStore.log("error", "EMU", response.message ?? "Unknown error");
+          }
           terminalStore.setActiveTab("system");
+        } else if (response.type === "log") {
+          logStore.log(
+            severityToLevel(response.severity),
+            response.tag,
+            response.message,
+          );
         } else if (response.type === "need_input") {
           if (this.cpuState) this.cpuState.status = "WaitingForInput";
           terminalStore.setActiveTab("program");
         }
       },
     );
+  }
+
+  private mirrorSystemLog() {
+    const log = this.cpuState?.systemLog ?? [];
+    if (log.length <= this.systemLogShown) return;
+
+    let sawError = false;
+    for (let i = this.systemLogShown; i < log.length; i++) {
+      const ev = log[i];
+      const level = severityToLevel(ev.severity);
+      logStore.log(level, systemEventTag(ev), formatSystemEvent(ev));
+      if (level === "error") sawError = true;
+    }
+    this.systemLogShown = log.length;
+
+    if (sawError) terminalStore.setActiveTab("system");
   }
 
   public cleanup() {
@@ -125,8 +184,10 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
-    logStore.log("info", "BUILD", "compiling program…");
+    // The emulator narrates the build pipeline itself ("Compiling...", etc.);
+    // we just surface the system console immediately on user action.
     terminalStore.setActiveTab("system");
+    this.compileError = null;
     const f = fileStore.activeFile;
     this.pendingSnapshot = { fileId: f.id, content: f.content };
     sendToHaskell("load", f.content);

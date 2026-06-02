@@ -15,23 +15,31 @@ hex :: Word32 -> String
 hex w = "0x" ++ showHex w ""
 
 renderAssemblyError :: AssemblyError -> String
-renderAssemblyError e = case e of
-  UnknownInstruction t -> "Unknown instruction: " ++ t
-  InvalidRegister t -> "Invalid register: " ++ t
-  ImmediateTooLarge v -> "Immediate too large: " ++ show v
-  UnexpectedChar c -> "Unexpected character: " ++ show c
-  EmptyParserFailed -> "Parser failed"
-  ParserFail t -> t
-  EOF -> "Unexpected end of input"
+renderAssemblyError = go
+  where
+    go e = case e of
+      Located ln inner -> "line " ++ show ln ++ ": " ++ go inner
+      UnknownInstruction t -> "unknown instruction `" ++ t ++ "`"
+      InvalidRegister t -> "invalid register `" ++ t ++ "`"
+      ImmediateTooLarge v -> "immediate out of range: " ++ show v
+      UnexpectedChar c -> "unexpected character " ++ show c
+      EmptyParserFailed -> "could not parse input"
+      ParserFail t
+        | null t -> "syntax error"
+        | otherwise -> "syntax error near `" ++ t ++ "`"
+      EOF -> "unexpected end of input"
 
 renderLinkError :: LinkError -> String
-renderLinkError e = case e of
-  DuplicateLabel l -> "Duplicate label: " ++ l
-  UndefinedLabel l -> "Undefined label: " ++ l
-  ShiftOutOfRange v -> "Shift amount out of range (0-31): " ++ show v
-  ImmOutOfRange ctx lo hi v ->
-    ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
-  MisalignedTarget ctx v -> ctx ++ " target is not 2-byte aligned: " ++ show v
+renderLinkError = go
+  where
+    go e = case e of
+      LocatedLink ln inner -> "line " ++ show ln ++ ": " ++ go inner
+      DuplicateLabel l -> "duplicate label `" ++ l ++ "`"
+      UndefinedLabel l -> "undefined label `" ++ l ++ "`"
+      ShiftOutOfRange v -> "shift amount out of range (0-31): " ++ show v
+      ImmOutOfRange ctx lo hi v ->
+        ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
+      MisalignedTarget ctx v -> ctx ++ " target is not 2-byte aligned: " ++ show v
 
 renderEmulatorError :: EmulatorError -> String
 renderEmulatorError e = case e of

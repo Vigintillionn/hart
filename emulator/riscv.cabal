@@ -78,6 +78,8 @@ common shared-properties
 library
     import:           warnings, shared-properties
     exposed-modules:  Types
+                      Error
+                      Render
                       Parser
                       Linker
                       Assembler

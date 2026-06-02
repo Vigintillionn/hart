@@ -51,7 +51,7 @@ handleSyscall = do
           return Advance
     10 -> do
       -- exit
-      consolePrintLn "\nProgram exited normally"
+      consolePrintLn "Program exited normally"
       logNotice ProgramExitedNormally
       return Terminate
     11 -> do
@@ -121,7 +121,7 @@ handleSyscall = do
     93 -> do
       -- sys_exit
       code <- getReg a0
-      consolePrintLn $ "\nProgram exited with code: " ++ show code
+      consolePrintLn $ "Program exited with code: " ++ show code
       logNotice (ProgramExited code)
       return Terminate
     214 -> do

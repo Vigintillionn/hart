@@ -13,16 +13,17 @@
 </script>
 
 <PaneResizer
-  class="relative z-10 bg-border transition-colors data-[resize-handle-state=hover]:bg-primary-soft data-[resize-handle-state=drag]:bg-primary {direction ===
+  class="group relative z-10 flex shrink-0 items-center justify-center bg-transparent {direction ===
   'vertical'
-    ? 'h-px'
-    : 'w-px'}"
+    ? 'h-1.5 w-full cursor-row-resize'
+    : 'h-full w-1.5 cursor-col-resize'}"
 >
   <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <div class="absolute inset-0" ondblclick={toggle}></div>
   <div
-    class="absolute {direction === 'vertical'
-      ? 'inset-x-0 -top-1 -bottom-1 cursor-row-resize'
-      : 'inset-y-0 -left-1 -right-1 cursor-col-resize'}"
-    ondblclick={toggle}
+    class="bg-border transition-colors group-data-[resize-handle-state=hover]:bg-primary-soft group-data-[resize-handle-state=drag]:bg-primary {direction ===
+    'vertical'
+      ? 'h-px w-full'
+      : 'h-full w-px'}"
   ></div>
 </PaneResizer>

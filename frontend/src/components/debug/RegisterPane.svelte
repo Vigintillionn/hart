@@ -33,7 +33,7 @@
     />
 
     <span class="ml-auto font-mono text-[10px] text-text-faint">
-      {view === "regs" ? "x0 – x31" : "control & status"}
+      {view === "regs" ? "x0 - x31" : "control & status"}
     </span>
   </div>
 

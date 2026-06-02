@@ -7,9 +7,9 @@
   import IconButton from "../ui/IconButton.svelte";
 
   const tagColor: Record<string, string> = {
-    info: "text-primary",
+    info: "text-secondary",
     exec: "text-secondary",
-    warn: "text-amber",
+    warn: "text-primary",
     error: "text-red",
   };
 
@@ -20,6 +20,29 @@
     const lines = stdout.split("\n");
     if (lines[lines.length - 1] === "") lines.pop();
     return lines.length;
+  });
+
+  let systemScrollEl = $state<HTMLDivElement | undefined>();
+  let systemPinned = true;
+  let lastTab = terminalStore.activeTab;
+
+  function onSystemScroll() {
+    const el = systemScrollEl;
+    if (!el) return;
+    systemPinned = el.scrollHeight - el.scrollTop - el.clientHeight < 16;
+  }
+
+  $effect(() => {
+    void logStore.entries.length; // re-run when a new entry arrives
+    const tab = terminalStore.activeTab;
+    const el = systemScrollEl;
+    const switchedToSystem = tab === "system" && lastTab !== "system";
+    lastTab = tab;
+    if (tab !== "system" || !el) return;
+    if (systemPinned || switchedToSystem) {
+      el.scrollTop = el.scrollHeight;
+      systemPinned = true;
+    }
   });
 </script>
 
@@ -78,7 +101,11 @@
     class="relative min-h-0 flex-1 overflow-hidden"
     class:hidden={terminalStore.activeTab !== "system"}
   >
-    <div class="scroll-thin h-full overflow-auto py-2">
+    <div
+      class="scroll-thin h-full overflow-auto py-2"
+      bind:this={systemScrollEl}
+      onscroll={onSystemScroll}
+    >
       {#if logStore.entries.length === 0}
         <div class="px-3.5 py-2 font-mono text-[11.5px] text-text-ghost">
           — system log empty · press Compile or Step —
@@ -95,10 +122,8 @@
               ]}">{l.tag}</span
             >
             <span
-              class="flex-1 whitespace-pre-wrap wrap-break-word {l.level ===
-              'error'
-                ? 'text-red'
-                : 'text-text-dim'}">{l.msg}</span
+              class="flex-1 whitespace-pre-wrap wrap-break-word text-text-dim"
+              >{l.msg}</span
             >
           </div>
         {/each}

@@ -2,6 +2,7 @@ module Linker where
 
 import Control.Monad (foldM)
 import Control.Monad.State
+import Data.Bifunctor (first)
 import Data.Bits (Bits (..))
 import Data.Char (ord)
 import Data.IntMap.Strict qualified as IM
@@ -99,14 +100,14 @@ data BuildState = BuildState
 buildSymTable :: ParsedProgram -> Either LinkError BuildState
 buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
   where
-    step st (_, (ml, ms)) = do
+    step st (ln, (ml, ms)) = do
       let currentPC = if b_section st == TextSection then b_textPC st else b_dataPC st
 
       newTable <- case ml of
         Nothing -> Right (b_table st)
         Just n ->
           if M.member n (b_table st)
-            then Left (DuplicateLabel n)
+            then Left (LocatedLink ln (DuplicateLabel n))
             else Right $ M.insert n currentPC (b_table st)
 
       let st' = st {b_table = newTable}
@@ -174,7 +175,7 @@ resolve l = do
       ( mapM
           ( \(ln, instr) -> do
               pc <- get
-              resolved <- resolveInstruction symTable instr
+              resolved <- mapStateT (first (LocatedLink ln)) (resolveInstruction symTable instr)
               return (resolved, (fromIntegral pc :: Word32, ln))
           )
           expanded

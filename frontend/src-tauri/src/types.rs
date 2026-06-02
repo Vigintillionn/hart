@@ -10,6 +10,106 @@ pub enum CpuStatus {
     WaitingForInput,
 }
 
+#[derive(Serialize, Deserialize, TS, Clone, Debug, PartialEq)]
+#[ts(export, export_to = "../src/bindings/")]
+#[serde(rename_all = "lowercase")]
+pub enum Severity {
+    Info,
+    Warning,
+    Error,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+#[serde(tag = "kind")]
+pub enum AssemblyError {
+    UnknownInstruction {
+        text: String,
+    },
+    InvalidRegister {
+        text: String,
+    },
+    ImmediateTooLarge {
+        value: i32,
+    },
+    UnexpectedChar {
+        char: String,
+    },
+    EmptyParserFailed,
+    ParserFail {
+        text: String,
+    },
+    #[serde(rename = "EOF")]
+    Eof,
+    Located {
+        line: i32,
+        error: Box<AssemblyError>,
+    },
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+#[serde(tag = "kind")]
+pub enum LinkError {
+    DuplicateLabel {
+        label: String,
+    },
+    UndefinedLabel {
+        label: String,
+    },
+    ShiftOutOfRange {
+        value: i32,
+    },
+    ImmOutOfRange {
+        context: String,
+        lo: i32,
+        hi: i32,
+        value: i32,
+    },
+    MisalignedTarget {
+        context: String,
+        value: i32,
+    },
+    Located {
+        line: i32,
+        error: Box<LinkError>,
+    },
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+#[serde(tag = "kind")]
+pub enum EmulatorError {
+    ParseError { error: AssemblyError },
+    LinkError { error: LinkError },
+    DecodeError { pc: u32, raw: u32 },
+    IllegalInstruction { pc: u32, raw: u32 },
+    InstrMisaligned { pc: u32, target: u32 },
+    LoadMisaligned { pc: u32, address: u32 },
+    StoreMisaligned { pc: u32, address: u32 },
+    UnknownSyscall { pc: u32, syscall: u32 },
+    OutOfMemory { address: u32 },
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+#[serde(tag = "kind")]
+pub enum Notice {
+    ProgramExitedNormally,
+    ProgramExited { code: u32 },
+    BreakpointHit,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct SystemEvent {
+    pub severity: Severity,
+    #[serde(default)]
+    pub fault: Option<EmulatorError>,
+    #[serde(default)]
+    pub notice: Option<Notice>,
+}
+
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
 #[ts(export, export_to = "../src/bindings/")]
 pub struct CpuState {
@@ -23,6 +123,8 @@ pub struct CpuState {
     pub heap_top: u32,
     #[serde(rename = "outputBuffer")]
     pub output_buffer: String,
+    #[serde(rename = "systemLog", default)]
+    pub system_log: Vec<SystemEvent>,
 }
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
@@ -40,7 +142,20 @@ pub enum EmulatorResponse {
         disasm_map: Vec<(u32, String)>,
     },
     #[serde(rename = "error")]
-    Error { message: String },
+    Error {
+        #[serde(default)]
+        message: Option<String>,
+        #[serde(default)]
+        source: Option<String>,
+        #[serde(default)]
+        error: Option<EmulatorError>,
+    },
+    #[serde(rename = "log")]
+    Log {
+        severity: Severity,
+        tag: String,
+        message: String,
+    },
     #[serde(rename = "need_input")]
     NeedInput,
 }

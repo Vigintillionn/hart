@@ -1,0 +1,129 @@
+import type { AssemblyError } from "../bindings/AssemblyError";
+import type { LinkError } from "../bindings/LinkError";
+import type { EmulatorError } from "../bindings/EmulatorError";
+import type { Notice } from "../bindings/Notice";
+import type { SystemEvent } from "../bindings/SystemEvent";
+
+const hex = (w: number) => "0x" + (w >>> 0).toString(16);
+
+export function formatAssemblyError(e: AssemblyError): string {
+  switch (e.kind) {
+    case "Located":
+      return formatAssemblyError(e.error);
+    case "UnknownInstruction":
+      return `unknown instruction \`${e.text.trim()}\``;
+    case "InvalidRegister":
+      return `invalid register \`${e.text.trim()}\``;
+    case "ImmediateTooLarge":
+      return `immediate out of range: ${e.value}`;
+    case "UnexpectedChar":
+      return `unexpected character '${e.char}'`;
+    case "EmptyParserFailed":
+      return "could not parse input";
+    case "ParserFail":
+      return e.text ? `syntax error near \`${e.text.trim()}\`` : "syntax error";
+    case "EOF":
+      return "unexpected end of input";
+  }
+}
+
+export function formatLinkError(e: LinkError): string {
+  switch (e.kind) {
+    case "Located":
+      return formatLinkError(e.error);
+    case "DuplicateLabel":
+      return `Duplicate label: \`${e.label.trim()}\``;
+    case "UndefinedLabel":
+      return `Undefined label: \`${e.label.trim()}\``;
+    case "ShiftOutOfRange":
+      return `Shift amount out of range (0-31): ${e.value}`;
+    case "ImmOutOfRange":
+      return `${e.context} out of range [${e.lo}, ${e.hi}]: ${e.value}`;
+    case "MisalignedTarget":
+      return `${e.context} target is not 2-byte aligned: ${e.value}`;
+  }
+}
+
+export function formatEmulatorError(e: EmulatorError): string {
+  switch (e.kind) {
+    case "ParseError":
+      return formatAssemblyError(e.error);
+    case "LinkError":
+      return formatLinkError(e.error);
+    case "DecodeError":
+      return `Invalid instruction at ${hex(e.pc)} (raw: ${hex(e.raw)})`;
+    case "IllegalInstruction":
+      return `Illegal instruction at ${hex(e.pc)} (raw: ${hex(e.raw)}). Did the program run past its code without calling exit, or jump into uninitialized memory?`;
+    case "InstrMisaligned":
+      return `Instruction address misaligned at ${hex(e.pc)} (target: ${hex(e.target)})`;
+    case "LoadMisaligned":
+      return `Load address misaligned at ${hex(e.pc)} (address: ${hex(e.address)})`;
+    case "StoreMisaligned":
+      return `Store address misaligned at ${hex(e.pc)} (address: ${hex(e.address)})`;
+    case "UnknownSyscall":
+      return `Unknown syscall ${e.syscall} at ${hex(e.pc)}`;
+    case "OutOfMemory":
+      return `Out of memory: sbrk to ${hex(e.address)} collided with the stack`;
+  }
+}
+
+export function formatNotice(n: Notice): string {
+  switch (n.kind) {
+    case "ProgramExitedNormally":
+      return "Program exited normally";
+    case "ProgramExited":
+      return `Program exited with code: ${n.code}`;
+    case "BreakpointHit":
+      return "Breakpoint hit";
+  }
+}
+
+export function formatSystemEvent(ev: SystemEvent): string {
+  if (ev.fault) return formatEmulatorError(ev.fault);
+  if (ev.notice) return formatNotice(ev.notice);
+  return "";
+}
+
+/** Short system-log tag derived from an emulator error's kind. */
+export function emulatorErrorTag(e: EmulatorError): string {
+  switch (e.kind) {
+    case "ParseError":
+      return "PARSE";
+    case "LinkError":
+      return "LINK";
+    case "DecodeError":
+      return "DECODE";
+    case "IllegalInstruction":
+      return "ILLEGAL";
+    case "InstrMisaligned":
+    case "LoadMisaligned":
+    case "StoreMisaligned":
+      return "TRAP";
+    case "UnknownSyscall":
+      return "SYSCALL";
+    case "OutOfMemory":
+      return "MEMORY";
+  }
+}
+
+/** Tag for a system-log entry derived from the event (fault kind, or notice). */
+export function systemEventTag(ev: SystemEvent): string {
+  return ev.fault ? emulatorErrorTag(ev.fault) : "CPU";
+}
+
+/** The source line an assembly error points at, if any (via `Located`). */
+export function assemblyErrorLine(e: AssemblyError): number | null {
+  return e.kind === "Located" ? e.line : null;
+}
+
+/** The source line a link error points at, if any (via `Located`). */
+export function linkErrorLine(e: LinkError): number | null {
+  return e.kind === "Located" ? e.line : null;
+}
+
+/** The source line an emulator error points at, if any (compile errors). */
+export function emulatorErrorLine(e: EmulatorError): number | null {
+  if (e.kind === "ParseError") return assemblyErrorLine(e.error);
+  if (e.kind === "LinkError") return linkErrorLine(e.error);
+  return null;
+}

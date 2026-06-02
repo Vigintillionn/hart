@@ -16,6 +16,7 @@
     breakpoints = new Set<number>(),
     onToggleBreakpoint = (_line: number) => {},
     readOnly = false,
+    errorMarker = null,
   }: {
     activeFileId?: string;
     files?: Pick<OpenFile, "id" | "content">[];
@@ -25,6 +26,11 @@
     breakpoints?: Set<number>;
     onToggleBreakpoint?: (line: number) => void;
     readOnly?: boolean;
+    errorMarker?: {
+      fileId: string;
+      line: number | null;
+      message: string;
+    } | null;
   } = $props();
 
   let editorContainer: HTMLDivElement;
@@ -254,6 +260,35 @@
       if (!breakpoints.has(line)) decs.push(breakpointDecoration(line, true));
     }
     breakpointDecorations.set(decs);
+  });
+
+  $effect(() => {
+    const marker = errorMarker;
+    const fileId = activeFileId;
+    if (!editor) return;
+    const model = fileId ? models.get(fileId) : editor.getModel();
+    if (!model) return;
+
+    if (!marker || marker.line === null || marker.fileId !== fileId) {
+      monaco.editor.setModelMarkers(model, "hart", []);
+      return;
+    }
+
+    const line = Math.min(Math.max(marker.line, 1), model.getLineCount());
+    monaco.editor.setModelMarkers(model, "hart", [
+      {
+        startLineNumber: line,
+        startColumn: 1,
+        endLineNumber: line,
+        endColumn: model.getLineMaxColumn(line),
+        message: marker.message,
+        severity: monaco.MarkerSeverity.Error,
+      },
+    ]);
+    editor.revealLineInCenterIfOutsideViewport(
+      line,
+      monaco.editor.ScrollType.Smooth,
+    );
   });
 
   $effect(() => {

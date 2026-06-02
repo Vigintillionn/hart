@@ -96,10 +96,10 @@
     if (term && outputBuffer !== undefined) {
       if (!outputBuffer.startsWith(localLastBuffer)) {
         term.reset();
-        term.write(outputBuffer);
+        term.write(outputBuffer, () => term.scrollToBottom());
       } else if (outputBuffer.length > localLastBuffer.length) {
         const newText = outputBuffer.slice(localLastBuffer.length);
-        term.write(newText);
+        term.write(newText, () => term.scrollToBottom());
       }
       localLastBuffer = outputBuffer;
     }

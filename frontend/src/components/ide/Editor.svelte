@@ -7,6 +7,7 @@
   const handleEditorChange = (id: string, content: string) => {
     const file = fileStore.openFiles.find((f) => f.id === id);
     if (file) file.content = content;
+    if (cpuStore.compileError) cpuStore.compileError = null;
   };
 
   const splitName = (name: string) => {
@@ -40,8 +41,8 @@
           title={file.name}
           onclick={() => fileStore.setActiveFileId(file.id)}
         >
-          <span>{parts.base}<span class="text-secondary">{parts.ext}</span
-            ></span
+          <span
+            >{parts.base}<span class="text-secondary">{parts.ext}</span></span
           >
           {#if dirty}
             <span
@@ -85,6 +86,7 @@
       breakpoints={cpuStore.breakpoints}
       onToggleBreakpoint={(line) => cpuStore.toggleBreakpoint(line)}
       readOnly={running}
+      errorMarker={cpuStore.compileError}
     />
   </div>
 </div>
