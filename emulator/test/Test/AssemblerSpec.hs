@@ -15,4 +15,4 @@ spec = do
                     decoded     = decodeWord machineCode
                 in case decoded of
                     Right res -> res `shouldBe` instr
-                    Left err  -> expectationFailure $ "Decode failed: " ++ err
+                    Left err  -> expectationFailure $ "Decode failed: " ++ show err

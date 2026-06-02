@@ -12,8 +12,10 @@ import Data.IntSet qualified as IntSet
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
+import Error (EmulatorError (..), Severity (..))
 import Linker (Executable (..), resolve)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC)
+import Numeric (showHex)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
 
@@ -44,7 +46,16 @@ instance FromJSON Command where
       "quit" -> return CmdQuit
       _ -> fail "Unknown command"
 
-data Response = ResState CPU | ResLoaded CPU [(Word32, Int)] [(Word32, String)] | ResError String | ResNeedInput
+data Response
+  = ResState CPU
+  | ResLoaded CPU [(Word32, Int)] [(Word32, String)]
+  | -- | RPC/protocol-level message (not an emulated-program fault)
+    ResError String
+  | -- | a typed emulator fault (parse/link/decode/runtime)
+    ResFault EmulatorError
+  | -- | transient pipeline/progress feedback: severity, tag, message
+    ResLog Severity String String
+  | ResNeedInput
 
 instance ToJSON Response where
   toJSON (ResState cpu) =
@@ -62,6 +73,20 @@ instance ToJSON Response where
   toJSON (ResError msg) =
     object
       [ "type" .= ("error" :: String),
+        "source" .= ("rpc" :: String),
+        "message" .= msg
+      ]
+  toJSON (ResFault err) =
+    object
+      [ "type" .= ("error" :: String),
+        "source" .= ("emulator" :: String),
+        "error" .= err
+      ]
+  toJSON (ResLog sev tag msg) =
+    object
+      [ "type" .= ("log" :: String),
+        "severity" .= sev,
+        "tag" .= tag,
         "message" .= msg
       ]
   toJSON ResNeedInput =
@@ -74,30 +99,38 @@ sendResponse res = do
   BL.putStrLn (encode res)
   hFlush stdout
 
+sendLog :: Severity -> String -> String -> IO ()
+sendLog sev tag = sendResponse . ResLog sev tag
+
 runRPC :: FilePath -> IO ()
 runRPC _ = do
-  sendResponse (ResError "Backend ready. Awaiting code from Monaco...")
+  sendLog Info "EMU" "Backend ready. Awaiting code."
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
   rpcLoop IntSet.empty emptyDbg
 
 compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)]))
 compileAndLoad sourceCode = do
+  sendLog Info "BUILD" "Compiling..."
   case parse sourceCode of
     Left err -> do
-      sendResponse $ ResError ("Parse Error: " ++ show err)
+      sendResponse $ ResFault (EParse err)
       return Nothing
-    Right parsed -> case resolve parsed of
-      Left err -> do
-        sendResponse $ ResError ("Linker Error: " ++ err)
-        return Nothing
-      Right executable -> do
-        readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
-        let disasmMap =
-              zipWith
-                (\instr (addr, _) -> (addr, disassemble instr))
-                (execProgram executable)
-                (execSourceMap executable)
-        return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap)
+    Right parsed -> do
+      sendLog Info "BUILD" "Linking..."
+      case resolve parsed of
+        Left err -> do
+          sendResponse $ ResFault (ELink err)
+          return Nothing
+        Right executable -> do
+          readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
+          let n = length (execProgram executable)
+          sendLog Info "BUILD" ("Loaded " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ " at 0x0")
+          let disasmMap =
+                zipWith
+                  (\instr (addr, _) -> (addr, disassemble instr))
+                  (execProgram executable)
+                  (execSourceMap executable)
+          return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap)
 
 rpcLoop :: IntSet -> Debugger -> IO ()
 rpcLoop bps dbg = do
@@ -133,7 +166,10 @@ rpcLoop bps dbg = do
                 Just (newDbg, smap, dmap) -> do
                   sendResponse (ResLoaded (current newDbg) smap dmap)
                   rpcLoop bps newDbg
-            Just CmdRun -> executeRun bps dbg
+            Just CmdRun -> do
+              when (status c /= Halted) $
+                sendLog Info "EXEC" ("Starting execution from 0x" ++ showHex (pc c) "")
+              executeRun bps dbg
             Just CmdStepFwd -> do
               if not (Seq.null (future dbg))
                 then do

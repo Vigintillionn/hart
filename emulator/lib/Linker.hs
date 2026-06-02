@@ -9,6 +9,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as M
 import Data.Word (Word32, Word8)
+import Error (LinkError (..))
 import Machine
 import Types
 
@@ -95,7 +96,7 @@ data BuildState = BuildState
     b_table :: SymbolTable
   }
 
-buildSymTable :: ParsedProgram -> Either String BuildState
+buildSymTable :: ParsedProgram -> Either LinkError BuildState
 buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
   where
     step st (_, (ml, ms)) = do
@@ -105,7 +106,7 @@ buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
         Nothing -> Right (b_table st)
         Just n ->
           if M.member n (b_table st)
-            then Left $ "Duplicate label: " ++ n
+            then Left (DuplicateLabel n)
             else Right $ M.insert n currentPC (b_table st)
 
       let st' = st {b_table = newTable}
@@ -159,7 +160,7 @@ emitSections = foldl step (EmitState [] IM.empty 0 0x10000000 TextSection)
           (zip [0 ..] xs)
       _ -> memMap
 
-resolve :: ParsedProgram -> Either String Executable
+resolve :: ParsedProgram -> Either LinkError Executable
 resolve l = do
   buildState <- buildSymTable l
   let symTable = b_table buildState
@@ -184,14 +185,10 @@ resolve l = do
   let sourceMap = map snd programWithLines
   return $ Executable program (e_dataMem emitted) sourceMap
 
-resolveImm :: String -> Operand -> Either String Int
-resolveImm _ (ImmVal v) = Right v
-resolveImm e _ = Left e
-
-checkShiftBounds :: IArithOp -> Int -> Either String Int
+checkShiftBounds :: IArithOp -> Int -> Either LinkError Int
 checkShiftBounds op val
   | op `elem` [SLLI, SRLI, SRAI] && (val < 0 || val > 31) =
-      Left $ "Shift amount out of range (0-31): " ++ show val
+      Left (ShiftOutOfRange val)
   | otherwise = Right val
 
 isReloc :: Operand -> Bool
@@ -199,67 +196,63 @@ isReloc (LabelHi _) = True
 isReloc (LabelLo _) = True
 isReloc _ = False
 
-rangeErr :: String -> Int -> Int -> Int -> String
-rangeErr ctx lo hi v =
-  ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
-
-checkSigned :: String -> Int -> Bool -> Operand -> Int -> Either String Int
+checkSigned :: String -> Int -> Bool -> Operand -> Int -> Either LinkError Int
 checkSigned ctx bits aligned orig v
   | isReloc orig = Right v
-  | aligned && odd v = Left $ ctx ++ " target is not 2-byte aligned: " ++ show v
-  | v < lo || v > hi = Left (rangeErr ctx lo hi v)
+  | aligned && odd v = Left (MisalignedTarget ctx v)
+  | v < lo || v > hi = Left (ImmOutOfRange ctx lo hi v)
   | otherwise = Right v
   where
     hi = bit (bits - 1) - 1
     lo = negate (bit (bits - 1))
 
-checkUpper :: Operand -> Int -> Either String Int
+checkUpper :: Operand -> Int -> Either LinkError Int
 checkUpper orig v
   | isReloc orig = Right v
-  | v < lo || v > hi = Left (rangeErr "upper immediate" lo hi v)
+  | v < lo || v > hi = Left (ImmOutOfRange "upper immediate" lo hi v)
   | otherwise = Right v
   where
     lo = negate (bit 19)
     hi = bit 20 - 1
 
-resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either String) (SomeInstruction Int)
+resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either LinkError) (SomeInstruction Int)
 resolveInstruction table instr = do
   pc <- get
   resolved <- lift $ resolveOperand pc table instr
   modify (+ 4)
   return resolved
 
-resolveRelative :: Int -> SymbolTable -> Operand -> Either String Int
+resolveRelative :: Int -> SymbolTable -> Operand -> Either LinkError Int
 resolveRelative _ _ (ImmVal v) = Right v
 resolveRelative pc table (Label l) =
   case M.lookup l table of
     Just target -> Right $ target - pc
-    Nothing -> Left $ "Undefined label " ++ l
+    Nothing -> Left (UndefinedLabel l)
 resolveRelative pc table (LabelHi l) =
   case M.lookup l table of
     Just target -> Right $ (target - pc + 0x800) `shiftR` 12
-    Nothing -> Left $ "Undefined label (Hi): " ++ l
+    Nothing -> Left (UndefinedLabel l)
 resolveRelative pc table (LabelLo l) =
   case M.lookup l table of
     Just target -> Right $ (target - pc + 4) .&. 0xFFF
-    Nothing -> Left $ "Undefined label (Lo): " ++ l
+    Nothing -> Left (UndefinedLabel l)
 
-resolveAbsolute :: SymbolTable -> Operand -> Either String Int
+resolveAbsolute :: SymbolTable -> Operand -> Either LinkError Int
 resolveAbsolute table (Label l) =
   case M.lookup l table of
     Just target -> Right target
-    Nothing -> Left $ "Undefined label: " ++ l
+    Nothing -> Left (UndefinedLabel l)
 resolveAbsolute table (LabelHi l) =
   case M.lookup l table of
     Just target -> Right $ (target + 0x800) `shiftR` 12
-    Nothing -> Left $ "Undefined label (Hi): " ++ l
+    Nothing -> Left (UndefinedLabel l)
 resolveAbsolute table (LabelLo l) =
   case M.lookup l table of
     Just target -> Right $ target .&. 0xFFF
-    Nothing -> Left $ "Undefined label (Lo): " ++ l
+    Nothing -> Left (UndefinedLabel l)
 resolveAbsolute _ (ImmVal v) = Right v
 
-resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either String (SomeInstruction Int)
+resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either LinkError (SomeInstruction Int)
 resolveOperand pc table (SomeInstruction (JType op args)) = do
   v <- resolveRelative pc table (j_imm args)
   v' <- checkSigned "jump" 21 True (j_imm args) v

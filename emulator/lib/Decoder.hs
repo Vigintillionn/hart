@@ -5,6 +5,7 @@ import Control.Monad
 import Data.Bits (Bits (shiftL, shiftR, (.&.), (.|.)))
 import Data.Int (Int32)
 import Data.Word (Word32)
+import Error (EmulatorError (..))
 import ISA
 import Machine
 import Types
@@ -179,11 +180,13 @@ decodeSome w =
         _ -> Nothing
    in instr
 
-decodeWord :: Word32 -> Either String (SomeInstruction Int)
+-- | The decoder cannot know the program counter, so the 'EDecode' pc field is
+-- left 0 here; callers that have a pc (e.g. 'CPU.step') re-attach it.
+decodeWord :: Word32 -> Either EmulatorError (SomeInstruction Int)
 decodeWord w =
   case decodeSome w of
     Just instr -> Right instr
-    Nothing -> Left "Invalid instruction"
+    Nothing -> Left (EDecode 0 w)
 
-decode :: [Word32] -> Either String Program
+decode :: [Word32] -> Either EmulatorError Program
 decode = traverse decodeWord

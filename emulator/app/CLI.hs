@@ -4,6 +4,7 @@ import Parser (parse)
 import Linker (resolve)
 import Machine (emptyCPU)
 import Debugger ( runInteractive, runTrace, initDebuggerAtEnd )
+import Render (renderAssemblyError, renderLinkError)
 import Text.Printf (printf)
 
 formatFreq :: Double -> String
@@ -18,9 +19,9 @@ runCLI filepath = do
     sourceCode <- readFile filepath
 
     case parse sourceCode of
-        Left err -> print err
+        Left err -> putStrLn $ "Parse error: " ++ renderAssemblyError err
         Right inst -> case resolve inst of
-            Left err        -> putStrLn $ "ERROR: " ++ err
+            Left err        -> putStrLn $ "Link error: " ++ renderLinkError err
             Right resolved -> do
                 putStrLn "---- EXECUTING ---"
 --                start <- getCurrentTime

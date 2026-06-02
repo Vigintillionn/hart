@@ -8,10 +8,10 @@ import Data.Int
 import Data.IntMap.Strict qualified as M
 import Data.Word
 import Decoder (decodeWord)
+import Error (EmulatorError (..), Notice (..))
 import Kernel (handleSyscall)
 import Linker (Executable (..))
 import Machine
-import Numeric (showHex)
 import Types
 
 shiftRA :: Word32 -> Int -> Word32
@@ -83,20 +83,12 @@ alignedJump currentPC target onAligned
   | target .&. 0x3 /= 0 = takeTrap trapInstrMisaligned currentPC target
   | otherwise = onAligned >> return (Jump target)
 
--- TODO: instead of a string this should yield a proper error type
--- it should also not go to the same output as consolePrintLn, which is for the emulated program's output
 illegalInstruction :: (MonadCPU m) => Word32 -> Word32 -> m ()
 illegalInstruction currentPC raw = do
   setCSR 0x341 currentPC -- mepc
   setCSR 0x342 trapIllegalInstr -- mcause
   setCSR 0x343 raw -- mtval
-  consolePrintLn $
-    "\nILLEGAL INSTRUCTION at 0x"
-      ++ showHex currentPC ""
-      ++ " (raw: 0x"
-      ++ showHex raw ""
-      ++ "). Did the program run past its code without calling exit, "
-      ++ "or jump into uninitialized memory?"
+  logFault (EIllegalInstruction currentPC raw)
   setStatus Halted
 
 loadProgram :: (MonadCPU m) => Executable -> m ()
@@ -301,7 +293,7 @@ executeSystem (Trap ECALL) = do
 executeSystem (Trap EBREAK) = do
   currentPC <- getPC
   _ <- takeTrap trapBreakpointM currentPC 0
-  consolePrintLn "--- BREAKPOINT ---"
+  logNotice BreakpointHit
   return Breakpoint
 
 execute :: (MonadCPU m) => SomeInstruction Int -> m PCUpdate
@@ -324,18 +316,18 @@ step = do
   if curStatus /= Running
     then return False
     else do
+      currentPC <- getPC
       w <- fetch
       if w == 0
         then do
           -- All-zero is the canonical RISC-V illegal encoding
-          currentPC <- getPC
           illegalInstruction currentPC w
           return False
         else do
           incCycles
           case decodeWord w of
-            Left err -> do
-              consolePrintLn $ "Decode Error: " ++ err
+            Left _ -> do
+              logFault (EDecode currentPC w)
               setStatus Halted
               return False
             Right instr -> do

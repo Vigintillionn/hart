@@ -4,6 +4,7 @@ import Control.Applicative
 import Control.Monad (void)
 import Data.Char (isAlphaNum, isDigit, isHexDigit)
 import Data.Map.Strict qualified as M
+import Error (AssemblyError (..))
 import GHC.Base (when)
 import Machine
 import Numeric (readHex)

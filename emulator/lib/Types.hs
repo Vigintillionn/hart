@@ -246,16 +246,6 @@ type LoweredProgram = [SomeInstruction Operand]
 
 type Program = [SomeInstruction Int]
 
-data AssemblyError
-  = UnknownInstruction String
-  | InvalidRegister String
-  | ImmediateTooLarge Int
-  | UnexpectedChar Char
-  | EmptyParserFailed
-  | ParserFail String
-  | EOF
-  deriving (Show, Eq)
-
 data CSRName
   = MSTATUS
   | MISA

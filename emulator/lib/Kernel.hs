@@ -5,6 +5,7 @@ import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as C8
 import Data.Word (Word32)
+import Error (EmulatorError (..), Notice (..))
 import Machine
 
 handleSyscall :: (MonadCPU m) => m PCUpdate
@@ -51,6 +52,7 @@ handleSyscall = do
     10 -> do
       -- exit
       consolePrintLn "\nProgram exited normally"
+      logNotice ProgramExitedNormally
       return Terminate
     11 -> do
       -- print_char
@@ -120,6 +122,7 @@ handleSyscall = do
       -- sys_exit
       code <- getReg a0
       consolePrintLn $ "\nProgram exited with code: " ++ show code
+      logNotice (ProgramExited code)
       return Terminate
     214 -> do
       -- sys_brk
@@ -133,7 +136,7 @@ handleSyscall = do
         else
           if requestedAddr >= currentSP
             then do
-              consolePrintLn "\n[Kernel] sys_brk failed: Out of Memory! (Heap collided with Stack)"
+              logFault (EOutOfMemory requestedAddr)
               setReg a0 currentBreak
             else do
               setHeapTop requestedAddr
@@ -141,7 +144,8 @@ handleSyscall = do
 
       return Advance
     _ -> do
-      consolePrintLn $ "Unknown Syscall: " ++ show a7
+      pc <- getPC
+      logFault (EUnknownSyscall pc syscall)
       return Advance
 
 readString :: (MonadCPU m) => Word32 -> Int -> m String

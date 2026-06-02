@@ -14,6 +14,7 @@ import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Decoder (decodeWord)
 import Linker (Executable)
+import Render (renderEmulatorError, renderSystemEvent)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), clearTrapState, getCSR, incPC, trapBreakpointM)
 import Numeric (readHex)
 import System.IO (hReady, stdin)
@@ -158,7 +159,7 @@ runInteractive dbg = do
         if w == 0
           then "NOP / HALTED"
           else case decodeWord w of
-            Left err -> "<Decode Error: " ++ err ++ ">"
+            Left err -> "<" ++ renderEmulatorError err ++ ">"
             Right inst -> disassemble inst
 
   printf "PC: 0x%08x | Cycle: %d | %s\n" (pc c) (cycles c) instrStr
@@ -166,6 +167,12 @@ runInteractive dbg = do
   print (viewRegisters $ regs c)
   putStrLn "CSRs:"
   putStrLn (viewCSRs $ csrs c)
+
+  case reverse (systemLog c) of
+    [] -> return ()
+    evts -> do
+      putStrLn "System log:"
+      mapM_ (\e -> putStrLn ("  " ++ renderSystemEvent e)) evts
 
   putStrLn "[p]rev, [n]ext, [c]ontinue, [r]ewind, [m]emory <address>, [q]uit: "
   cmd <- getLine

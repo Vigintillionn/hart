@@ -55,7 +55,7 @@ import Data.IntMap.Strict qualified as M
 import Data.Vector.Unboxed ((//))
 import Data.Vector.Unboxed qualified as V
 import Data.Word (Word16, Word32, Word8)
-import Numeric (showHex)
+import Error (EmulatorError (..), Notice, SystemEvent (..))
 import System.IO (Handle, IOMode (..), hClose, openFile)
 
 class (Monad m) => MonadCPU m where
@@ -78,6 +78,9 @@ class (Monad m) => MonadCPU m where
   consolePrint :: String -> m ()
   consoleRead :: m String
   terminate :: m ()
+
+  logFault :: EmulatorError -> m ()
+  logNotice :: Notice -> m ()
 
   getInputBuffer :: m (Maybe String)
   clearInputBuffer :: m ()
@@ -128,6 +131,7 @@ data CPU = CPU
     fileMap :: !(M.IntMap Handle),
     nextFD :: !Int,
     outputBuffer :: !Output,
+    systemLog :: ![SystemEvent],
     inputBuffer :: !(Maybe String)
   }
 
@@ -142,6 +146,7 @@ instance ToJSON CPU where
         "status" .= status cpu,
         "heapTop" .= heapTop cpu,
         "outputBuffer" .= outputBuffer cpu,
+        "systemLog" .= reverse (systemLog cpu),
         "inputBuffer" .= inputBuffer cpu
       ]
 
@@ -170,6 +175,9 @@ instance MonadCPU Emulator where
   consolePrint m = modify' $ \cpu -> cpu {outputBuffer = appendOutput m (outputBuffer cpu)}
   consoleRead = liftIO getLine
   terminate = modify' $ \cpu -> cpu {status = Halted}
+
+  logFault e = modify' $ \cpu -> cpu {systemLog = SysFault e : systemLog cpu}
+  logNotice n = modify' $ \cpu -> cpu {systemLog = SysNotice n : systemLog cpu}
 
   getInputBuffer = gets inputBuffer
   clearInputBuffer = modify' $ \cpu -> cpu {inputBuffer = Nothing}
@@ -295,6 +303,7 @@ emptyCPU =
       fileMap = M.empty,
       nextFD = 3,
       outputBuffer = emptyOutput,
+      systemLog = [],
       inputBuffer = Nothing
     }
 
@@ -350,10 +359,10 @@ takeTrap causeCode currentPC tval = do
   let target = if handlerAddr == 0 then 0x80000000 else handlerAddr
 
   case causeCode of
-    0 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Instruction Address Misaligned! (Bad target: 0x" ++ showHex tval "" ++ ")"
-    2 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Illegal Instruction! (raw: 0x" ++ showHex tval "" ++ ")"
-    4 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Load Address Misaligned! (Bad address: 0x" ++ showHex tval "" ++ ")"
-    6 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Store Address Misaligned! (Bad address: 0x" ++ showHex tval "" ++ ")"
+    0 -> logFault (EInstrMisaligned currentPC tval)
+    2 -> logFault (EIllegalInstruction currentPC tval)
+    4 -> logFault (ELoadMisaligned currentPC tval)
+    6 -> logFault (EStoreMisaligned currentPC tval)
     _ -> return ()
 
   return $ Jump target
