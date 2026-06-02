@@ -19,16 +19,61 @@
   const activeText = $derived(
     accent === "primary" ? "text-primary" : "text-text",
   );
+  const indicatorRounded = $derived(
+    size === "sm" ? "rounded-sm" : "rounded-[5px]",
+  );
+
+  let buttons = $state<HTMLButtonElement[]>([]);
+  let indicator = $state({
+    left: 0,
+    top: 0,
+    width: 0,
+    height: 0,
+    ready: false,
+  });
+
+  const activeIndex = $derived(options.findIndex((o) => o.value === value));
+
+  function measure() {
+    const el = buttons[activeIndex];
+    if (!el) return;
+    indicator = {
+      left: el.offsetLeft,
+      top: el.offsetTop,
+      width: el.offsetWidth,
+      height: el.offsetHeight,
+      ready: true,
+    };
+  }
+
+  $effect(() => {
+    activeIndex;
+    options;
+    measure();
+  });
 </script>
 
 <div
-  class="inline-flex gap-0.5 rounded-md border border-border bg-surface-0 p-0.5"
+  class="relative inline-flex gap-0.5 rounded-md border border-border bg-surface-0 p-0.5"
+  {@attach (node) => {
+    const ro = new ResizeObserver(() => measure());
+    ro.observe(node);
+    return () => ro.disconnect();
+  }}
 >
-  {#each options as opt (String(opt.value))}
+  <div
+    class="pointer-events-none absolute bg-surface-3 transition-all duration-200 ease-out {indicatorRounded} {indicator.ready
+      ? 'opacity-100'
+      : 'opacity-0'}"
+    style="left: {indicator.left}px; top: {indicator.top}px; width: {indicator.width}px; height: {indicator.height}px"
+  ></div>
+
+  {#each options as opt, i (String(opt.value))}
     <button
-      class="font-semibold cursor-pointer transition-colors {item} {value ===
+      bind:this={buttons[i]}
+      class="relative z-10 font-semibold cursor-pointer transition-colors {item} {value ===
       opt.value
-        ? `bg-surface-3 ${activeText}`
+        ? activeText
         : 'text-text-faint hover:text-text-dim'}"
       aria-pressed={value === opt.value}
       onclick={() => (value = opt.value)}>{opt.label}</button
