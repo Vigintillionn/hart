@@ -83,6 +83,7 @@
             : 'text-text-dim'}"
           onclick={() => (showBinary = !showBinary)}
           aria-label="Toggle binary view"
+          title="Toggle binary view"
           >{#if showBinary}{bin32(
               row.code,
             )}{:else if layoutStore.hexMode}{toHex(
