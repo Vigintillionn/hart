@@ -4,7 +4,7 @@
   import { layoutStore, PANE_KEYS } from "$lib/store/layoutStore.svelte";
   import CpuHeader from "./CpuHeader.svelte";
   import RegisterPane from "./RegisterPane.svelte";
-  import MemoryView from "./MemoryView.svelte";
+  import MemoryPane from "./MemoryPane.svelte";
   import CollapsibleResizer from "../ui/CollapsibleResizer.svelte";
 </script>
 
@@ -43,7 +43,7 @@
           onCollapse={() => (layoutStore.isMemoryVisible = false)}
           onExpand={() => (layoutStore.isMemoryVisible = true)}
         >
-          <MemoryView mem={cpuStore.cpuState.mem} />
+          <MemoryPane mem={cpuStore.cpuState.mem} />
         </Pane>
       </PaneGroup>
     </div>

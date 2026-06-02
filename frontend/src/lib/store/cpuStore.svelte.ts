@@ -2,7 +2,7 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { CpuState } from "../../bindings/CpuState";
 import type { EmulatorResponse } from "../../bindings/EmulatorResponse";
 import type { Severity } from "../../bindings/Severity";
-import type { SourceMap, DisasmMap } from "../types";
+import type { SourceMap, DisasmMap, CodeMap, TextRow } from "../types";
 import { terminalStore } from "./terminalStore.svelte";
 import { logStore, type LogLevel } from "./logStore.svelte";
 import { fileStore } from "./fileStore.svelte";
@@ -30,9 +30,21 @@ class CpuStore {
   cpuState = $state<CpuState | null>(null);
   sourceMap = $state<SourceMap>([]);
   disasmMap = $state<DisasmMap>([]);
+  codeMap = $state<CodeMap>([]);
   sourceLineMap = $derived(new Map(this.sourceMap));
   disasmTextMap = $derived(new Map(this.disasmMap));
   breakpoints = $state(new Set<number>());
+  textRows = $derived.by<TextRow[]>(() => {
+    const lines = (this.loadedSnapshot?.content ?? "").split("\n");
+    const codeByAddr = new Map(this.codeMap);
+    let prevLine = -1;
+    return this.disasmMap.map(([addr, basic]) => {
+      const line = this.sourceLineMap.get(addr) ?? 0;
+      const source = line !== prevLine ? (lines[line - 1] ?? "").trim() : null;
+      prevLine = line;
+      return { addr, code: codeByAddr.get(addr) ?? 0, basic, line, source };
+    });
+  });
   lineToAddr = $derived.by(() => {
     const m = new Map<number, number>();
     for (const [addr, line] of this.sourceMap) {
@@ -115,6 +127,7 @@ class CpuStore {
           this.cpuState = response.state;
           this.sourceMap = response.sourceMap;
           this.disasmMap = response.disasmMap;
+          this.codeMap = response.codeMap;
           this.loadedSnapshot = this.pendingSnapshot;
           this.compileError = null;
           this.systemLogShown = 0;

@@ -2,6 +2,7 @@
 
 module RPC (runRPC) where
 
+import Assembler (assembleSome)
 import CPU (loadProgram, step)
 import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT, modify, runStateT)
@@ -48,7 +49,7 @@ instance FromJSON Command where
 
 data Response
   = ResState CPU
-  | ResLoaded CPU [(Word32, Int)] [(Word32, String)]
+  | ResLoaded CPU [(Word32, Int)] [(Word32, String)] [(Word32, Word32)]
   | -- | RPC/protocol-level message (not an emulated-program fault)
     ResError String
   | -- | a typed emulator fault (parse/link/decode/runtime)
@@ -63,12 +64,13 @@ instance ToJSON Response where
       [ "type" .= ("state" :: String),
         "data" .= cpu
       ]
-  toJSON (ResLoaded cpu smap dmap) =
+  toJSON (ResLoaded cpu smap dmap cmap) =
     object
       [ "type" .= ("loaded" :: String),
         "state" .= cpu,
         "sourceMap" .= smap,
-        "disasmMap" .= dmap
+        "disasmMap" .= dmap,
+        "codeMap" .= cmap
       ]
   toJSON (ResError msg) =
     object
@@ -108,7 +110,7 @@ runRPC _ = do
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
   rpcLoop IntSet.empty emptyDbg
 
-compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)]))
+compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)], [(Word32, Word32)]))
 compileAndLoad sourceCode = do
   sendLog Info "BUILD" "Compiling..."
   case parse sourceCode of
@@ -130,7 +132,12 @@ compileAndLoad sourceCode = do
                   (\instr (addr, _) -> (addr, disassemble instr))
                   (execProgram executable)
                   (execSourceMap executable)
-          return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap)
+          let codeMap =
+                zipWith
+                  (\instr (addr, _) -> (addr, assembleSome instr))
+                  (execProgram executable)
+                  (execSourceMap executable)
+          return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap, codeMap)
 
 rpcLoop :: IntSet -> Debugger -> IO ()
 rpcLoop bps dbg = do
@@ -163,8 +170,8 @@ rpcLoop bps dbg = do
               mNewDbg <- compileAndLoad sourceCode
               case mNewDbg of
                 Nothing -> rpcLoop bps dbg
-                Just (newDbg, smap, dmap) -> do
-                  sendResponse (ResLoaded (current newDbg) smap dmap)
+                Just (newDbg, smap, dmap, cmap) -> do
+                  sendResponse (ResLoaded (current newDbg) smap dmap cmap)
                   rpcLoop bps newDbg
             Just CmdRun -> do
               when (status c /= Halted) $

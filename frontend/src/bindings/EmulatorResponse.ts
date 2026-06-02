@@ -3,4 +3,4 @@ import type { CpuState } from "./CpuState";
 import type { EmulatorError } from "./EmulatorError";
 import type { Severity } from "./Severity";
 
-export type EmulatorResponse = { "type": "state", data: CpuState, } | { "type": "loaded", state: CpuState, sourceMap: Array<[number, number]>, disasmMap: Array<[number, string]>, } | { "type": "error", message: string | null, source: string | null, error: EmulatorError | null, } | { "type": "log", severity: Severity, tag: string, message: string, } | { "type": "need_input" };
+export type EmulatorResponse = { "type": "state", data: CpuState, } | { "type": "loaded", state: CpuState, sourceMap: Array<[number, number]>, disasmMap: Array<[number, string]>, codeMap: Array<[number, number]>, } | { "type": "error", message: string | null, source: string | null, error: EmulatorError | null, } | { "type": "log", severity: Severity, tag: string, message: string, } | { "type": "need_input" };

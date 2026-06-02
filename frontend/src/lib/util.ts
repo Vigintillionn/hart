@@ -108,3 +108,14 @@ export function hex12(addr: number): string {
 export function fmtRegisterValue(v: number, hexMode: boolean) {
   return hexMode ? hex32(v) : (v | 0).toString();
 }
+
+/** @returns 32-bit binary grouped in bytes, e.g. `00000000 11111100 ...` */
+export function bin32(num: number) {
+  const bits = (num >>> 0).toString(2).padStart(32, "0");
+  return bits.replace(/(.{8})(?=.)/g, "$1 ");
+}
+
+/** @returns an assembled instruction word as hex (`0x…`) or grouped binary */
+export function fmtInstrCode(word: number, hexMode: boolean) {
+  return hexMode ? toHex(word) : bin32(word);
+}

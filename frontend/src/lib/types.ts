@@ -8,6 +8,15 @@ export type OpenFile = {
 
 export type SourceMap = [number, number][];
 export type DisasmMap = [number, string][];
+export type CodeMap = [number, number][];
+
+export type TextRow = {
+  addr: number;
+  code: number;
+  basic: string;
+  line: number;
+  source: string | null;
+};
 
 export type IconName =
   | "play"

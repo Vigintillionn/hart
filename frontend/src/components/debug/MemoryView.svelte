@@ -25,8 +25,6 @@
     return map;
   });
 
-  const usedBytes = $derived(memMap.size);
-
   function clampBase(b: number): number {
     const span = visibleRows * ROW_BYTES;
     const maxBase = align16(MEM_TOP + 1 - span);
@@ -162,21 +160,6 @@
 </script>
 
 <div class="flex h-full min-h-0 flex-col">
-  <div
-    class="flex h-8.25 flex-none items-center gap-2 border-b border-border bg-surface-1 px-4"
-  >
-    <span class="h-2.75 w-0.75 rounded-sm bg-primary"></span>
-    <span
-      class="text-[10.5px] font-semibold uppercase tracking-[1.5px] text-text-dim"
-      >Memory</span
-    >
-    <span
-      class="ml-auto font-mono text-[10px] text-text-faint"
-      title="Total bytes allocated by the program"
-      >{usedBytes.toLocaleString()} bytes</span
-    >
-  </div>
-
   <div
     class="flex flex-none items-center gap-2 border-b border-border bg-surface-1 px-3 py-2"
   >
