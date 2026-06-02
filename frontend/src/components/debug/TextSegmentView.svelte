@@ -40,7 +40,20 @@
     >
       <span class="text-center">BP</span>
       <span>Address</span>
-      <span>Code</span>
+      <span class="flex items-center gap-1.5">
+        Code
+        <button
+          type="button"
+          onclick={() => (showBinary = !showBinary)}
+          aria-pressed={showBinary}
+          title="Toggle binary view"
+          class="cursor-pointer rounded mb-px px-1 py-px text-[8px] font-semibold leading-none tracking-[0.5px] transition-colors {showBinary
+            ? 'bg-primary-soft text-primary'
+            : 'border border-border-soft text-text-faint hover:border-primary hover:text-primary'}"
+        >
+          BIN
+        </button>
+      </span>
       <span>Basic</span>
       <span>Source</span>
     </div>
@@ -77,18 +90,12 @@
               row.addr,
             )}{:else}{row.addr}{/if}</span
         >
-        <button
-          class="text-start cursor-pointer {isPc
-            ? 'text-primary'
-            : 'text-text-dim'}"
-          onclick={() => (showBinary = !showBinary)}
-          aria-label="Toggle binary view"
-          title="Toggle binary view"
+        <span class={isPc ? "text-primary" : "text-text-dim"}
           >{#if showBinary}{bin32(
               row.code,
             )}{:else if layoutStore.hexMode}{toHex(
               row.code,
-            )}{:else}{row.code}{/if}</button
+            )}{:else}{row.code}{/if}</span
         >
         <span class={isPc ? "text-text" : "text-text-dim"}>{row.basic}</span>
         <span class="truncate text-text-faint">
