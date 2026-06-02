@@ -14,7 +14,7 @@ import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Decoder (decodeWord)
 import Linker (Executable)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), getCSR, incPC, trapBreakpointM)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), clearTrapState, getCSR, incPC, trapBreakpointM)
 import Numeric (readHex)
 import System.IO (hReady, stdin)
 import Text.Printf (printf)
@@ -183,7 +183,7 @@ runInteractive dbg = do
           startState <-
             execStateT
               ( runEmulator $ do
-                  when atBreak incPC
+                  when atBreak (incPC >> clearTrapState)
                   setStatus Running
               )
               c
@@ -213,7 +213,7 @@ runInteractive dbg = do
           startState <-
             execStateT
               ( runEmulator $ do
-                  when atBreak incPC
+                  when atBreak (incPC >> clearTrapState)
                   setStatus Running
               )
               c
