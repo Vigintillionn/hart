@@ -2,13 +2,15 @@
   import { untrack } from "svelte";
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import { layoutStore } from "$lib/store/layoutStore.svelte";
-  import { toHex, fmtInstrCode } from "$lib/util";
+  import { toHex, fmtInstrCode, bin32 } from "$lib/util";
 
   const rows = $derived(cpuStore.textRows);
   const pc = $derived(cpuStore.cpuState?.pc ?? -1);
 
   const COLS =
     "grid grid-cols-[1.5rem_6.5rem_var(--code-w)_13rem_auto] items-center gap-x-3";
+
+  let showBinary = $state(false);
 
   let scroller: HTMLElement | undefined = $state();
 
@@ -32,10 +34,7 @@
 </script>
 
 <div bind:this={scroller} class="scroll-thin h-full min-h-0 overflow-auto">
-  <div
-    class="min-w-max"
-    style="--code-w: {layoutStore.hexMode ? '6rem' : '17rem'}"
-  >
+  <div class="min-w-max" style="--code-w: {showBinary ? '17rem' : '6rem'}">
     <div
       class="{COLS} sticky top-0 z-10 border-b border-border bg-surface-1 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[1px] text-text-faint"
     >
@@ -73,9 +72,22 @@
           ></span>
         </button>
 
-        <span class="text-secondary opacity-85">{toHex(row.addr)}</span>
-        <span class={isPc ? "text-primary" : "text-text-dim"}
-          >{fmtInstrCode(row.code, layoutStore.hexMode)}</span
+        <span class="text-secondary opacity-85"
+          >{#if layoutStore.hexMode}{toHex(
+              row.addr,
+            )}{:else}{row.addr}{/if}</span
+        >
+        <button
+          class="text-start cursor-pointer {isPc
+            ? 'text-primary'
+            : 'text-text-dim'}"
+          onclick={() => (showBinary = !showBinary)}
+          aria-label="Toggle binary view"
+          >{#if showBinary}{bin32(
+              row.code,
+            )}{:else if layoutStore.hexMode}{toHex(
+              row.code,
+            )}{:else}{row.code}{/if}</button
         >
         <span class={isPc ? "text-text" : "text-text-dim"}>{row.basic}</span>
         <span class="truncate text-text-faint">
