@@ -26,6 +26,8 @@ module Machine
     trapBreakpointM,
     trapLoadMisaligned,
     trapStoreMisaligned,
+    trapInstrMisaligned,
+    trapIllegalInstr,
     clearTrapState,
     entryPoint,
     stackTop,
@@ -260,6 +262,10 @@ trapBreakpointM = 3
 trapLoadMisaligned = 4
 trapStoreMisaligned = 6
 
+trapInstrMisaligned, trapIllegalInstr :: Word32
+trapInstrMisaligned = 0
+trapIllegalInstr = 2
+
 clearTrapState :: (MonadCPU m) => m ()
 clearTrapState = do
   setCSR 0x342 0 -- mcause
@@ -344,6 +350,8 @@ takeTrap causeCode currentPC tval = do
   let target = if handlerAddr == 0 then 0x80000000 else handlerAddr
 
   case causeCode of
+    0 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Instruction Address Misaligned! (Bad target: 0x" ++ showHex tval "" ++ ")"
+    2 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Illegal Instruction! (raw: 0x" ++ showHex tval "" ++ ")"
     4 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Load Address Misaligned! (Bad address: 0x" ++ showHex tval "" ++ ")"
     6 -> consolePrintLn $ "\n[!] HARDWARE EXCEPTION: Store Address Misaligned! (Bad address: 0x" ++ showHex tval "" ++ ")"
     _ -> return ()

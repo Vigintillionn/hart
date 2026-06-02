@@ -11,6 +11,7 @@ import Decoder (decodeWord)
 import Kernel (handleSyscall)
 import Linker (Executable (..))
 import Machine
+import Numeric (showHex)
 import Types
 
 shiftRA :: Word32 -> Int -> Word32
@@ -76,6 +77,27 @@ incr w o = fromIntegral $ fromIntegral w + o
 
 fetch :: (MonadCPU m) => m Word32
 fetch = getPC >>= loadWord
+
+alignedJump :: (MonadCPU m) => Word32 -> Word32 -> m () -> m PCUpdate
+alignedJump currentPC target onAligned
+  | target .&. 0x3 /= 0 = takeTrap trapInstrMisaligned currentPC target
+  | otherwise = onAligned >> return (Jump target)
+
+-- TODO: instead of a string this should yield a proper error type
+-- it should also not go to the same output as consolePrintLn, which is for the emulated program's output
+illegalInstruction :: (MonadCPU m) => Word32 -> Word32 -> m ()
+illegalInstruction currentPC raw = do
+  setCSR 0x341 currentPC -- mepc
+  setCSR 0x342 trapIllegalInstr -- mcause
+  setCSR 0x343 raw -- mtval
+  consolePrintLn $
+    "\nILLEGAL INSTRUCTION at 0x"
+      ++ showHex currentPC ""
+      ++ " (raw: 0x"
+      ++ showHex raw ""
+      ++ "). Did the program run past its code without calling exit, "
+      ++ "or jump into uninitialized memory?"
+  setStatus Halted
 
 loadProgram :: (MonadCPU m) => Executable -> m ()
 loadProgram (Executable instr dataMem _) = do
@@ -166,10 +188,8 @@ executeIType (JumpI JALR args) = do
   currentPC <- getPC
   base <- getReg (i_rs1 args)
   let imm = fromIntegral (i_imm args) :: Word32
-
-  setReg (i_rd args) (currentPC + 4)
   let target = (base + imm) .&. complement 1
-  return $ Jump target
+  alignedJump currentPC target (setReg (i_rd args) (currentPC + 4))
 
 executeBType :: (MonadCPU m) => Instruction 'B Int -> m PCUpdate
 executeBType (BType op args) = do
@@ -192,7 +212,7 @@ executeBType (BType op args) = do
       currentPC <- getPC
       let off = fromIntegral $ b_imm args
       let target = currentPC + off
-      return (Jump target)
+      alignedJump currentPC target (return ())
     else return Advance
 
 executeSType :: (MonadCPU m) => Instruction 'S Int -> m PCUpdate
@@ -236,8 +256,8 @@ executeJType :: (MonadCPU m) => Instruction 'J Int -> m PCUpdate
 executeJType (JType JAL args) = do
   currentPC <- getPC
   let off = fromIntegral (j_imm args) :: Word32
-  setReg (j_rd args) (currentPC + 4)
-  return (Jump $ currentPC + off)
+  let target = currentPC + off
+  alignedJump currentPC target (setReg (j_rd args) (currentPC + 4))
 
 executeSystem :: (MonadCPU m) => Instruction 'Sys Int -> m PCUpdate
 executeSystem (System op args) = do
@@ -307,8 +327,9 @@ step = do
       w <- fetch
       if w == 0
         then do
-          consolePrintLn ">> End of instructions (Implicit Halt)"
-          setStatus Halted
+          -- All-zero is the canonical RISC-V illegal encoding
+          currentPC <- getPC
+          illegalInstruction currentPC w
           return False
         else do
           incCycles
