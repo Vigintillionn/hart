@@ -24,7 +24,9 @@
           ? 'text-secondary'
           : 'text-text-dim'}">{getRegName(i, true)}</span
       >
-      <span class="min-w-5.5 font-mono text-[9px] text-text-ghost">x{i}</span>
+      <span class="min-w-5.5 font-mono text-[9px] text-text-ghost"
+        >x{i}{#if i == 8}/fp{/if}</span
+      >
       <span
         class="ml-auto font-mono text-[11.5px] tracking-[0.2px] {isChanged
           ? 'text-secondary'
