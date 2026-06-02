@@ -45,13 +45,23 @@ class CpuStore {
       return { addr, code: codeByAddr.get(addr) ?? 0, basic, line, source };
     });
   });
-  lineToAddr = $derived.by(() => {
-    const m = new Map<number, number>();
+  lineToAddrs = $derived.by(() => {
+    const m = new Map<number, number[]>();
     for (const [addr, line] of this.sourceMap) {
-      const cur = m.get(line);
-      if (cur === undefined || addr < cur) m.set(line, addr);
+      const arr = m.get(line);
+      if (arr) arr.push(addr);
+      else m.set(line, [addr]);
     }
+    for (const arr of m.values()) arr.sort((a, b) => a - b);
     return m;
+  });
+  breakpointLines = $derived.by(() => {
+    const s = new Set<number>();
+    for (const addr of this.breakpoints) {
+      const line = this.sourceLineMap.get(addr);
+      if (line !== undefined) s.add(line);
+    }
+    return s;
   });
   sidecarAlive = $state(true);
   compileError = $state<{
@@ -133,7 +143,17 @@ class CpuStore {
           this.systemLogShown = 0;
           this.mirrorSystemLog();
           terminalStore.setActiveTab("system");
-          if (this.breakpoints.size) this.sendBreakpoints();
+          if (this.breakpoints.size) {
+            // a recompile can move instructions; drop breakpoints whose address
+            // is no longer the start of an instruction before re-arming them.
+            const valid = new Set(this.sourceMap.map(([addr]) => addr));
+            const pruned = new Set(
+              [...this.breakpoints].filter((a) => valid.has(a)),
+            );
+            if (pruned.size !== this.breakpoints.size)
+              this.breakpoints = pruned;
+            this.sendBreakpoints();
+          }
           if (this.runAfterLoad) {
             this.runAfterLoad = false;
             sendToHaskell("run");
@@ -235,25 +255,29 @@ class CpuStore {
     sendToHaskell("input", text);
   }
 
-  public toggleBreakpoint(line: number) {
+  public toggleBreakpointAddr(addr: number) {
     const next = new Set(this.breakpoints);
-    if (next.has(line)) {
-      next.delete(line);
+    if (next.has(addr)) next.delete(addr);
+    else next.add(addr);
+    this.breakpoints = next;
+    this.sendBreakpoints();
+  }
+
+  public toggleBreakpointLine(line: number) {
+    const addrs = this.lineToAddrs.get(line);
+    if (!addrs?.length) return; // no instruction on this line
+    const next = new Set(this.breakpoints);
+    if (addrs.some((a) => next.has(a))) {
+      for (const a of addrs) next.delete(a);
     } else {
-      if (!this.lineToAddr.has(line)) return; // no instruction on this line
-      next.add(line);
+      next.add(addrs[0]);
     }
     this.breakpoints = next;
     this.sendBreakpoints();
   }
 
   private sendBreakpoints() {
-    const addrs: number[] = [];
-    for (const line of this.breakpoints) {
-      const addr = this.lineToAddr.get(line);
-      if (addr !== undefined) addrs.push(addr);
-    }
-    sendToHaskell("set_breakpoints", addrs);
+    sendToHaskell("set_breakpoints", [...this.breakpoints]);
   }
 }
 

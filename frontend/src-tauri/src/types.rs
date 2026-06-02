@@ -140,6 +140,8 @@ pub enum EmulatorResponse {
         source_map: Vec<(u32, u32)>,
         #[serde(rename = "disasmMap")]
         disasm_map: Vec<(u32, String)>,
+        #[serde(rename = "codeMap")]
+        code_map: Vec<(u32, u32)>,
     },
     #[serde(rename = "error")]
     Error {

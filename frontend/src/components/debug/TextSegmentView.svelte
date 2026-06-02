@@ -49,7 +49,7 @@
     {#each rows as row (row.addr)}
       {@const isPc = row.addr === pc}
       {@const isFlash = row.addr === flashAddr}
-      {@const hasBp = cpuStore.breakpoints.has(row.line)}
+      {@const hasBp = cpuStore.breakpoints.has(row.addr)}
       <div
         data-addr={row.addr}
         class="{COLS} relative h-5 px-3 font-mono text-[11.5px] leading-5 transition-colors duration-500 {isFlash
@@ -63,8 +63,8 @@
           aria-label={hasBp ? "Remove breakpoint" : "Set breakpoint"}
           aria-pressed={hasBp}
           title={`line ${row.line}`}
-          class="flex h-full items-center justify-center"
-          onclick={() => cpuStore.toggleBreakpoint(row.line)}
+          class="flex cursor-pointer h-full items-center justify-center"
+          onclick={() => cpuStore.toggleBreakpointAddr(row.addr)}
         >
           <span
             class="h-2 w-2 rounded-full transition-colors {hasBp

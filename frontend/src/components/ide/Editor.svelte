@@ -83,8 +83,8 @@
       onContentChange={handleEditorChange}
       currentPc={cpuStore.cpuState?.pc ?? 0}
       pcToLine={cpuStore.sourceLineMap}
-      breakpoints={cpuStore.breakpoints}
-      onToggleBreakpoint={(line) => cpuStore.toggleBreakpoint(line)}
+      breakpoints={cpuStore.breakpointLines}
+      onToggleBreakpoint={(line) => cpuStore.toggleBreakpointLine(line)}
       readOnly={running}
       errorMarker={cpuStore.compileError}
     />
