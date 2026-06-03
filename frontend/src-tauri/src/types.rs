@@ -80,15 +80,43 @@ pub enum LinkError {
 #[ts(export, export_to = "../src/bindings/")]
 #[serde(tag = "kind")]
 pub enum EmulatorError {
-    ParseError { error: AssemblyError },
-    LinkError { error: LinkError },
-    DecodeError { pc: u32, raw: u32 },
-    IllegalInstruction { pc: u32, raw: u32 },
-    InstrMisaligned { pc: u32, target: u32 },
-    LoadMisaligned { pc: u32, address: u32 },
-    StoreMisaligned { pc: u32, address: u32 },
-    UnknownSyscall { pc: u32, syscall: u32 },
-    OutOfMemory { address: u32 },
+    ParseError {
+        error: AssemblyError,
+    },
+    LinkError {
+        error: LinkError,
+    },
+    DecodeError {
+        pc: u32,
+        raw: u32,
+    },
+    IllegalInstruction {
+        pc: u32,
+        raw: u32,
+    },
+    InstrMisaligned {
+        pc: u32,
+        target: u32,
+    },
+    LoadMisaligned {
+        pc: u32,
+        address: u32,
+    },
+    StoreMisaligned {
+        pc: u32,
+        address: u32,
+    },
+    UnknownSyscall {
+        pc: u32,
+        syscall: u32,
+    },
+    OutOfMemory {
+        address: u32,
+    },
+    Located {
+        line: i32,
+        error: Box<EmulatorError>,
+    },
 }
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
@@ -133,6 +161,22 @@ pub struct CpuState {
 pub enum EmulatorResponse {
     #[serde(rename = "state")]
     State { data: CpuState },
+    #[serde(rename = "state_delta")]
+    StateDelta {
+        pc: u32,
+        regs: Vec<i32>,
+        csrs: Vec<(u32, u32)>,
+        cycles: usize,
+        status: CpuStatus,
+        #[serde(rename = "heapTop")]
+        heap_top: u32,
+        #[serde(rename = "systemLog", default)]
+        system_log: Vec<SystemEvent>,
+        #[serde(rename = "memDelta")]
+        mem_delta: Vec<(u64, u8)>,
+        #[serde(rename = "outputAppend")]
+        output_append: String,
+    },
     #[serde(rename = "loaded")]
     Loaded {
         state: CpuState,

@@ -8,14 +8,16 @@ import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT, modify, runStateT)
 import Data.Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
+import Data.IntMap.Strict qualified as M
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
 import Data.Sequence qualified as Seq
+import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
 import Error (EmulatorError (..), Severity (..))
 import Linker (Executable (..), resolve)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC, outputDelta)
 import Numeric (showHex)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
@@ -49,6 +51,7 @@ instance FromJSON Command where
 
 data Response
   = ResState CPU
+  | ResStateDelta CPU CPU
   | ResLoaded CPU [(Word32, Int)] [(Word32, String)] [(Word32, Word32)]
   | -- | RPC/protocol-level message (not an emulated-program fault)
     ResError String
@@ -64,6 +67,22 @@ instance ToJSON Response where
       [ "type" .= ("state" :: String),
         "data" .= cpu
       ]
+  toJSON (ResStateDelta old new) =
+    object
+      [ "type" .= ("state_delta" :: String),
+        "pc" .= pc new,
+        "regs" .= V.toList (regs new),
+        "csrs" .= csrs new,
+        "cycles" .= cycles new,
+        "status" .= status new,
+        "heapTop" .= heapTop new,
+        "systemLog" .= reverse (systemLog new),
+        -- only the bytes whose value differs from (or is new since) the base
+        "memDelta" .= M.toList (M.filterWithKey changed (mem new)),
+        "outputAppend" .= outputDelta (outputBuffer old) (outputBuffer new)
+      ]
+    where
+      changed addr v = M.lookup addr (mem old) /= Just v
   toJSON (ResLoaded cpu smap dmap cmap) =
     object
       [ "type" .= ("loaded" :: String),
@@ -104,11 +123,18 @@ sendResponse res = do
 sendLog :: Severity -> String -> String -> IO ()
 sendLog sev tag = sendResponse . ResLog sev tag
 
+sendState :: Maybe CPU -> Bool -> CPU -> IO (Maybe CPU)
+sendState mLast forceFull c = do
+  case mLast of
+    Just old | not forceFull -> sendResponse (ResStateDelta old c)
+    _ -> sendResponse (ResState c)
+  return (Just c)
+
 runRPC :: FilePath -> IO ()
 runRPC _ = do
   sendLog Info "EMU" "Backend ready. Awaiting code."
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
-  rpcLoop IntSet.empty emptyDbg
+  rpcLoop IntSet.empty Nothing emptyDbg
 
 compileAndLoad :: String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)], [(Word32, Word32)]))
 compileAndLoad sourceCode = do
@@ -139,8 +165,8 @@ compileAndLoad sourceCode = do
                   (execSourceMap executable)
           return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap, codeMap)
 
-rpcLoop :: IntSet -> Debugger -> IO ()
-rpcLoop bps dbg = do
+rpcLoop :: IntSet -> Maybe CPU -> Debugger -> IO ()
+rpcLoop bps lastSent dbg = do
   eof <- isEOF
   if eof
     then return ()
@@ -154,41 +180,42 @@ rpcLoop bps dbg = do
           case decode (BL.pack rawInput) of
             Nothing -> do
               sendResponse $ ResError ("Invalid JSON command received: " ++ rawInput)
-              rpcLoop bps dbg
+              rpcLoop bps lastSent dbg
             Just CmdQuit -> return ()
             Just (CmdSetBreakpoints addrs) ->
-              rpcLoop (IntSet.fromList (map fromIntegral addrs)) dbg
+              rpcLoop (IntSet.fromList (map fromIntegral addrs)) lastSent dbg
             Just CmdPause -> do
               if status c == Running
                 then do
                   let cPaused = c {status = Paused}
                   let newDbg = dbg {current = cPaused}
-                  sendResponse (ResState cPaused)
-                  rpcLoop bps newDbg
-                else rpcLoop bps dbg
+                  lastSent' <- sendState lastSent False cPaused
+                  rpcLoop bps lastSent' newDbg
+                else rpcLoop bps lastSent dbg
             Just (CmdLoad sourceCode) -> do
               mNewDbg <- compileAndLoad sourceCode
               case mNewDbg of
-                Nothing -> rpcLoop bps dbg
+                Nothing -> rpcLoop bps lastSent dbg
                 Just (newDbg, smap, dmap, cmap) -> do
+                  -- a freshly loaded program is a full snapshot and the new base
                   sendResponse (ResLoaded (current newDbg) smap dmap cmap)
-                  rpcLoop bps newDbg
+                  rpcLoop bps (Just (current newDbg)) newDbg
             Just CmdRun -> do
               when (status c /= Halted) $
                 sendLog Info "EXEC" ("Starting execution from 0x" ++ showHex (pc c) "")
-              executeRun bps dbg
+              executeRun bps lastSent dbg
             Just CmdStepFwd -> do
               if not (Seq.null (future dbg))
                 then do
                   let nextDbg = stepForward dbg
-                  sendResponse (ResState $ current nextDbg)
-                  rpcLoop bps nextDbg
+                  lastSent' <- sendState lastSent False (current nextDbg)
+                  rpcLoop bps lastSent' nextDbg
                 else do
                   let c = current dbg
                   if status c == Halted
                     then do
-                      sendResponse (ResState c)
-                      rpcLoop bps dbg
+                      lastSent' <- sendState lastSent False c
+                      rpcLoop bps lastSent' dbg
                     else do
                       atBreak <- isAtBreakpoint c
                       if atBreak
@@ -202,8 +229,8 @@ rpcLoop bps dbg = do
                               )
                               c
                           let newDbg = dbg {past = past dbg Seq.|> c, current = steppedState, future = Seq.Empty}
-                          sendResponse (ResState steppedState)
-                          rpcLoop bps newDbg
+                          lastSent' <- sendState lastSent False steppedState
+                          rpcLoop bps lastSent' newDbg
                         else do
                           startState <- execStateT (runEmulator $ setStatus Running) c
                           (_, nextState) <- runStateT (runEmulator step) startState
@@ -212,16 +239,17 @@ rpcLoop bps dbg = do
                                   then nextState {status = Paused}
                                   else nextState
                           let newDbg = dbg {past = past dbg Seq.|> c, current = finalState, future = Seq.Empty}
-                          sendResponse (ResState finalState)
-                          rpcLoop bps newDbg
+                          lastSent' <- sendState lastSent False finalState
+                          rpcLoop bps lastSent' newDbg
             Just CmdStepBack -> do
               let prevDbg = stepBack dbg
-              sendResponse (ResState $ current prevDbg)
-              rpcLoop bps prevDbg
+              -- backward move: memory may shrink, so send a full snapshot
+              lastSent' <- sendState lastSent True (current prevDbg)
+              rpcLoop bps lastSent' prevDbg
             Just CmdRewind -> do
               let startDbg = rewind dbg
-              sendResponse (ResState $ current startDbg)
-              rpcLoop bps startDbg
+              lastSent' <- sendState lastSent True (current startDbg)
+              rpcLoop bps lastSent' startDbg
             Just (CmdInput text) -> do
               let c = current dbg
               if status c == WaitingForInput
@@ -238,7 +266,7 @@ rpcLoop bps dbg = do
                       )
                       c
 
-                  sendResponse (ResState startState)
+                  lastSent1 <- sendState lastSent False startState
 
                   newTrace <- resumeTrace bps (atBreakpoint bps startState) startState
 
@@ -246,26 +274,21 @@ rpcLoop bps dbg = do
                   let newDbg = initDebuggerAtEnd fullTrace
 
                   let cFinal = current newDbg
-                  if status cFinal == WaitingForInput
-                    then do
-                      sendResponse (ResState cFinal)
-                      sendResponse ResNeedInput
-                      rpcLoop bps newDbg
-                    else do
-                      sendResponse (ResState cFinal)
-                      rpcLoop bps newDbg
+                  lastSent2 <- sendState lastSent1 False cFinal
+                  when (status cFinal == WaitingForInput) (sendResponse ResNeedInput)
+                  rpcLoop bps lastSent2 newDbg
                 else do
                   sendResponse (ResError "Emulator is not waiting for input.")
-                  rpcLoop bps dbg
-        else executeRun bps dbg
+                  rpcLoop bps lastSent dbg
+        else executeRun bps lastSent dbg
 
-executeRun :: IntSet -> Debugger -> IO ()
-executeRun bps dbg = do
+executeRun :: IntSet -> Maybe CPU -> Debugger -> IO ()
+executeRun bps lastSent dbg = do
   let c = current dbg
   if status c == Halted
     then do
-      sendResponse (ResState c)
-      rpcLoop bps dbg
+      lastSent' <- sendState lastSent False c
+      rpcLoop bps lastSent' dbg
     else do
       atBreak <- isAtBreakpoint c
       startState <-
@@ -278,18 +301,13 @@ executeRun bps dbg = do
           )
           c
 
-      sendResponse (ResState startState)
+      lastSent1 <- sendState lastSent False startState
       newTrace <- resumeTrace bps (atBreakpoint bps startState) startState
 
       let fullTrace = past dbg <> newTrace
       let newDbg = initDebuggerAtEnd fullTrace
 
       let cFinal = current newDbg
-      if status cFinal == WaitingForInput
-        then do
-          sendResponse (ResState cFinal)
-          sendResponse ResNeedInput
-          rpcLoop bps newDbg
-        else do
-          sendResponse (ResState cFinal)
-          rpcLoop bps newDbg
+      lastSent2 <- sendState lastSent1 False cFinal
+      when (status cFinal == WaitingForInput) (sendResponse ResNeedInput)
+      rpcLoop bps lastSent2 newDbg

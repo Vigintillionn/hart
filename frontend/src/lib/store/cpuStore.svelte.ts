@@ -79,6 +79,13 @@ class CpuStore {
   /** set when a `run` should fire automatically after a recompile succeeds */
   private runAfterLoad = false;
   private systemLogShown = 0;
+  /**
+   * Accumulated memory, keyed by byte address. The backend ships full memory
+   * only on `loaded`/full `state`; forward `state_delta` messages carry just
+   * the changed bytes, which we merge here so `cpuState.mem` stays a complete
+   * snapshot for the UI.
+   */
+  private memMap = new Map<bigint, number>();
 
   /** @returns true once a program has been compiled & loaded */
   get isLoaded() {
@@ -128,12 +135,28 @@ class CpuStore {
         const response = event.payload;
 
         if (response.type === "state") {
-          this.cpuState = response.data;
-          const out = this.cpuState.outputBuffer;
-          if (out) terminalStore.program.set(out);
-          else terminalStore.program.clear();
-          this.mirrorSystemLog();
+          // full snapshot: reset the accumulated memory to match
+          this.memMap = new Map(response.data.mem);
+          this.commitState(response.data);
+        } else if (response.type === "state_delta") {
+          // incremental: merge changed bytes + appended console onto the base
+          const prev = this.cpuState;
+          if (!prev) return; // a delta with no base should never arrive
+          for (const [addr, val] of response.memDelta)
+            this.memMap.set(addr, val);
+          this.commitState({
+            pc: response.pc,
+            regs: response.regs,
+            csrs: response.csrs,
+            cycles: response.cycles,
+            status: response.status,
+            heapTop: response.heapTop,
+            systemLog: response.systemLog,
+            mem: [...this.memMap.entries()],
+            outputBuffer: prev.outputBuffer + response.outputAppend,
+          });
         } else if (response.type === "loaded") {
+          this.memMap = new Map(response.state.mem);
           this.cpuState = response.state;
           this.sourceMap = response.sourceMap;
           this.disasmMap = response.disasmMap;
@@ -187,6 +210,15 @@ class CpuStore {
         }
       },
     );
+  }
+
+  /** Adopt a new CPU state and mirror its console + system log to the UI. */
+  private commitState(state: CpuState) {
+    this.cpuState = state;
+    const out = state.outputBuffer;
+    if (out) terminalStore.program.set(out);
+    else terminalStore.program.clear();
+    this.mirrorSystemLog();
   }
 
   private mirrorSystemLog() {
