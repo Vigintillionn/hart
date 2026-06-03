@@ -131,17 +131,22 @@ handleSyscall = do
       currentSP <- getReg sp
 
       if requestedAddr == 0
-        then do
+        then
           setReg a0 currentBreak
         else
           if requestedAddr >= currentSP
             then do
+              -- growing into (or past) the stack
               pc <- getPC
               logFaultAt pc (EOutOfMemory requestedAddr)
               setReg a0 currentBreak
-            else do
-              setHeapTop requestedAddr
-              setReg a0 requestedAddr
+            else
+              if requestedAddr < heapBase
+                then -- refuse to move the break below the heap origin
+                  setReg a0 currentBreak
+                else do
+                  setHeapTop requestedAddr
+                  setReg a0 requestedAddr
 
       return Advance
     _ -> do

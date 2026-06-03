@@ -32,6 +32,7 @@ module Machine
     clearTrapState,
     entryPoint,
     stackTop,
+    heapBase,
     extractByte,
     incPC,
     storeHalf,
@@ -308,6 +309,9 @@ entryPoint = 0x0
 stackTop :: Word32
 stackTop = 0x7FFFFFFF -- ~ 2GB
 
+heapBase :: Word32
+heapBase = 0x20000000
+
 emptyCPU :: CPU
 emptyCPU =
   CPU
@@ -319,7 +323,7 @@ emptyCPU =
       sourceMap = M.empty,
       cycles = 0,
       status = Paused,
-      heapTop = 0x20000000,
+      heapTop = heapBase,
       fileMap = M.empty,
       nextFD = 3,
       outputBuffer = emptyOutput,
