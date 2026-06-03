@@ -12,12 +12,11 @@ import Data.IntMap.Strict qualified as M
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
 import Data.Sequence qualified as Seq
-import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
 import Error (EmulatorError (..), Severity (..))
 import Linker (Executable (..), resolve)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC, outputDelta)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC, outputDelta, signedRegs)
 import Numeric (showHex)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
@@ -71,7 +70,7 @@ instance ToJSON Response where
     object
       [ "type" .= ("state_delta" :: String),
         "pc" .= pc new,
-        "regs" .= V.toList (regs new),
+        "regs" .= signedRegs new,
         "csrs" .= csrs new,
         "cycles" .= cycles new,
         "status" .= status new,

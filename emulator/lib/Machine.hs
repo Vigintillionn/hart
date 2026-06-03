@@ -12,6 +12,7 @@ module Machine
     appendOutput,
     renderOutput,
     outputDelta,
+    signedRegs,
     Emulator (..),
     MonadCPU (..),
     emptyCPU,
@@ -53,7 +54,7 @@ import Control.Monad.State.Strict
 import Data.Aeson (ToJSON (..), object, (.=))
 import Data.Bits (Bits (..))
 import Data.ByteString qualified as BS
-import Data.Int (Int16, Int8)
+import Data.Int (Int16, Int32, Int8)
 import Data.IntMap.Strict qualified as M
 import Data.Vector.Unboxed ((//))
 import Data.Vector.Unboxed qualified as V
@@ -150,11 +151,14 @@ data CPU = CPU
     inputBuffer :: !(Maybe String)
   }
 
+signedRegs :: CPU -> [Int32]
+signedRegs = map fromIntegral . V.toList . regs
+
 instance ToJSON CPU where
   toJSON cpu =
     object
       [ "pc" .= pc cpu,
-        "regs" .= V.toList (regs cpu),
+        "regs" .= signedRegs cpu,
         "csrs" .= csrs cpu,
         "mem" .= mem cpu,
         "cycles" .= cycles cpu,

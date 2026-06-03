@@ -4,6 +4,8 @@ import Control.Monad (zipWithM_)
 import Data.Bits ((.&.))
 import Data.ByteString qualified as BS
 import Data.ByteString.Char8 qualified as C8
+import Data.Char (isSpace)
+import Data.Int (Int32)
 import Data.Word (Word32)
 import Error (EmulatorError (..), Notice (..))
 import Machine
@@ -16,7 +18,7 @@ handleSyscall = do
     1 -> do
       -- print_int
       val <- getReg a0
-      consolePrint $ show (fromIntegral val :: Int)
+      consolePrint $ show (fromIntegral val :: Int32)
       return Advance
     4 -> do
       -- print_string
@@ -29,13 +31,16 @@ handleSyscall = do
       mInput <- getInputBuffer
       case mInput of
         Nothing -> return RequestInput
-        Just input -> do
-          let val = case reads input of
-                [(n, _)] -> n
-                _ -> 0
-          setReg a0 val
-          clearInputBuffer
-          return Advance
+        Just input -> case reads input of
+          [(n, rest)] | all isSpace rest -> do
+            setReg a0 (fromIntegral (n :: Int))
+            clearInputBuffer
+            return Advance
+          _ -> do
+            clearInputBuffer
+            pc <- getPC
+            logFaultAt pc (EInvalidInput pc input)
+            return Terminate
     8 -> do
       -- read_string
       bufAddr <- getReg a0

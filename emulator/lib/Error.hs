@@ -61,6 +61,8 @@ data EmulatorError
     EUnknownSyscall Word32 Word32
   | -- | requested break address
     EOutOfMemory Word32
+  | -- | pc, the offending input that could not be parsed
+    EInvalidInput Word32 String
   | -- | source line + the underlying runtime fault that occurred there
     ELocated Int EmulatorError
   deriving (Show, Eq)
@@ -135,6 +137,7 @@ instance ToJSON EmulatorError where
     EStoreMisaligned pc addr -> object ["kind" .= s "StoreMisaligned", "pc" .= pc, "address" .= addr]
     EUnknownSyscall pc a7 -> object ["kind" .= s "UnknownSyscall", "pc" .= pc, "syscall" .= a7]
     EOutOfMemory addr -> object ["kind" .= s "OutOfMemory", "address" .= addr]
+    EInvalidInput pc inp -> object ["kind" .= s "InvalidInput", "pc" .= pc, "input" .= inp]
     ELocated ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON Notice where

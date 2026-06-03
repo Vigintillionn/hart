@@ -113,6 +113,10 @@ pub enum EmulatorError {
     OutOfMemory {
         address: u32,
     },
+    InvalidInput {
+        pc: u32,
+        input: String,
+    },
     Located {
         line: i32,
         error: Box<EmulatorError>,

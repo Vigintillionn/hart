@@ -63,6 +63,8 @@ renderEmulatorError e = case e of
   EUnknownSyscall pc a7 -> "Unknown syscall " ++ show a7 ++ " at " ++ hex pc
   EOutOfMemory addr ->
     "Out of memory: sbrk to " ++ hex addr ++ " collided with the stack"
+  EInvalidInput pc inp ->
+    "Invalid integer input " ++ show inp ++ " at " ++ hex pc
 
 renderNotice :: Notice -> String
 renderNotice n = case n of

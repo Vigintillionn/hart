@@ -66,6 +66,8 @@ export function formatEmulatorError(e: EmulatorError): string {
       return `Unknown syscall ${e.syscall} at ${hex(e.pc)}`;
     case "OutOfMemory":
       return `Out of memory: sbrk to ${hex(e.address)} collided with the stack`;
+    case "InvalidInput":
+      return `Invalid integer input \`${e.input.trim()}\` at ${hex(e.pc)}`;
   }
 }
 
@@ -111,6 +113,8 @@ export function emulatorErrorTag(e: EmulatorError): string {
       return "SYSCALL";
     case "OutOfMemory":
       return "MEMORY";
+    case "InvalidInput":
+      return "INPUT";
   }
 }
 
