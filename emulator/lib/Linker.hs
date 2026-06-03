@@ -91,59 +91,59 @@ lower (PseudoInstr op) = case op of
 expandProgram :: [(Int, ArchInstr 'Parsed)] -> [(Int, SomeInstruction Operand)]
 expandProgram = concatMap (\(ln, instr) -> map (ln,) (NE.toList . lower $ instr))
 
-data BuildState = BuildState
-  { b_textPC :: !Int,
-    b_dataPC :: !Int,
-    b_section :: !Section,
-    b_table :: !SymbolTable
+dataBase :: Int
+dataBase = 0x10000000
+
+data Layout = Layout
+  { l_textPC :: !Int,
+    l_dataPC :: !Int,
+    l_section :: !Section
   }
 
-buildSymTable :: ParsedProgram -> Either LinkError BuildState
-buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
+initLayout :: Layout
+initLayout = Layout 0 dataBase TextSection
+
+layoutPC :: Layout -> Int
+layoutPC l = if l_section l == TextSection then l_textPC l else l_dataPC l
+
+stepLayout :: Layout -> Maybe Statement -> (Int, Layout)
+stepLayout lay ms = case ms of
+  Nothing -> (here, lay)
+  Just (StmtDirective (DirSection sec)) -> (here, lay {l_section = sec})
+  Just stmt ->
+    let sz = stmtSize here stmt
+        lay'
+          | l_section lay == TextSection = lay {l_textPC = l_textPC lay + sz}
+          | otherwise = lay {l_dataPC = l_dataPC lay + sz}
+     in (here, lay')
   where
-    step st (ln, (ml, ms)) = do
-      let currentPC = if b_section st == TextSection then b_textPC st else b_dataPC st
+    here = layoutPC lay
 
-      newTable <- case ml of
-        Nothing -> Right (b_table st)
-        Just n ->
-          if M.member n (b_table st)
-            then Left (LocatedLink ln (DuplicateLabel n))
-            else Right $ M.insert n currentPC (b_table st)
-
-      let st' = st {b_table = newTable}
-      case ms of
-        Nothing -> Right st'
-        Just (StmtDirective (DirSection sec)) -> Right $ st' {b_section = sec}
-        Just stmt -> do
-          let sz = stmtSize currentPC stmt
-          if b_section st == TextSection
-            then Right $ st' {b_textPC = b_textPC st' + sz}
-            else Right $ st' {b_dataPC = b_dataPC st' + sz}
-
-data EmitState = EmitState
-  { e_instrs :: ![(Int, ArchInstr 'Parsed)],
-    e_dataMem :: !(IM.IntMap Word8),
-    e_textPC :: !Int,
-    e_dataPC :: !Int,
-    e_section :: !Section
-  }
-
-emitSections :: ParsedProgram -> EmitState
-emitSections prog = final {e_instrs = reverse (e_instrs final)}
+layout :: ParsedProgram -> [(Int, Int, SourceLine)]
+layout = go initLayout
   where
-    final = foldl' step (EmitState [] IM.empty 0 0x10000000 TextSection) prog
-    step st (_, (_, Nothing)) = st
-    step st (_, (_, Just (StmtDirective (DirSection sec)))) = st {e_section = sec}
-    step st (ln, (_, Just stmt)) =
-      let currentPC = if e_section st == TextSection then e_textPC st else e_dataPC st
-          sz = stmtSize currentPC stmt
-       in case stmt of
-            StmtInstr i ->
-              st {e_instrs = (ln, i) : e_instrs st, e_textPC = e_textPC st + sz}
-            StmtDirective dir ->
-              let newMem = insertDirective currentPC dir (e_dataMem st)
-               in st {e_dataMem = newMem, e_dataPC = e_dataPC st + sz}
+    go _ [] = []
+    go lay ((ln, sl@(_, ms)) : rest) =
+      let (here, lay') = stepLayout lay ms
+       in (ln, here, sl) : go lay' rest
+
+buildSymTable :: ParsedProgram -> Either LinkError SymbolTable
+buildSymTable = foldM step M.empty . layout
+  where
+    step tbl (ln, here, (ml, _)) = case ml of
+      Nothing -> Right tbl
+      Just n
+        | M.member n tbl -> Left (LocatedLink ln (DuplicateLabel n))
+        | otherwise -> Right (M.insert n here tbl)
+
+emitSections :: ParsedProgram -> ([(Int, ArchInstr 'Parsed)], IM.IntMap Word8)
+emitSections prog = (reverse instrs, dataMem)
+  where
+    (instrs, dataMem) = foldl' step ([], IM.empty) (layout prog)
+    step acc@(is, dm) (ln, here, (_, ms)) = case ms of
+      Just (StmtInstr i) -> ((ln, i) : is, dm)
+      Just (StmtDirective dir) -> (is, insertDirective here dir dm)
+      _ -> acc
 
     insertDirective :: Int -> Directive -> IM.IntMap Word8 -> IM.IntMap Word8
     insertDirective pc dir memMap = case dir of
@@ -165,11 +165,9 @@ emitSections prog = final {e_instrs = reverse (e_instrs final)}
 
 resolve :: ParsedProgram -> Either LinkError Executable
 resolve l = do
-  buildState <- buildSymTable l
-  let symTable = b_table buildState
+  symTable <- buildSymTable l
 
-  let emitted = emitSections l
-  let rawInstrs = e_instrs emitted
+  let (rawInstrs, dataMem) = emitSections l
   let expanded = expandProgram rawInstrs
 
   programWithLines <-
@@ -186,7 +184,7 @@ resolve l = do
 
   let program = map fst programWithLines
   let sourceMap = map snd programWithLines
-  return $ Executable program (e_dataMem emitted) sourceMap
+  return $ Executable program dataMem sourceMap
 
 checkShiftBounds :: IArithOp -> Int -> Either LinkError Int
 checkShiftBounds op val
