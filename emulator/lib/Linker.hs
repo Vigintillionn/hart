@@ -6,6 +6,7 @@ import Data.Bifunctor (first)
 import Data.Bits (Bits (..))
 import Data.Char (ord)
 import Data.IntMap.Strict qualified as IM
+import Data.List (foldl')
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as M
@@ -91,10 +92,10 @@ expandProgram :: [(Int, ArchInstr 'Parsed)] -> [(Int, SomeInstruction Operand)]
 expandProgram = concatMap (\(ln, instr) -> map (ln,) (NE.toList . lower $ instr))
 
 data BuildState = BuildState
-  { b_textPC :: Int,
-    b_dataPC :: Int,
-    b_section :: Section,
-    b_table :: SymbolTable
+  { b_textPC :: !Int,
+    b_dataPC :: !Int,
+    b_section :: !Section,
+    b_table :: !SymbolTable
   }
 
 buildSymTable :: ParsedProgram -> Either LinkError BuildState
@@ -121,16 +122,17 @@ buildSymTable = foldM step (BuildState 0 0x10000000 TextSection M.empty)
             else Right $ st' {b_dataPC = b_dataPC st' + sz}
 
 data EmitState = EmitState
-  { e_instrs :: [(Int, ArchInstr 'Parsed)],
-    e_dataMem :: IM.IntMap Word8,
-    e_textPC :: Int,
-    e_dataPC :: Int,
-    e_section :: Section
+  { e_instrs :: ![(Int, ArchInstr 'Parsed)],
+    e_dataMem :: !(IM.IntMap Word8),
+    e_textPC :: !Int,
+    e_dataPC :: !Int,
+    e_section :: !Section
   }
 
 emitSections :: ParsedProgram -> EmitState
-emitSections = foldl step (EmitState [] IM.empty 0 0x10000000 TextSection)
+emitSections prog = final {e_instrs = reverse (e_instrs final)}
   where
+    final = foldl' step (EmitState [] IM.empty 0 0x10000000 TextSection) prog
     step st (_, (_, Nothing)) = st
     step st (_, (_, Just (StmtDirective (DirSection sec)))) = st {e_section = sec}
     step st (ln, (_, Just stmt)) =
@@ -138,7 +140,7 @@ emitSections = foldl step (EmitState [] IM.empty 0 0x10000000 TextSection)
           sz = stmtSize currentPC stmt
        in case stmt of
             StmtInstr i ->
-              st {e_instrs = e_instrs st ++ [(ln, i)], e_textPC = e_textPC st + sz}
+              st {e_instrs = (ln, i) : e_instrs st, e_textPC = e_textPC st + sz}
             StmtDirective dir ->
               let newMem = insertDirective currentPC dir (e_dataMem st)
                in st {e_dataMem = newMem, e_dataPC = e_dataPC st + sz}
