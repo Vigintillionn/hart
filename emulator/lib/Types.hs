@@ -1,4 +1,42 @@
-module Types where
+module Types
+  ( Phase (..),
+    Operand (..),
+    ImmOf,
+    ROp (..),
+    IArithOp (..),
+    ILoadOp (..),
+    IJmpOp (..),
+    BOp (..),
+    SOp (..),
+    UOp (..),
+    JOp (..),
+    SysOp (..),
+    SysIOp (..),
+    TrapOp (..),
+    RTypeArgs (..),
+    ITypeArgs (..),
+    BTypeArgs (..),
+    STypeArgs (..),
+    UTypeArgs (..),
+    JTypeArgs (..),
+    SysArgs (..),
+    SysIArgs (..),
+    InstrKind (..),
+    Instruction (..),
+    PseudoOp (..),
+    Section (..),
+    Directive (..),
+    Statement (..),
+    SomeInstruction (..),
+    ArchInstr (..),
+    SourceLine,
+    ParsedProgram,
+    LoweredProgram,
+    Program,
+    encodeCSR,
+    decodeCSRName,
+  )
+where
 
 import Data.List (find)
 import Machine (Register)

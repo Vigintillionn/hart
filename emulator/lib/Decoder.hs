@@ -1,4 +1,4 @@
-module Decoder where
+module Decoder (decodeWord) where
 
 import Control.Applicative (liftA3)
 import Control.Monad

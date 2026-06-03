@@ -1,4 +1,4 @@
-module Assembler where
+module Assembler (assembleSome) where
 
 import Data.Bits (Bits (..))
 import Data.Word

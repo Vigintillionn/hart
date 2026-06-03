@@ -1,4 +1,4 @@
-module Linker where
+module Linker (Executable (..), resolve) where
 
 import Control.Monad (foldM)
 import Control.Monad.State

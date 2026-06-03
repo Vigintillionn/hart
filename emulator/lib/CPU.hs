@@ -1,4 +1,4 @@
-module CPU where
+module CPU (loadProgram, step, fetch, haltCycleLimit) where
 
 import Assembler (assembleSome)
 import Control.Monad

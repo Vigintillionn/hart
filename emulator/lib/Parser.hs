@@ -1,4 +1,4 @@
-module Parser where
+module Parser (parse) where
 
 import Control.Applicative
 import Control.Monad (void)

@@ -1,4 +1,4 @@
-module ISA where
+module ISA (RISCVEncoding (..), matchOp, matchOpF3) where
 
 import Data.Map.Strict (Map)
 import Data.Map.Strict qualified as Map
