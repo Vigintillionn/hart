@@ -6,7 +6,7 @@ import Data.Bifunctor (first)
 import Data.Bits (Bits (..))
 import Data.Char (ord)
 import Data.IntMap.Strict qualified as IM
-import Data.List (foldl')
+import Data.List (foldl', mapAccumL)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as M
@@ -120,12 +120,11 @@ stepLayout lay ms = case ms of
     here = layoutPC lay
 
 layout :: ParsedProgram -> [(Int, Int, SourceLine)]
-layout = go initLayout
+layout = snd . mapAccumL step initLayout
   where
-    go _ [] = []
-    go lay ((ln, sl@(_, ms)) : rest) =
+    step lay (ln, sl@(_, ms)) =
       let (here, lay') = stepLayout lay ms
-       in (ln, here, sl) : go lay' rest
+       in (lay', (ln, here, sl))
 
 buildSymTable :: ParsedProgram -> Either LinkError SymbolTable
 buildSymTable = foldM step M.empty . layout
@@ -147,11 +146,11 @@ emitSections prog = (reverse instrs, dataMem)
 
     insertDirective :: Int -> Directive -> IM.IntMap Word8 -> IM.IntMap Word8
     insertDirective pc dir memMap = case dir of
-      DirString s -> foldl (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0 ..] (s ++ "\0"))
-      DirAscii s -> foldl (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0 ..] s)
-      DirByte xs -> foldl (\m (i, x) -> IM.insert (pc + i) (fromIntegral x) m) memMap (zip [0 ..] xs)
+      DirString s -> foldl' (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0 ..] (s ++ "\0"))
+      DirAscii s -> foldl' (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0 ..] s)
+      DirByte xs -> foldl' (\m (i, x) -> IM.insert (pc + i) (fromIntegral x) m) memMap (zip [0 ..] xs)
       DirWord xs ->
-        foldl
+        foldl'
           ( \m (i, x) ->
               let b0 = fromIntegral (x .&. 0xFF)
                   b1 = fromIntegral ((x `shiftR` 8) .&. 0xFF)
