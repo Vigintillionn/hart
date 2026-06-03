@@ -2,7 +2,7 @@
   import { untrack } from "svelte";
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import { layoutStore } from "$lib/store/layoutStore.svelte";
-  import { toHex, fmtInstrCode, bin32 } from "$lib/util";
+  import { toHex, bin32 } from "$lib/util";
 
   const rows = $derived(cpuStore.textRows);
   const pc = $derived(cpuStore.cpuState?.pc ?? -1);

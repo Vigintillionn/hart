@@ -176,7 +176,7 @@ pub struct CpuState {
     pub system_log: Vec<SystemEvent>,
 }
 
-c#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
 #[ts(export, export_to = "../src/bindings/")]
 pub struct ExtensionInfo {
     pub code: String,

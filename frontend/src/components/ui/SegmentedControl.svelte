@@ -47,8 +47,10 @@
   }
 
   $effect(() => {
-    activeIndex;
-    options;
+    // depend on the active item and the option set so the indicator
+    // re-measures whenever either changes
+    // eslint-disable-next-line @typescript-eslint/no-unused-expressions
+    [activeIndex, options];
     measure();
   });
 </script>
