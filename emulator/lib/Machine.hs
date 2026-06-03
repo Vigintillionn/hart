@@ -67,6 +67,9 @@ class (Monad m) => MonadCPU m where
   loadByte :: Word32 -> m Word8
   storeByte :: Word32 -> Word32 -> m ()
 
+  fetchInstr :: Word32 -> m (Maybe Word32)
+  setInstrMem :: M.IntMap Word32 -> m ()
+
   getPC :: m Word32
   setPC :: Word32 -> m ()
   getCycles :: m Int
@@ -125,6 +128,7 @@ data CPU = CPU
     regs :: !(V.Vector Word32),
     csrs :: !(M.IntMap Word32),
     mem :: !(M.IntMap Word8),
+    imem :: !(M.IntMap Word32),
     cycles :: !Int,
     status :: !RunStatus,
     heapTop :: !Word32,
@@ -162,6 +166,8 @@ instance MonadCPU Emulator where
   setCSR = sharedSetCSR
   loadByte = sharedLoadByte
   storeByte = sharedStoreByte
+  fetchInstr a = gets $ M.lookup (fromIntegral a) . imem
+  setInstrMem m = modify' $ \cpu -> cpu {imem = m}
 
   -- TOOD: make others shared as well so we can have RPCEmulator easily reuse
   getPC = gets pc
@@ -297,6 +303,7 @@ emptyCPU =
       regs = V.replicate 32 0 // [(2, stackTop)],
       csrs = M.empty,
       mem = M.empty,
+      imem = M.empty,
       cycles = 0,
       status = Paused,
       heapTop = 0x20000000,

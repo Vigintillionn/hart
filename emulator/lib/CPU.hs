@@ -76,7 +76,12 @@ incr :: Word32 -> Int -> Word32
 incr w o = fromIntegral $ fromIntegral w + o
 
 fetch :: (MonadCPU m) => m Word32
-fetch = getPC >>= loadWord
+fetch = do
+  currentPC <- getPC
+  cached <- fetchInstr currentPC
+  case cached of
+    Just w -> return w
+    Nothing -> loadWord currentPC
 
 alignedJump :: (MonadCPU m) => Word32 -> Word32 -> m () -> m PCUpdate
 alignedJump currentPC target onAligned
@@ -97,6 +102,7 @@ loadProgram (Executable instr dataMem _) = do
 
   let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
   traverse_ (uncurry storeWord) assembled
+  setInstrMem (M.fromList [(fromIntegral addr, w) | (addr, w) <- assembled])
 
   traverse_ (\(addr, val) -> storeByte (fromIntegral addr) (fromIntegral val)) (M.toList dataMem)
 
