@@ -76,7 +76,7 @@ export function formatNotice(n: Notice): string {
     case "ProgramExitedNormally":
       return "Program exited normally";
     case "ProgramExited":
-      return `Program exited with code: ${n.code}`;
+      return `Program exited with code: ${n.code & 0xff} (raw: ${n.code})`;
     case "BreakpointHit":
       return "Breakpoint hit";
   }
