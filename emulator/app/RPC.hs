@@ -8,9 +8,12 @@ import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT, modify, runStateT)
 import Data.Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
+import Data.Foldable (toList)
 import Data.IntMap.Strict qualified as M
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty qualified as NE
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
@@ -176,7 +179,7 @@ compileAndLoad sourceCode = do
                       (\instr (addr, _) -> (addr, assembleSome instr))
                       prog
                       srcMap
-              return $ Just (initDebugger (Seq.singleton readyCpu), srcMap, disasmMap, codeMap)
+              return $ Just (initDebugger (readyCpu :| []), srcMap, disasmMap, codeMap)
 
 rpcLoop :: IntSet -> Maybe CPU -> Debugger -> IO ()
 rpcLoop bps lastSent dbg = do
@@ -283,7 +286,7 @@ rpcLoop bps lastSent dbg = do
 
                   newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
 
-                  let fullTrace = past dbg <> newTrace
+                  let fullTrace = NE.prependList (toList (past dbg)) newTrace
                   let newDbg = initDebuggerAtEnd fullTrace
 
                   let cFinal = current newDbg
@@ -315,7 +318,7 @@ executeRun bps lastSent dbg = do
       lastSent1 <- sendState lastSent False startState
       newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
 
-      let fullTrace = past dbg <> newTrace
+      let fullTrace = NE.prependList (toList (past dbg)) newTrace
       let newDbg = initDebuggerAtEnd fullTrace
 
       let cFinal = current newDbg

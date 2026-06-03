@@ -4,10 +4,14 @@ import CPU
 import Control.Monad (when)
 import Control.Monad.State.Strict
 import Data.Char (chr, isPrint, toLower)
+import Data.Foldable (toList)
 import Data.Int (Int32)
 import Data.IntMap.Strict qualified as M
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
+import Data.List.NonEmpty (NonEmpty (..))
+import Data.List.NonEmpty qualified as NE
+import Data.Maybe (fromMaybe)
 import Data.Sequence (Seq (..), (<|), (|>))
 import Data.Sequence qualified as Seq
 import Data.Vector.Unboxed qualified as V
@@ -31,32 +35,29 @@ data Debugger = Debugger
 maxHistory :: Int
 maxHistory = 10000
 
-initDebugger :: Seq CPU -> Debugger
-initDebugger Empty = error "Trace cannot be empty"
-initDebugger (c :<| cs) =
+initDebugger :: NonEmpty CPU -> Debugger
+initDebugger (c :| cs) =
   Debugger
     { past = Empty,
       current = c,
-      future = cs
+      future = Seq.fromList cs
     }
 
-initDebuggerAtEnd :: Seq CPU -> Debugger
+initDebuggerAtEnd :: NonEmpty CPU -> Debugger
 initDebuggerAtEnd t0 =
-  case boundHistory t0 of
-    Empty -> error "Trace cannot be empty"
-    ss :|> s ->
-      Debugger
-        { past = ss,
-          current = s,
+  let bounded = boundHistory t0
+   in Debugger
+        { past = Seq.fromList (NE.init bounded),
+          current = NE.last bounded,
           future = Empty
         }
 
-boundHistory :: Seq CPU -> Seq CPU
+boundHistory :: NonEmpty CPU -> NonEmpty CPU
 boundHistory t
-  | extra > 0 = Seq.drop extra t
+  | extra > 0 = fromMaybe t (NE.nonEmpty (NE.drop extra t))
   | otherwise = t
   where
-    extra = Seq.length t - maxHistory
+    extra = length t - maxHistory
 
 pauseIfRunning :: CPU -> CPU
 pauseIfRunning s
@@ -119,14 +120,19 @@ setLast :: Seq CPU -> CPU -> Seq CPU
 setLast (rest :|> _) c = rest |> c
 setLast Empty c = Seq.singleton c
 
-resumeTrace :: Maybe Int -> IntSet -> Bool -> CPU -> IO (Seq CPU)
-resumeTrace mLimit bps skipFirst currentCpu =
-  loop mLimit bps skipFirst (Seq.singleton currentCpu) currentCpu
+neFromSeq :: CPU -> Seq CPU -> NonEmpty CPU
+neFromSeq fallback s = case s of
+  c :<| cs -> c :| toList cs
+  Empty -> fallback :| []
 
-runTrace :: Maybe Int -> Executable -> CPU -> IO (Seq CPU)
+resumeTrace :: Maybe Int -> IntSet -> Bool -> CPU -> IO (NonEmpty CPU)
+resumeTrace mLimit bps skipFirst currentCpu =
+  neFromSeq currentCpu <$> loop mLimit bps skipFirst (Seq.singleton currentCpu) currentCpu
+
+runTrace :: Maybe Int -> Executable -> CPU -> IO (NonEmpty CPU)
 runTrace mLimit prog startCPU = do
   cpuReady <- execStateT (runEmulator $ loadProgram prog >> setStatus Running >> setStopReason NoStop) startCPU
-  loop mLimit IntSet.empty False (Seq.singleton cpuReady) cpuReady
+  neFromSeq cpuReady <$> loop mLimit IntSet.empty False (Seq.singleton cpuReady) cpuReady
 
 viewRegisters :: V.Vector Word32 -> [Int32]
 viewRegisters regs = map fromIntegral (V.toList regs)
@@ -236,7 +242,7 @@ runInteractive mLimit = go
                   c
               newTrace <- resumeTrace mLimit IntSet.empty False startState
 
-              let fullTrace = past dbg <> newTrace
+              let fullTrace = NE.prependList (toList (past dbg)) newTrace
               let newDbg = initDebuggerAtEnd fullTrace
 
               go newDbg
