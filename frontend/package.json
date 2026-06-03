@@ -1,7 +1,8 @@
 {
   "name": "hart",
   "version": "0.1.0",
-  "description": "",
+  "description": "Desktop IDE and time-travel debugger for RISC-V assembly.",
+  "license": "GPL-3.0-only",
   "type": "module",
   "scripts": {
     "build-sidecar": "bash ./build-sidecar.sh",
@@ -13,7 +14,6 @@
     "lint": "eslint .",
     "tauri": "tauri"
   },
-  "license": "MIT",
   "dependencies": {
     "@fontsource/geist-sans": "^5.2.5",
     "@fontsource/jetbrains-mono": "^5.2.8",
