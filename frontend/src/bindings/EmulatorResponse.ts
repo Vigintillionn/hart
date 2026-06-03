@@ -2,7 +2,8 @@
 import type { CpuState } from "./CpuState";
 import type { CpuStatus } from "./CpuStatus";
 import type { EmulatorError } from "./EmulatorError";
+import type { ExtensionInfo } from "./ExtensionInfo";
 import type { Severity } from "./Severity";
 import type { SystemEvent } from "./SystemEvent";
 
-export type EmulatorResponse = { "type": "state", data: CpuState, } | { "type": "state_delta", pc: number, regs: Array<number>, csrs: Array<[number, number]>, cycles: number, status: CpuStatus, heapTop: number, systemLog: Array<SystemEvent>, memDelta: Array<[bigint, number]>, outputAppend: string, } | { "type": "loaded", state: CpuState, sourceMap: Array<[number, number]>, disasmMap: Array<[number, string]>, codeMap: Array<[number, number]>, } | { "type": "error", message: string | null, source: string | null, error: EmulatorError | null, } | { "type": "log", severity: Severity, tag: string, message: string, } | { "type": "need_input" };
+export type EmulatorResponse = { "type": "state", data: CpuState, } | { "type": "state_delta", pc: number, regs: Array<number>, csrs: Array<[number, number]>, cycles: number, status: CpuStatus, heapTop: number, systemLog: Array<SystemEvent>, memDelta: Array<[bigint, number]>, outputAppend: string, } | { "type": "loaded", state: CpuState, sourceMap: Array<[number, number]>, disasmMap: Array<[number, string]>, codeMap: Array<[number, number]>, } | { "type": "error", message: string | null, source: string | null, error: EmulatorError | null, } | { "type": "log", severity: Severity, tag: string, message: string, } | { "type": "extensions", data: Array<ExtensionInfo>, } | { "type": "need_input" };

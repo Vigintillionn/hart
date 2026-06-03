@@ -4,10 +4,12 @@
   import { modeStore, toggleMode } from "$lib/store/mode.svelte";
   import IconButton from "../../ui/IconButton.svelte";
   import StyleSettings from "./StyleSettings.svelte";
+  import ExtensionSettings from "./ExtensionSettings.svelte";
   import PanelControls from "./PanelControls.svelte";
 
   let viewOpen = $state(false);
   let showSettings = $state(false);
+  let showExtensions = $state(false);
 </script>
 
 <div class="flex items-center gap-0.5">
@@ -30,6 +32,16 @@
       onclick={() => (viewOpen = !viewOpen)}
     />
     <PanelControls bind:open={viewOpen} />
+  </div>
+
+  <div class="relative">
+    <IconButton
+      name="chip"
+      title="ISA extensions"
+      active={showExtensions}
+      onclick={() => (showExtensions = !showExtensions)}
+    />
+    <ExtensionSettings bind:open={showExtensions} />
   </div>
 
   <IconButton

@@ -35,6 +35,7 @@ export type IconName =
   | "save"
   | "sliders"
   | "panels"
+  | "chip"
   | "sun"
   | "moon"
   | "min"

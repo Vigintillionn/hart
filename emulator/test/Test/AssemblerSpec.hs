@@ -5,6 +5,7 @@ import Test.QuickCheck
 import Test.Arbitrary ()
 import Assembler
 import Decoder
+import Extension (allExtensions)
 
 spec :: Spec
 spec = do
@@ -12,7 +13,7 @@ spec = do
         it "decoding assembled instruction returns original instruction" $
             withMaxSuccess 10000 $ property $ \instr ->
                 let machineCode = assembleSome instr
-                    decoded     = decodeWord machineCode
+                    decoded     = decodeWord allExtensions machineCode
                 in case decoded of
                     Right res -> res `shouldBe` instr
                     Left err  -> expectationFailure $ "Decode failed: " ++ show err

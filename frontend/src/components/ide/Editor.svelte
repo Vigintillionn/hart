@@ -1,6 +1,7 @@
 <script lang="ts">
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { cpuStore } from "$lib/store/cpuStore.svelte";
+  import { extensionStore } from "$lib/store/extensionStore.svelte";
   import Monaco from "./Monaco.svelte";
   import Icon from "../Icon.svelte";
 
@@ -71,7 +72,7 @@
       {#if running}
         <Icon name="lock" class="h-3 w-3" /> running · read-only
       {:else}
-        <Icon name="pencil" class="h-3 w-3" /> editable · RV32IM
+        <Icon name="pencil" class="h-3 w-3" /> editable · {extensionStore.isaString}
       {/if}
     </div>
   </div>

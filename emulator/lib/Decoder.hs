@@ -6,6 +6,8 @@ import Data.Bits (Bits (shiftL, shiftR, (.&.), (.|.)))
 import Data.Int (Int32)
 import Data.Word (Word32)
 import Error (EmulatorError (..))
+import Extension (ExtensionSet, extensionCode, isEnabled)
+import Extension.Classify (instructionExtension)
 import ISA
 import Machine
 import Types
@@ -180,8 +182,11 @@ decodeSome w =
 
 -- | The decoder cannot know the program counter, so the 'EDecode' pc field is
 -- left 0 here; callers that have a pc (e.g. 'CPU.step') re-attach it.
-decodeWord :: Word32 -> Either EmulatorError (SomeInstruction Int)
-decodeWord w =
+decodeWord :: ExtensionSet -> Word32 -> Either EmulatorError (SomeInstruction Int)
+decodeWord exts w =
   case decodeSome w of
-    Just instr -> Right instr
+    Just instr
+      | isEnabled (instructionExtension instr) exts -> Right instr
+      | otherwise ->
+          Left (EDisabledExtension 0 w (extensionCode (instructionExtension instr)))
     Nothing -> Left (EDecode 0 w)

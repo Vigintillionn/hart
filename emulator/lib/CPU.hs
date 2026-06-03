@@ -334,7 +334,12 @@ step = do
           return False
         else do
           incCycles
-          case decodeWord w of
+          exts <- getExtensions
+          case decodeWord exts w of
+            Left (EDisabledExtension _ _ ext) -> do
+              logFaultAt currentPC (EDisabledExtension currentPC w ext)
+              setStatus Halted
+              return False
             Left _ -> do
               logFaultAt currentPC (EDecode currentPC w)
               setStatus Halted

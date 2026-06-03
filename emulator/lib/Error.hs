@@ -28,6 +28,9 @@ data AssemblyError
   | EmptyParserFailed
   | ParserFail String
   | EOF
+  | -- | a mnemonic that belongs to a disabled extension: its ISA code and the
+    -- offending mnemonic
+    ExtensionDisabled String String
   | Located Int AssemblyError
   deriving (Show, Eq)
 
@@ -65,6 +68,8 @@ data EmulatorError
     EInvalidInput Word32 String
   | -- | the cycle ceiling that was exceeded (execution was force-halted)
     ECycleLimit Int
+  | -- | pc, raw instruction word, ISA code of the disabled extension it needs
+    EDisabledExtension Word32 Word32 String
   | -- | source line + the underlying runtime fault that occurred there
     ELocated Int EmulatorError
   deriving (Show, Eq)
@@ -116,6 +121,8 @@ instance ToJSON AssemblyError where
     EmptyParserFailed -> kind "EmptyParserFailed"
     ParserFail t -> object ["kind" .= s "ParserFail", "text" .= t]
     EOF -> kind "EOF"
+    ExtensionDisabled ext mnem ->
+      object ["kind" .= s "ExtensionDisabled", "extension" .= ext, "mnemonic" .= mnem]
     Located ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON LinkError where
@@ -142,6 +149,8 @@ instance ToJSON EmulatorError where
     EOutOfMemory addr -> object ["kind" .= s "OutOfMemory", "address" .= addr]
     EInvalidInput pc inp -> object ["kind" .= s "InvalidInput", "pc" .= pc, "input" .= inp]
     ECycleLimit lim -> object ["kind" .= s "CycleLimit", "limit" .= lim]
+    EDisabledExtension pc raw ext ->
+      object ["kind" .= s "DisabledExtension", "pc" .= pc, "raw" .= raw, "extension" .= ext]
     ELocated ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON Notice where

@@ -6,6 +6,7 @@ import type { SourceMap, DisasmMap, CodeMap, TextRow } from "../types";
 import { terminalStore } from "./terminalStore.svelte";
 import { logStore, type LogLevel } from "./logStore.svelte";
 import { fileStore } from "./fileStore.svelte";
+import { extensionStore } from "./extensionStore.svelte";
 import { sendToHaskell } from "../util";
 import {
   emulatorErrorLine,
@@ -207,9 +208,13 @@ class CpuStore {
         } else if (response.type === "need_input") {
           if (this.cpuState) this.cpuState.status = "WaitingForInput";
           terminalStore.setActiveTab("program");
+        } else if (response.type === "extensions") {
+          extensionStore.setCatalogue(response.data);
         }
       },
     );
+
+    sendToHaskell("get_extensions");
   }
 
   /** Adopt a new CPU state and mirror its console + system log to the UI. */

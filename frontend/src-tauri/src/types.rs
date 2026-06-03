@@ -41,6 +41,10 @@ pub enum AssemblyError {
     },
     #[serde(rename = "EOF")]
     Eof,
+    ExtensionDisabled {
+        extension: String,
+        mnemonic: String,
+    },
     Located {
         line: i32,
         error: Box<AssemblyError>,
@@ -117,6 +121,14 @@ pub enum EmulatorError {
         pc: u32,
         input: String,
     },
+    CycleLimit {
+        limit: i32,
+    },
+    DisabledExtension {
+        pc: u32,
+        raw: u32,
+        extension: String,
+    },
     Located {
         line: i32,
         error: Box<EmulatorError>,
@@ -130,7 +142,10 @@ pub enum Notice {
     ProgramExitedNormally,
     /// `code` is the POSIX exit status (low 8 bits of a0); `raw` is the full a0
     /// register value the program returned.
-    ProgramExited { code: u32, raw: u32 },
+    ProgramExited {
+        code: u32,
+        raw: u32,
+    },
     BreakpointHit,
 }
 
@@ -159,6 +174,16 @@ pub struct CpuState {
     pub output_buffer: String,
     #[serde(rename = "systemLog", default)]
     pub system_log: Vec<SystemEvent>,
+}
+
+c#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct ExtensionInfo {
+    pub code: String,
+    pub name: String,
+    pub summary: String,
+    pub mandatory: bool,
+    pub enabled: bool,
 }
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
@@ -208,6 +233,8 @@ pub enum EmulatorResponse {
         tag: String,
         message: String,
     },
+    #[serde(rename = "extensions")]
+    Extensions { data: Vec<ExtensionInfo> },
     #[serde(rename = "need_input")]
     NeedInput,
 }

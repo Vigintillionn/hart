@@ -16,7 +16,10 @@ instance Arbitrary Register where
         return $ mkReg n
 
 instance Arbitrary ROp where
-    arbitrary = elements [ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU]
+    arbitrary = elements
+        [ ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU      -- base I
+        , MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU         -- M extension
+        ]
 
 instance Arbitrary IArithOp where
     arbitrary = elements [ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU]

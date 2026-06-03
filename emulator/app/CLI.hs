@@ -2,6 +2,7 @@ module CLI (runCLI) where
 
 import Parser (parse)
 import Linker (resolve)
+import Extension (defaultExtensions)
 import Machine (emptyCPU)
 import Debugger ( runInteractive, runTrace, initDebuggerAtEnd )
 import Render (renderAssemblyError, renderLinkError)
@@ -23,7 +24,7 @@ runCLI maxCycles filepath = do
 
     let cycleLimit = if maxCycles <= 0 then Nothing else Just maxCycles
 
-    case parse sourceCode of
+    case parse defaultExtensions sourceCode of
         Left err -> putStrLn $ "Parse error: " ++ renderAssemblyError err
         Right inst -> case resolve inst of
             Left err        -> putStrLn $ "Link error: " ++ renderLinkError err

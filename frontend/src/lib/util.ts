@@ -44,7 +44,7 @@ export const STACK_TOP = 0x7fffffff;
 
 export async function sendToHaskell(
   command: string,
-  data?: string | number[],
+  data?: string | number[] | string[],
 ) {
   const payload = data !== undefined ? { command, data } : { command };
   try {

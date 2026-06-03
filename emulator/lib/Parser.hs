@@ -2,9 +2,13 @@ module Parser (parse) where
 
 import Control.Applicative
 import Control.Monad (void)
+import Data.Bifunctor (second)
 import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit)
 import Data.Map.Strict qualified as M
+import Data.Maybe (mapMaybe)
 import Error (AssemblyError (..))
+import Extension (Extension, ExtensionSet, extensionCode, isEnabled)
+import Extension.Classify (HasExtension (..))
 import GHC.Base (when)
 import Machine
 import Numeric (readHex)
@@ -415,77 +419,123 @@ parsePseudoBranchCompare op = do
   args <- parseBTypeOperands
   return $ op (b_rs1 args) (b_rs2 args) (b_imm args)
 
-parseInstruction :: Parser (ArchInstr 'Parsed)
-parseInstruction =
+rOpTable :: [(String, ROp)]
+rOpTable =
+  [ ("add", ADD),
+    ("sub", SUB),
+    ("xor", XOR),
+    ("or", OR),
+    ("and", AND),
+    ("sll", SLL),
+    ("srl", SRL),
+    ("sra", SRA),
+    ("slt", SLT),
+    ("sltu", SLTU),
+    ("mul", MUL),
+    ("mulh", MULH),
+    ("mulhsu", MULHSU),
+    ("mulhu", MULHU),
+    ("div", DIV),
+    ("divu", DIVU),
+    ("rem", REM),
+    ("remu", REMU)
+  ]
+
+iArithTable :: [(String, IArithOp)]
+iArithTable =
+  [ ("addi", ADDI),
+    ("xori", XORI),
+    ("ori", ORI),
+    ("andi", ANDI),
+    ("slli", SLLI),
+    ("srli", SRLI),
+    ("srai", SRAI),
+    ("slti", SLTI),
+    ("sltiu", SLTIU)
+  ]
+
+iLoadTable :: [(String, ILoadOp)]
+iLoadTable =
+  [ ("lbu", LBU),
+    ("lhu", LHU),
+    ("lb", LB),
+    ("lh", LH),
+    ("lw", LW)
+  ]
+
+iJmpTable :: [(String, IJmpOp)]
+iJmpTable = [("jalr", JALR)]
+
+bTable :: [(String, BOp)]
+bTable =
+  [ ("bltu", BLTU),
+    ("bgeu", BGEU),
+    ("beq", BEQ),
+    ("bne", BNE),
+    ("blt", BLT),
+    ("bge", BGE)
+  ]
+
+sTable :: [(String, SOp)]
+sTable = [("sb", SB), ("sh", SH), ("sw", SW)]
+
+uTable :: [(String, UOp)]
+uTable = [("lui", LUI), ("auipc", AUIPC)]
+
+jTable :: [(String, JOp)]
+jTable = [("jal", JAL)]
+
+sysImmTable :: [(String, SysIOp)]
+sysImmTable = [("csrrwi", CSRRWI), ("csrrsi", CSRRSI), ("csrrci", CSRRCI)]
+
+sysTable :: [(String, SysOp)]
+sysTable = [("csrrw", CSRRW), ("csrrs", CSRRS), ("csrrc", CSRRC)]
+
+trapTable :: [(String, TrapOp)]
+trapTable = [("ecall", ECALL), ("ebreak", EBREAK)]
+
+keepEnabled :: (HasExtension op) => ExtensionSet -> [(String, op)] -> [(String, op)]
+keepEnabled exts = filter (\(_, op) -> isEnabled (extensionOf op) exts)
+
+classifiedMnemonics :: [(String, Extension)]
+classifiedMnemonics =
+  concat
+    [ tag rOpTable,
+      tag iArithTable,
+      tag iLoadTable,
+      tag iJmpTable,
+      tag bTable,
+      tag sTable,
+      tag uTable,
+      tag jTable,
+      tag sysImmTable,
+      tag sysTable,
+      tag trapTable
+    ]
+  where
+    tag :: (HasExtension op) => [(String, op)] -> [(String, Extension)]
+    tag = map (second extensionOf)
+
+parseInstruction :: ExtensionSet -> Parser (ArchInstr 'Parsed)
+parseInstruction exts =
   choice $
     concat
-      [ map (\(n, op) -> rType n (RType op)) rOps,
-        map (\(n, op) -> iArithType n (ArithI op)) iArithOps,
-        map (\(n, op) -> iLoadType n (LoadI op)) iLoadOps,
-        map (\(n, op) -> iJmpType n (JumpI op)) iJmpOps,
-        map (\(n, op) -> bType n (BType op)) bOps,
-        map (\(n, op) -> sType n (SType op)) sOps,
-        map (\(n, op) -> uType n (UType op)) uOps,
-        map (\(n, op) -> jType n (JType op)) jOps,
+      [ map (\(n, op) -> rType n (RType op)) (keep rOpTable),
+        map (\(n, op) -> iArithType n (ArithI op)) (keep iArithTable),
+        map (\(n, op) -> iLoadType n (LoadI op)) (keep iLoadTable),
+        map (\(n, op) -> iJmpType n (JumpI op)) (keep iJmpTable),
+        map (\(n, op) -> bType n (BType op)) (keep bTable),
+        map (\(n, op) -> sType n (SType op)) (keep sTable),
+        map (\(n, op) -> uType n (UType op)) (keep uTable),
+        map (\(n, op) -> jType n (JType op)) (keep jTable),
         map (uncurry pseudoType) pseudoOps,
-        map (\(n, op) -> keyword n >> commit (parseSystemImm op)) sysImmOps,
-        map (\(n, op) -> keyword n >> commit (parseSystem op)) sysOps,
-        map (\(n, op) -> keyword n >> parseTrap op) trapOps
+        map (\(n, op) -> keyword n >> commit (parseSystemImm op)) (keep sysImmTable),
+        map (\(n, op) -> keyword n >> commit (parseSystem op)) (keep sysTable),
+        map (\(n, op) -> keyword n >> parseTrap op) (keep trapTable)
       ]
   where
-    rOps =
-      [ ("add", ADD),
-        ("sub", SUB),
-        ("xor", XOR),
-        ("or", OR),
-        ("and", AND),
-        ("sll", SLL),
-        ("srl", SRL),
-        ("sra", SRA),
-        ("slt", SLT),
-        ("sltu", SLTU),
-        ("mul", MUL),
-        ("mulh", MULH),
-        ("mulhsu", MULHSU),
-        ("mulhu", MULHU),
-        ("div", DIV),
-        ("divu", DIVU),
-        ("rem", REM),
-        ("remu", REMU)
-      ]
-    iArithOps =
-      [ ("addi", ADDI),
-        ("xori", XORI),
-        ("ori", ORI),
-        ("andi", ANDI),
-        ("slli", SLLI),
-        ("srli", SRLI),
-        ("srai", SRAI),
-        ("slti", SLTI),
-        ("sltiu", SLTIU)
-      ]
-    iLoadOps =
-      [ ("lbu", LBU),
-        ("lhu", LHU),
-        ("lb", LB),
-        ("lh", LH),
-        ("lw", LW)
-      ]
-    iJmpOps = [("jalr", JALR)]
-    bOps =
-      [ ("bltu", BLTU),
-        ("bgeu", BGEU),
-        ("beq", BEQ),
-        ("bne", BNE),
-        ("blt", BLT),
-        ("bge", BGE)
-      ]
-    sOps = [("sb", SB), ("sh", SH), ("sw", SW)]
-    uOps = [("lui", LUI), ("auipc", AUIPC)]
-    jOps = [("jal", JAL)]
-    sysImmOps = [("csrrwi", CSRRWI), ("csrrsi", CSRRSI), ("csrrci", CSRRCI)]
-    sysOps = [("csrrw", CSRRW), ("csrrs", CSRRS), ("csrrc", CSRRC)]
-    trapOps = [("ecall", ECALL), ("ebreak", EBREAK)]
+    keep :: (HasExtension op) => [(String, op)] -> [(String, op)]
+    keep = keepEnabled exts
     pseudoOps =
       [ ("nop", parseNop),
         ("mv", parsePseudoDoubleReg P_MV),
@@ -546,27 +596,46 @@ parseDirective =
       lexeme (string ".align") *> (DirAlign <$> immediate)
     ]
 
-parseStatement :: Parser Statement
-parseStatement =
+parseStatement :: ExtensionSet -> Parser Statement
+parseStatement exts =
   (StmtDirective <$> parseDirective)
-    <|> (StmtInstr <$> parseInstruction)
+    <|> (StmtInstr <$> parseInstruction exts)
+    <|> disabledExtensionInstr exts
     <|> unknownInstr
+
+mnemonicLike :: Parser String
+mnemonicLike = (:) <$> satisfy isAlpha <*> many (satisfy isIdentChar)
 
 unknownInstr :: Parser Statement
 unknownInstr = lookAhead mnemonicLike >>= failHard . UnknownInstruction
+
+-- | Recognise a mnemonic that would be valid but belongs to an extension the
+-- user has switched off, and report it with a dedicated error rather than the
+-- generic "unknown instruction"
+disabledExtensionInstr :: ExtensionSet -> Parser Statement
+disabledExtensionInstr exts = case disabled of
+  [] -> empty
+  ms -> do
+    name <- lookAhead mnemonicLike
+    case lookup name ms of
+      Just ext -> failHard (ExtensionDisabled (extensionCode ext) name)
+      Nothing -> empty
   where
-    mnemonicLike = (:) <$> satisfy isAlpha <*> many (satisfy isIdentChar)
+    disabled = mapMaybe keepDisabled classifiedMnemonics
+    keepDisabled (n, ext)
+      | isEnabled ext exts = Nothing
+      | otherwise = Just (n, ext)
 
 getLineNum :: Parser Int
 getLineNum = Parser $ \l s -> Right (l, l, s)
 
-parseLine :: Parser (Int, SourceLine)
-parseLine = do
+parseLine :: ExtensionSet -> Parser (Int, SourceLine)
+parseLine exts = do
   ln <- getLineNum
   sc
   l <- optional labelDef
   sc
-  i <- optional parseStatement
+  i <- optional (parseStatement exts)
   sc
   _ <- optional comment
 
@@ -575,16 +644,16 @@ parseLine = do
     _ -> void (char '\n') <|> eof
   return (ln, (l, i))
 
-parseProgram :: Parser [(Int, SourceLine)]
-parseProgram = do
-  l <- many parseLine
+parseProgram :: ExtensionSet -> Parser [(Int, SourceLine)]
+parseProgram exts = do
+  l <- many (parseLine exts)
   eof
   return $ filter (not . isEmpty) l
   where
     isEmpty (_, (Nothing, Nothing)) = True
     isEmpty _ = False
 
-parse :: String -> Either AssemblyError [(Int, SourceLine)]
-parse src = case runParser parseProgram 1 src of
+parse :: ExtensionSet -> String -> Either AssemblyError [(Int, SourceLine)]
+parse exts src = case runParser (parseProgram exts) 1 src of
   Right (instr, _, _) -> Right instr
   Left (PErr _ ln e) -> Left (Located ln e)

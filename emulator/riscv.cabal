@@ -89,6 +89,8 @@ library
                       Kernel
                       Machine
                       ISA
+                      Extension
+                      Extension.Classify
     hs-source-dirs:   lib 
 
 executable hart-emulator

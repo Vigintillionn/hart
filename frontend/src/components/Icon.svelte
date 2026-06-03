@@ -98,6 +98,11 @@
   {:else if name === "panels"}
     <rect x="3.5" y="4.5" width="17" height="15" rx="2" />
     <path d="M14 4.5v15" />
+  {:else if name === "chip"}
+    <rect x="7" y="7" width="10" height="10" rx="1.5" />
+    <path
+      d="M10 2.5v2.5M14 2.5v2.5M10 19v2.5M14 19v2.5M2.5 10H5M2.5 14H5M19 10h2.5M19 14h2.5"
+    />
   {:else if name === "sun"}
     <circle cx="12" cy="12" r="4" />
     <path

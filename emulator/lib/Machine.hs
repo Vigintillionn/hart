@@ -63,6 +63,7 @@ import Data.Vector.Unboxed ((//))
 import Data.Vector.Unboxed qualified as V
 import Data.Word (Word16, Word32, Word8)
 import Error (EmulatorError (..), Notice, SystemEvent (..))
+import Extension (ExtensionSet, defaultExtensions)
 import System.IO (Handle, IOMode (..), hClose, openFile)
 import System.IO.Error (tryIOError)
 
@@ -88,6 +89,9 @@ class (Monad m) => MonadCPU m where
   getStatus :: m RunStatus
   setStatus :: RunStatus -> m ()
   setStopReason :: StopReason -> m ()
+
+  getExtensions :: m ExtensionSet
+  setExtensions :: ExtensionSet -> m ()
 
   consolePrintLn :: String -> m ()
   consolePrint :: String -> m ()
@@ -157,7 +161,8 @@ data CPU = CPU
     nextFD :: !Int,
     outputBuffer :: !Output,
     systemLog :: ![SystemEvent],
-    inputBuffer :: !(Maybe String)
+    inputBuffer :: !(Maybe String),
+    enabledExts :: !ExtensionSet
   }
 
 signedRegs :: CPU -> [Int32]
@@ -203,6 +208,9 @@ instance MonadCPU Emulator where
   getStatus = gets status
   setStatus s = modify' $ \cpu -> cpu {status = s}
   setStopReason r = modify' $ \cpu -> cpu {stopReason = r}
+
+  getExtensions = gets enabledExts
+  setExtensions e = modify' $ \cpu -> cpu {enabledExts = e}
 
   consolePrintLn m = modify' $ \cpu -> cpu {outputBuffer = appendOutput (m ++ "\n") (outputBuffer cpu)}
   consolePrint m = modify' $ \cpu -> cpu {outputBuffer = appendOutput m (outputBuffer cpu)}
@@ -344,7 +352,8 @@ emptyCPU =
       nextFD = 3,
       outputBuffer = emptyOutput,
       systemLog = [],
-      inputBuffer = Nothing
+      inputBuffer = Nothing,
+      enabledExts = defaultExtensions
     }
 
 incPC :: (MonadCPU m) => m ()

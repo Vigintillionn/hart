@@ -192,7 +192,7 @@ runInteractive mLimit = go
       let instrStr =
             if w == 0
               then "NOP / HALTED"
-              else case decodeWord w of
+              else case decodeWord (enabledExts c) w of
                 Left err -> "<" ++ renderEmulatorError err ++ ">"
                 Right inst -> disassemble inst
 

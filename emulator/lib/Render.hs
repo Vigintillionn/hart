@@ -28,6 +28,8 @@ renderAssemblyError = go
         | null t -> "syntax error"
         | otherwise -> "syntax error near `" ++ t ++ "`"
       EOF -> "unexpected end of input"
+      ExtensionDisabled ext mnem ->
+        "`" ++ mnem ++ "` requires the " ++ ext ++ " extension, which is disabled"
 
 renderLinkError :: LinkError -> String
 renderLinkError = go
@@ -67,6 +69,14 @@ renderEmulatorError e = case e of
     "Invalid integer input " ++ show inp ++ " at " ++ hex pc
   ECycleLimit lim ->
     "Cycle limit exceeded (" ++ show lim ++ " cycles); execution halted (possible infinite loop)"
+  EDisabledExtension pc raw ext ->
+    "Instruction at "
+      ++ hex pc
+      ++ " (raw: "
+      ++ hex raw
+      ++ ") requires the "
+      ++ ext
+      ++ " extension, which is disabled"
 
 renderNotice :: Notice -> String
 renderNotice n = case n of

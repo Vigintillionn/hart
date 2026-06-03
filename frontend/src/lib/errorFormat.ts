@@ -24,6 +24,8 @@ export function formatAssemblyError(e: AssemblyError): string {
       return e.text ? `syntax error near \`${e.text.trim()}\`` : "syntax error";
     case "EOF":
       return "unexpected end of input";
+    case "ExtensionDisabled":
+      return `\`${e.mnemonic.trim()}\` requires the ${e.extension} extension, which is disabled`;
   }
 }
 
@@ -68,6 +70,10 @@ export function formatEmulatorError(e: EmulatorError): string {
       return `Out of memory: sbrk to ${hex(e.address)} collided with the stack`;
     case "InvalidInput":
       return `Invalid integer input \`${e.input.trim()}\` at ${hex(e.pc)}`;
+    case "CycleLimit":
+      return `Cycle limit exceeded (${e.limit} cycles); execution halted (possible infinite loop)`;
+    case "DisabledExtension":
+      return `Instruction at ${hex(e.pc)} (raw: ${hex(e.raw)}) requires the ${e.extension} extension, which is disabled`;
   }
 }
 
@@ -115,6 +121,10 @@ export function emulatorErrorTag(e: EmulatorError): string {
       return "MEMORY";
     case "InvalidInput":
       return "INPUT";
+    case "CycleLimit":
+      return "CYCLES";
+    case "DisabledExtension":
+      return "EXT";
   }
 }
 
