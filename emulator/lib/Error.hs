@@ -76,8 +76,9 @@ data Severity = Info | Warning | SevError
 data Notice
   = -- | `ecall` exit (syscall 10)
     ProgramExitedNormally
-  | -- | `ecall` exit with code (syscall 93)
-    ProgramExited Word32
+  | -- | `ecall` exit with code (syscall 93): the POSIX exit status (low 8
+    -- bits of a0) and the raw a0 register value
+    ProgramExited Word32 Word32
   | -- | `ebreak`
     BreakpointHit
   deriving (Show, Eq)
@@ -146,7 +147,7 @@ instance ToJSON EmulatorError where
 instance ToJSON Notice where
   toJSON n = case n of
     ProgramExitedNormally -> kind "ProgramExitedNormally"
-    ProgramExited code -> object ["kind" .= s "ProgramExited", "code" .= code]
+    ProgramExited code raw -> object ["kind" .= s "ProgramExited", "code" .= code, "raw" .= raw]
     BreakpointHit -> kind "BreakpointHit"
 
 instance ToJSON SystemEvent where

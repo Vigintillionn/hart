@@ -128,7 +128,9 @@ pub enum EmulatorError {
 #[serde(tag = "kind")]
 pub enum Notice {
     ProgramExitedNormally,
-    ProgramExited { code: u32 },
+    /// `code` is the POSIX exit status (low 8 bits of a0); `raw` is the full a0
+    /// register value the program returned.
+    ProgramExited { code: u32, raw: u32 },
     BreakpointHit,
 }
 

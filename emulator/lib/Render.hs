@@ -71,7 +71,7 @@ renderEmulatorError e = case e of
 renderNotice :: Notice -> String
 renderNotice n = case n of
   ProgramExitedNormally -> "Program exited normally"
-  ProgramExited code -> "Program exited with code: " ++ show code
+  ProgramExited code raw -> "Program exited with code: " ++ show code ++ " (raw: " ++ show raw ++ ")"
   BreakpointHit -> "Breakpoint hit"
 
 renderSystemEvent :: SystemEvent -> String

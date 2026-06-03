@@ -128,7 +128,7 @@ handleSyscall = do
       code <- getReg a0
       let exitCode = code .&. 0xFF
       consolePrintLn $ "Program exited with code: " ++ show exitCode
-      logNotice (ProgramExited code)
+      logNotice (ProgramExited exitCode code)
       return Terminate
     214 -> do
       -- sys_brk
