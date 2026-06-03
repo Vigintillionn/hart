@@ -96,9 +96,9 @@ haltCycleLimit limit = do
 
 illegalInstruction :: (MonadCPU m) => Word32 -> Word32 -> m ()
 illegalInstruction currentPC raw = do
-  setCSR 0x341 currentPC -- mepc
-  setCSR 0x342 trapIllegalInstr -- mcause
-  setCSR 0x343 raw -- mtval
+  setCSR mepc currentPC
+  setCSR mcause trapIllegalInstr
+  setCSR mtval raw
   logFaultAt currentPC (EIllegalInstruction currentPC raw)
   setStatus Halted
 

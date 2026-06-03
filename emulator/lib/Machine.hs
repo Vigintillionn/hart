@@ -31,6 +31,10 @@ module Machine
     trapStoreMisaligned,
     trapInstrMisaligned,
     trapIllegalInstr,
+    mepc,
+    mcause,
+    mtval,
+    mtvec,
     entryPoint,
     stackTop,
     heapBase,
@@ -303,6 +307,12 @@ trapInstrMisaligned, trapIllegalInstr :: Word32
 trapInstrMisaligned = 0
 trapIllegalInstr = 2
 
+mepc, mcause, mtval, mtvec :: Int
+mepc = 0x341
+mcause = 0x342
+mtval = 0x343
+mtvec = 0x305
+
 mkRegister :: Int -> Maybe Register
 mkRegister n
   | n >= 0 && n < 32 = Just (Reg n)
@@ -396,11 +406,6 @@ takeTrap causeCode currentPC tval = do
     _ -> return ()
 
   return $ Jump target
-  where
-    mepc = 0x341
-    mcause = 0x342
-    mtval = 0x343
-    mtvec = 0x305
 
 logFaultAt :: (MonadCPU m) => Word32 -> EmulatorError -> m ()
 logFaultAt pc e = do
