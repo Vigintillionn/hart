@@ -120,6 +120,19 @@ spec = do
       regU cpu a0 `shouldBe` 0xFFFFFF80
       regU cpu a1 `shouldBe` 0x80
 
+    it "LH sign-extends while LHU zero-extends" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "li t1, 0x200",
+              "li t0, 0x8001",
+              "sh t0, 0(t1)",
+              "lh a0, 0(t1)", -- 0x8001 sign-extended
+              "lhu a1, 0(t1)" -- 0x8001 zero-extended
+            ]
+      regU cpu a0 `shouldBe` 0xFFFF8001
+      regU cpu a1 `shouldBe` 0x8001
+
   describe "control flow" $ do
     it "runs a counting loop with branches and a jump" $ do
       -- sum of 1..5 == 15

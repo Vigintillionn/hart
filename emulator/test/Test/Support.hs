@@ -5,8 +5,11 @@ module Test.Support
 
     -- * Execution
     runProgram,
+    runProgramInput,
     regU,
     regS,
+    csr,
+    output,
 
     -- * Inspection
     reg,
@@ -23,6 +26,7 @@ import CPU (loadProgram, step)
 import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT)
 import Data.Int (Int32)
+import Data.IntMap.Strict qualified as M
 import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Error (AssemblyError (..), LinkError (..))
@@ -43,7 +47,13 @@ link src = case parse defaultExtensions src of
   Right p -> resolve p
 
 runProgram :: String -> IO CPU
-runProgram src = execStateT (runEmulator go) emptyCPU
+runProgram = runFrom emptyCPU
+
+runProgramInput :: String -> String -> IO CPU
+runProgramInput input = runFrom emptyCPU {inputBuffer = Just input}
+
+runFrom :: CPU -> String -> IO CPU
+runFrom cpu0 src = execStateT (runEmulator go) cpu0
   where
     go = do
       loadProgram (assemble src)
@@ -59,6 +69,14 @@ regU cpu i = regs cpu V.! i
 
 regS :: CPU -> Int -> Int32
 regS cpu i = fromIntegral (regU cpu i)
+
+-- | Read a CSR by address, defaulting to 0 when it was never written.
+csr :: CPU -> Int -> Word32
+csr cpu addr = M.findWithDefault 0 addr (csrs cpu)
+
+-- | The program's accumulated console output.
+output :: CPU -> String
+output = renderOutput . outputBuffer
 
 reg :: Int -> Register
 reg n = case mkRegister n of
