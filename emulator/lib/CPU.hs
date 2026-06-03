@@ -353,6 +353,7 @@ step = do
                   return False
                 Breakpoint -> do
                   setStatus Paused
+                  setStopReason OnEbreak
                   return False
                 RequestInput -> do
                   setStatus WaitingForInput

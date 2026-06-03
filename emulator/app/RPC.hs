@@ -13,10 +13,10 @@ import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
-import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
+import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
 import Error (EmulatorError (..), Severity (..))
 import Linker (Executable (..), resolve)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, emptyCPU, incPC, outputDelta, signedRegs)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), StopReason (..), appendOutput, emptyCPU, incPC, outputDelta, signedRegs)
 import Numeric (showHex)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
@@ -229,22 +229,22 @@ rpcLoop bps lastSent dbg = do
                     then do
                       lastSent' <- sendState lastSent False c
                       rpcLoop bps lastSent' dbg
-                    else do
-                      atBreak <- isAtBreakpoint c
-                      if atBreak
+                    else
+                      if stopReason c == OnEbreak
                         then do
                           steppedState <-
                             execStateT
                               ( runEmulator $ do
                                   incPC
                                   setStatus Paused
+                                  setStopReason NoStop
                               )
                               c
                           let newDbg = dbg {past = past dbg Seq.|> c, current = steppedState, future = Seq.Empty}
                           lastSent' <- sendState lastSent False steppedState
                           rpcLoop bps lastSent' newDbg
                         else do
-                          startState <- execStateT (runEmulator $ setStatus Running) c
+                          startState <- execStateT (runEmulator $ setStatus Running >> setStopReason NoStop) c
                           (_, nextState) <- runStateT (runEmulator step) startState
                           let finalState =
                                 if status nextState == Running
@@ -273,6 +273,7 @@ rpcLoop bps lastSent dbg = do
                             cpu
                               { inputBuffer = Just text,
                                 status = Running,
+                                stopReason = NoStop,
                                 outputBuffer = appendOutput (text ++ "\n") (outputBuffer cpu)
                               }
                       )
@@ -302,12 +303,12 @@ executeRun bps lastSent dbg = do
       lastSent' <- sendState lastSent False c
       rpcLoop bps lastSent' dbg
     else do
-      atBreak <- isAtBreakpoint c
       startState <-
         execStateT
           ( runEmulator $ do
-              when atBreak incPC
+              when (stopReason c == OnEbreak) incPC
               setStatus Running
+              setStopReason NoStop
           )
           c
 

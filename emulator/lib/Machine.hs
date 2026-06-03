@@ -6,6 +6,7 @@ module Machine
     unReg,
     PCUpdate (..),
     RunStatus (..),
+    StopReason (..),
     CPU (..),
     Output,
     emptyOutput,
@@ -82,6 +83,7 @@ class (Monad m) => MonadCPU m where
   incCycles :: m ()
   getStatus :: m RunStatus
   setStatus :: RunStatus -> m ()
+  setStopReason :: StopReason -> m ()
 
   consolePrintLn :: String -> m ()
   consolePrint :: String -> m ()
@@ -107,6 +109,9 @@ newtype Register = Reg {unReg :: Int} deriving (Show, Eq, Ord)
 data PCUpdate = Advance | Jump Word32 | Terminate | Breakpoint | RequestInput
 
 data RunStatus = Running | Halted | Paused | WaitingForInput
+  deriving (Show, Eq)
+
+data StopReason = NoStop | OnEbreak | OnAddrBreakpoint
   deriving (Show, Eq)
 
 instance ToJSON RunStatus where
@@ -142,6 +147,7 @@ data CPU = CPU
     sourceMap :: !(M.IntMap Int),
     cycles :: !Int,
     status :: !RunStatus,
+    stopReason :: !StopReason,
     heapTop :: !Word32,
     fileMap :: !(M.IntMap Handle),
     nextFD :: !Int,
@@ -192,6 +198,7 @@ instance MonadCPU Emulator where
   incCycles = modify' $ \cpu -> cpu {cycles = cycles cpu + 1}
   getStatus = gets status
   setStatus s = modify' $ \cpu -> cpu {status = s}
+  setStopReason r = modify' $ \cpu -> cpu {stopReason = r}
 
   consolePrintLn m = modify' $ \cpu -> cpu {outputBuffer = appendOutput (m ++ "\n") (outputBuffer cpu)}
   consolePrint m = modify' $ \cpu -> cpu {outputBuffer = appendOutput m (outputBuffer cpu)}
@@ -321,6 +328,7 @@ emptyCPU =
       sourceMap = M.empty,
       cycles = 0,
       status = Paused,
+      stopReason = NoStop,
       heapTop = heapBase,
       fileMap = M.empty,
       nextFD = 3,

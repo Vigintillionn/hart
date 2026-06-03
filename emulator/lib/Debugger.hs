@@ -13,8 +13,9 @@ import Data.Sequence qualified as Seq
 import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Decoder (decodeWord)
+import Error (Notice (..))
 import Linker (Executable)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), incPC)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), StopReason (..), incPC)
 import Numeric (readHex)
 import Render (renderEmulatorError, renderSystemEvent)
 import System.IO (hReady, stdin)
@@ -83,8 +84,9 @@ rewind dbg = case past dbg of
 -- spin forever. 'Nothing' means unbounded.
 loop :: Maybe Int -> IntSet -> Bool -> Seq CPU -> CPU -> IO (Seq CPU)
 loop mLimit bps skipFirst acc curr
-  | not skipFirst && status curr == Running && atBreakpoint bps curr =
-      return (markLastPaused acc)
+  | not skipFirst && status curr == Running && atBreakpoint bps curr = do
+      noted <- execStateT (runEmulator (logNotice BreakpointHit)) curr
+      return (setLast acc (noted {status = Paused, stopReason = OnAddrBreakpoint}))
   | otherwise = do
       (stepRunning, stepped) <- runStateT (runEmulator step) curr
 
@@ -113,9 +115,9 @@ loop mLimit bps skipFirst acc curr
 atBreakpoint :: IntSet -> CPU -> Bool
 atBreakpoint bps c = IntSet.member (fromIntegral (pc c)) bps
 
-markLastPaused :: Seq CPU -> Seq CPU
-markLastPaused (rest :|> c) = rest |> c {status = Paused}
-markLastPaused Empty = Empty
+setLast :: Seq CPU -> CPU -> Seq CPU
+setLast (rest :|> _) c = rest |> c
+setLast Empty c = Seq.singleton c
 
 resumeTrace :: Maybe Int -> IntSet -> Bool -> CPU -> IO (Seq CPU)
 resumeTrace mLimit bps skipFirst currentCpu =
@@ -123,7 +125,7 @@ resumeTrace mLimit bps skipFirst currentCpu =
 
 runTrace :: Maybe Int -> Executable -> CPU -> IO (Seq CPU)
 runTrace mLimit prog startCPU = do
-  cpuReady <- execStateT (runEmulator $ loadProgram prog >> setStatus Running) startCPU
+  cpuReady <- execStateT (runEmulator $ loadProgram prog >> setStatus Running >> setStopReason NoStop) startCPU
   loop mLimit IntSet.empty False (Seq.singleton cpuReady) cpuReady
 
 viewRegisters :: V.Vector Word32 -> [Int32]
@@ -143,13 +145,6 @@ viewMemory c startAddr len =
       ascPart = map (\b -> let ch = chr (fromIntegral b) in if isPrint ch then ch else '.') bytes
       hexWidth = max 0 (len * 3 - 1)
    in printf "0x%08x:  %-*s  |%s|" startAddr hexWidth hexPart ascPart
-
-isAtBreakpoint :: CPU -> IO Bool
-isAtBreakpoint c = do
-  w <- evalStateT (runEmulator fetch) c
-  return $ case decodeWord w of
-    Right (SomeInstruction (Trap EBREAK)) -> True
-    _ -> False
 
 isHalted :: CPU -> IO Bool
 isHalted c = do
@@ -199,12 +194,13 @@ runInteractive mLimit = go
               putStrLn ">> Execution Finished. Cannot step."
               go dbg
             _ -> do
-              atBreak <- isAtBreakpoint c
+              let atBreak = stopReason c == OnEbreak
               startState <-
                 execStateT
                   ( runEmulator $ do
                       when atBreak incPC
                       setStatus Running
+                      setStopReason NoStop
                   )
                   c
               (_, nextState) <- runStateT (runEmulator step) startState
@@ -226,7 +222,7 @@ runInteractive mLimit = go
               putStrLn ">> Execution Finished (Halted)."
               go dbg
             _ -> do
-              atBreak <- isAtBreakpoint c
+              let atBreak = stopReason c == OnEbreak
               if atBreak
                 then putStrLn ">> Resuming from breakpoint..."
                 else putStrLn ">> Resuming..."
@@ -235,6 +231,7 @@ runInteractive mLimit = go
                   ( runEmulator $ do
                       when atBreak incPC
                       setStatus Running
+                      setStopReason NoStop
                   )
                   c
               newTrace <- resumeTrace mLimit IntSet.empty False startState
