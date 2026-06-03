@@ -46,8 +46,8 @@ Grab the build for your platform from the [Releases][releases] page:
 The emulator is bundled inside the app — there's nothing else to install.
 
 > Builds aren't code-signed yet, so the OS may warn that HART is from an
-> unidentified developer. On macOS, right-click the app → **Open**; on Windows,
-> choose **More info → Run anyway**.
+> unidentified developer. On macOS, right-click the app -> **Open**; on Windows,
+> choose **More info -> Run anyway**.
 
 ### Build from source
 

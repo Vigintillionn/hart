@@ -144,6 +144,7 @@ runImmediateOp op args = do
   let imm = fromIntegral $ i_imm args
   setReg (i_rd args) (r `op` imm)
 
+{-# ANN runLoadOp ("HLint: ignore Use odd" :: String) #-}
 runLoadOp :: (MonadCPU m) => ILoadOp -> ITypeArgs Int -> m PCUpdate
 runLoadOp op args = do
   base <- getReg (i_rs1 args)
@@ -216,6 +217,7 @@ executeBType (BType op args) = do
       alignedJump currentPC target (return ())
     else return Advance
 
+{-# ANN executeSType ("HLint: ignore Use odd" :: String) #-}
 executeSType :: (MonadCPU m) => Instruction 'S Int -> m PCUpdate
 executeSType (SType op args) = do
   val <- getReg $ s_rs2 args

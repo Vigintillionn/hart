@@ -37,9 +37,8 @@ jobs:
         run: pnpm lint
 
   hlint:
-    name: hlint (advisory)
+    name: hlint
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 

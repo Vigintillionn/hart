@@ -133,7 +133,7 @@ loop mLimit bps skipFirst acc curr
             then do
               ready <- hReady stdin
               if ready
-                then return (newAcc `seq` newAcc)
+                then return newAcc
                 else newAcc `seq` loop mLimit bps False newAcc next
             else newAcc `seq` loop mLimit bps False newAcc next
         else return newAcc
