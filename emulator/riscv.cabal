@@ -108,6 +108,11 @@ test-suite hart-emulator-test
     main-is:          Spec.hs
     other-modules:    Test.Arbitrary
                       Test.AssemblerSpec
-    build-depends:    hart-emulator,  
+                      Test.Support
+                      Test.ParserSpec
+                      Test.LinkerSpec
+                      Test.ExtensionSpec
+                      Test.ExecutionSpec
+    build-depends:    hart-emulator,
                       hspec,
                       QuickCheck
