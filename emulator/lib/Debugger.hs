@@ -14,7 +14,7 @@ import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Decoder (decodeWord)
 import Linker (Executable)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), clearTrapState, getCSR, incPC, trapBreakpointM)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), incPC)
 import Numeric (readHex)
 import Render (renderEmulatorError, renderSystemEvent)
 import System.IO (hReady, stdin)
@@ -123,7 +123,7 @@ resumeTrace mLimit bps skipFirst currentCpu =
 
 runTrace :: Maybe Int -> Executable -> CPU -> IO (Seq CPU)
 runTrace mLimit prog startCPU = do
-  cpuReady <- execStateT (runEmulator $ loadProgram prog) startCPU
+  cpuReady <- execStateT (runEmulator $ loadProgram prog >> setStatus Running) startCPU
   loop mLimit IntSet.empty False (Seq.singleton cpuReady) cpuReady
 
 viewRegisters :: V.Vector Word32 -> [Int32]
@@ -145,14 +145,11 @@ viewMemory c startAddr len =
    in printf "0x%08x:  %-*s  |%s|" startAddr hexWidth hexPart ascPart
 
 isAtBreakpoint :: CPU -> IO Bool
-isAtBreakpoint = evalStateT (runEmulator check)
-  where
-    check :: (MonadCPU m) => m Bool
-    check = do
-      cause <- getCSR 0x342 -- mcause
-      epc <- getCSR 0x341 -- mepc
-      currentPC <- getPC
-      return (cause == trapBreakpointM && epc == currentPC)
+isAtBreakpoint c = do
+  w <- evalStateT (runEmulator fetch) c
+  return $ case decodeWord w of
+    Right (SomeInstruction (Trap EBREAK)) -> True
+    _ -> False
 
 isHalted :: CPU -> IO Bool
 isHalted c = do
@@ -206,7 +203,7 @@ runInteractive mLimit = go
               startState <-
                 execStateT
                   ( runEmulator $ do
-                      when atBreak (incPC >> clearTrapState)
+                      when atBreak incPC
                       setStatus Running
                   )
                   c
@@ -236,7 +233,7 @@ runInteractive mLimit = go
               startState <-
                 execStateT
                   ( runEmulator $ do
-                      when atBreak (incPC >> clearTrapState)
+                      when atBreak incPC
                       setStatus Running
                   )
                   c

@@ -30,7 +30,6 @@ module Machine
     trapStoreMisaligned,
     trapInstrMisaligned,
     trapIllegalInstr,
-    clearTrapState,
     entryPoint,
     stackTop,
     heapBase,
@@ -296,11 +295,6 @@ trapStoreMisaligned = 6
 trapInstrMisaligned, trapIllegalInstr :: Word32
 trapInstrMisaligned = 0
 trapIllegalInstr = 2
-
-clearTrapState :: (MonadCPU m) => m ()
-clearTrapState = do
-  setCSR 0x342 0 -- mcause
-  setCSR 0x341 0 -- mepc
 
 mkRegister :: Int -> Maybe Register
 mkRegister n

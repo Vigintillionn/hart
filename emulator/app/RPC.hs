@@ -16,7 +16,7 @@ import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, isAtBreakpoint, resumeTrace, rewind, stepBack, stepForward)
 import Error (EmulatorError (..), Severity (..))
 import Linker (Executable (..), resolve)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, clearTrapState, emptyCPU, incPC, outputDelta, signedRegs)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), appendOutput, emptyCPU, incPC, outputDelta, signedRegs)
 import Numeric (showHex)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
@@ -237,7 +237,6 @@ rpcLoop bps lastSent dbg = do
                             execStateT
                               ( runEmulator $ do
                                   incPC
-                                  clearTrapState
                                   setStatus Paused
                               )
                               c
@@ -307,9 +306,7 @@ executeRun bps lastSent dbg = do
       startState <-
         execStateT
           ( runEmulator $ do
-              when atBreak $ do
-                incPC
-                clearTrapState
+              when atBreak incPC
               setStatus Running
           )
           c
