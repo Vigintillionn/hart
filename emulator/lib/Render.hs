@@ -43,6 +43,7 @@ renderLinkError = go
 
 renderEmulatorError :: EmulatorError -> String
 renderEmulatorError e = case e of
+  ELocated ln inner -> "line " ++ show ln ++ ": " ++ renderEmulatorError inner
   EParse a -> "Parse error: " ++ renderAssemblyError a
   ELink l -> "Link error: " ++ renderLinkError l
   EDecode pc raw -> "Invalid instruction at " ++ hex pc ++ " (raw: " ++ hex raw ++ ")"

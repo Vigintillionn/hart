@@ -93,16 +93,17 @@ illegalInstruction currentPC raw = do
   setCSR 0x341 currentPC -- mepc
   setCSR 0x342 trapIllegalInstr -- mcause
   setCSR 0x343 raw -- mtval
-  logFault (EIllegalInstruction currentPC raw)
+  logFaultAt currentPC (EIllegalInstruction currentPC raw)
   setStatus Halted
 
 loadProgram :: (MonadCPU m) => Executable -> m ()
-loadProgram (Executable instr dataMem _) = do
+loadProgram (Executable instr dataMem srcMap) = do
   setPC entryPoint
 
   let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
   traverse_ (uncurry storeWord) assembled
   setInstrMem (M.fromList [(fromIntegral addr, w) | (addr, w) <- assembled])
+  setSourceMap (M.fromList [(fromIntegral addr, ln) | (addr, ln) <- srcMap])
 
   traverse_ (\(addr, val) -> storeByte (fromIntegral addr) (fromIntegral val)) (M.toList dataMem)
 
@@ -333,7 +334,7 @@ step = do
           incCycles
           case decodeWord w of
             Left _ -> do
-              logFault (EDecode currentPC w)
+              logFaultAt currentPC (EDecode currentPC w)
               setStatus Halted
               return False
             Right instr -> do

@@ -46,6 +46,8 @@ export function formatLinkError(e: LinkError): string {
 
 export function formatEmulatorError(e: EmulatorError): string {
   switch (e.kind) {
+    case "Located":
+      return formatEmulatorError(e.error);
     case "ParseError":
       return formatAssemblyError(e.error);
     case "LinkError":
@@ -79,7 +81,11 @@ export function formatNotice(n: Notice): string {
 }
 
 export function formatSystemEvent(ev: SystemEvent): string {
-  if (ev.fault) return formatEmulatorError(ev.fault);
+  if (ev.fault) {
+    const line = emulatorErrorLine(ev.fault);
+    const msg = formatEmulatorError(ev.fault);
+    return line !== null ? `At line ${line}: ${msg}` : msg;
+  }
   if (ev.notice) return formatNotice(ev.notice);
   return "";
 }
@@ -87,6 +93,8 @@ export function formatSystemEvent(ev: SystemEvent): string {
 /** Short system-log tag derived from an emulator error's kind. */
 export function emulatorErrorTag(e: EmulatorError): string {
   switch (e.kind) {
+    case "Located":
+      return emulatorErrorTag(e.error);
     case "ParseError":
       return "PARSE";
     case "LinkError":
@@ -121,8 +129,13 @@ export function linkErrorLine(e: LinkError): number | null {
   return e.kind === "Located" ? e.line : null;
 }
 
-/** The source line an emulator error points at, if any (compile errors). */
+/**
+ * The source line an emulator error points at, if any. Runtime faults are
+ * wrapped in `Located` by the backend (via the pc→line map); compile errors
+ * carry the line inside their `ParseError`/`LinkError` payload.
+ */
 export function emulatorErrorLine(e: EmulatorError): number | null {
+  if (e.kind === "Located") return e.line;
   if (e.kind === "ParseError") return assemblyErrorLine(e.error);
   if (e.kind === "LinkError") return linkErrorLine(e.error);
   return null;

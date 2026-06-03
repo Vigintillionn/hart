@@ -11,6 +11,7 @@ module Machine
     emptyOutput,
     appendOutput,
     renderOutput,
+    outputDelta,
     Emulator (..),
     MonadCPU (..),
     emptyCPU,
@@ -42,6 +43,7 @@ module Machine
     zeroExt8,
     zeroExt16,
     takeTrap,
+    logFaultAt,
   )
 where
 
@@ -69,6 +71,9 @@ class (Monad m) => MonadCPU m where
 
   fetchInstr :: Word32 -> m (Maybe Word32)
   setInstrMem :: M.IntMap Word32 -> m ()
+
+  setSourceMap :: M.IntMap Int -> m ()
+  lookupSourceLine :: Word32 -> m (Maybe Int)
 
   getPC :: m Word32
   setPC :: Word32 -> m ()
@@ -120,6 +125,10 @@ appendOutput s (Output chunks) = Output (s : chunks)
 renderOutput :: Output -> String
 renderOutput (Output chunks) = concat (reverse chunks)
 
+outputDelta :: Output -> Output -> String
+outputDelta (Output oldC) (Output newC) =
+  concat (reverse (take (length newC - length oldC) newC))
+
 instance ToJSON Output where
   toJSON = toJSON . renderOutput
 
@@ -129,6 +138,7 @@ data CPU = CPU
     csrs :: !(M.IntMap Word32),
     mem :: !(M.IntMap Word8),
     imem :: !(M.IntMap Word32),
+    sourceMap :: !(M.IntMap Int),
     cycles :: !Int,
     status :: !RunStatus,
     heapTop :: !Word32,
@@ -168,6 +178,8 @@ instance MonadCPU Emulator where
   storeByte = sharedStoreByte
   fetchInstr a = gets $ M.lookup (fromIntegral a) . imem
   setInstrMem m = modify' $ \cpu -> cpu {imem = m}
+  setSourceMap m = modify' $ \cpu -> cpu {sourceMap = m}
+  lookupSourceLine a = gets $ M.lookup (fromIntegral a) . sourceMap
 
   -- TOOD: make others shared as well so we can have RPCEmulator easily reuse
   getPC = gets pc
@@ -304,6 +316,7 @@ emptyCPU =
       csrs = M.empty,
       mem = M.empty,
       imem = M.empty,
+      sourceMap = M.empty,
       cycles = 0,
       status = Paused,
       heapTop = 0x20000000,
@@ -366,10 +379,10 @@ takeTrap causeCode currentPC tval = do
   let target = if handlerAddr == 0 then 0x80000000 else handlerAddr
 
   case causeCode of
-    0 -> logFault (EInstrMisaligned currentPC tval)
-    2 -> logFault (EIllegalInstruction currentPC tval)
-    4 -> logFault (ELoadMisaligned currentPC tval)
-    6 -> logFault (EStoreMisaligned currentPC tval)
+    0 -> logFaultAt currentPC (EInstrMisaligned currentPC tval)
+    2 -> logFaultAt currentPC (EIllegalInstruction currentPC tval)
+    4 -> logFaultAt currentPC (ELoadMisaligned currentPC tval)
+    6 -> logFaultAt currentPC (EStoreMisaligned currentPC tval)
     _ -> return ()
 
   return $ Jump target
@@ -378,3 +391,8 @@ takeTrap causeCode currentPC tval = do
     mcause = 0x342
     mtval = 0x343
     mtvec = 0x305
+
+logFaultAt :: (MonadCPU m) => Word32 -> EmulatorError -> m ()
+logFaultAt pc e = do
+  mline <- lookupSourceLine pc
+  logFault (maybe e (`ELocated` e) mline)

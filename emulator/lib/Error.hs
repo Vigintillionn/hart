@@ -61,6 +61,8 @@ data EmulatorError
     EUnknownSyscall Word32 Word32
   | -- | requested break address
     EOutOfMemory Word32
+  | -- | source line + the underlying runtime fault that occurred there
+    ELocated Int EmulatorError
   deriving (Show, Eq)
 
 data Severity = Info | Warning | SevError
@@ -83,10 +85,14 @@ data SystemEvent
 
 eventSeverity :: SystemEvent -> Severity
 eventSeverity (SysNotice _) = Info
-eventSeverity (SysFault e) = case e of
-  EUnknownSyscall _ _ -> Warning
-  EOutOfMemory _ -> Warning
-  _ -> SevError
+eventSeverity (SysFault e) = faultSeverity e
+  where
+    -- look through the 'ELocated' wrapper so a fault keeps its severity once a
+    -- source line is attached
+    faultSeverity (ELocated _ inner) = faultSeverity inner
+    faultSeverity (EUnknownSyscall _ _) = Warning
+    faultSeverity (EOutOfMemory _) = Warning
+    faultSeverity _ = SevError
 
 instance ToJSON Severity where
   toJSON Info = "info"
@@ -129,6 +135,7 @@ instance ToJSON EmulatorError where
     EStoreMisaligned pc addr -> object ["kind" .= s "StoreMisaligned", "pc" .= pc, "address" .= addr]
     EUnknownSyscall pc a7 -> object ["kind" .= s "UnknownSyscall", "pc" .= pc, "syscall" .= a7]
     EOutOfMemory addr -> object ["kind" .= s "OutOfMemory", "address" .= addr]
+    ELocated ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON Notice where
   toJSON n = case n of

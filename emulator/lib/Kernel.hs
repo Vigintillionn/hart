@@ -136,7 +136,8 @@ handleSyscall = do
         else
           if requestedAddr >= currentSP
             then do
-              logFault (EOutOfMemory requestedAddr)
+              pc <- getPC
+              logFaultAt pc (EOutOfMemory requestedAddr)
               setReg a0 currentBreak
             else do
               setHeapTop requestedAddr
@@ -145,7 +146,7 @@ handleSyscall = do
       return Advance
     _ -> do
       pc <- getPC
-      logFault (EUnknownSyscall pc syscall)
+      logFaultAt pc (EUnknownSyscall pc syscall)
       return Advance
 
 readString :: (MonadCPU m) => Word32 -> Int -> m String
