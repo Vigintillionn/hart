@@ -149,20 +149,34 @@ compileAndLoad sourceCode = do
           sendResponse $ ResFault (ELink err)
           return Nothing
         Right executable -> do
-          readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
-          let n = length (execProgram executable)
-          sendLog Info "BUILD" ("Loaded " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ " at 0x0")
-          let disasmMap =
-                zipWith
-                  (\instr (addr, _) -> (addr, disassemble instr))
-                  (execProgram executable)
-                  (execSourceMap executable)
-          let codeMap =
-                zipWith
-                  (\instr (addr, _) -> (addr, assembleSome instr))
-                  (execProgram executable)
-                  (execSourceMap executable)
-          return $ Just (initDebugger (Seq.singleton readyCpu), execSourceMap executable, disasmMap, codeMap)
+          let prog = execProgram executable
+              srcMap = execSourceMap executable
+              n = length prog
+          if n /= length srcMap
+            then do
+              sendResponse $
+                ResError
+                  ( "Internal error: instruction count ("
+                      ++ show n
+                      ++ ") does not match source-map size ("
+                      ++ show (length srcMap)
+                      ++ ")"
+                  )
+              return Nothing
+            else do
+              readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU
+              sendLog Info "BUILD" ("Loaded " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ " at 0x0")
+              let disasmMap =
+                    zipWith
+                      (\instr (addr, _) -> (addr, disassemble instr))
+                      prog
+                      srcMap
+              let codeMap =
+                    zipWith
+                      (\instr (addr, _) -> (addr, assembleSome instr))
+                      prog
+                      srcMap
+              return $ Just (initDebugger (Seq.singleton readyCpu), srcMap, disasmMap, codeMap)
 
 rpcLoop :: IntSet -> Maybe CPU -> Debugger -> IO ()
 rpcLoop bps lastSent dbg = do
@@ -267,7 +281,7 @@ rpcLoop bps lastSent dbg = do
 
                   lastSent1 <- sendState lastSent False startState
 
-                  newTrace <- resumeTrace bps (atBreakpoint bps startState) startState
+                  newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
 
                   let fullTrace = past dbg <> newTrace
                   let newDbg = initDebuggerAtEnd fullTrace
@@ -301,7 +315,7 @@ executeRun bps lastSent dbg = do
           c
 
       lastSent1 <- sendState lastSent False startState
-      newTrace <- resumeTrace bps (atBreakpoint bps startState) startState
+      newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
 
       let fullTrace = past dbg <> newTrace
       let newDbg = initDebuggerAtEnd fullTrace
