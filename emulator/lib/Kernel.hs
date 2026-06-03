@@ -10,155 +10,175 @@ import Data.Word (Word32)
 import Error (EmulatorError (..), Notice (..))
 import Machine
 
+data Syscall
+  = PrintInt -- 1
+  | PrintString -- 4
+  | ReadInt -- 5
+  | ReadString -- 8
+  | Exit -- 10
+  | PrintChar -- 11
+  | OpenAt -- 56
+  | Close -- 57
+  | Read -- 63
+  | Write -- 64
+  | SysExit -- 93
+  | Brk -- 214
+
+syscallOf :: Word32 -> Maybe Syscall
+syscallOf n = case n of
+  1 -> Just PrintInt
+  4 -> Just PrintString
+  5 -> Just ReadInt
+  8 -> Just ReadString
+  10 -> Just Exit
+  11 -> Just PrintChar
+  56 -> Just OpenAt
+  57 -> Just Close
+  63 -> Just Read
+  64 -> Just Write
+  93 -> Just SysExit
+  214 -> Just Brk
+  _ -> Nothing
+
 handleSyscall :: (MonadCPU m) => m PCUpdate
 handleSyscall = do
   syscall <- getReg a7
+  case syscallOf syscall of
+    Just call -> dispatch call
+    Nothing -> do
+      pc <- getPC
+      logFaultAt pc (EUnknownSyscall pc syscall)
+      return Advance
 
-  case syscall of
-    1 -> do
-      -- print_int
-      val <- getReg a0
-      consolePrint $ show (fromIntegral val :: Int32)
+dispatch :: (MonadCPU m) => Syscall -> m PCUpdate
+dispatch PrintInt = do
+  val <- getReg a0
+  consolePrint $ show (fromIntegral val :: Int32)
+  return Advance
+dispatch PrintString = do
+  ptr <- getReg a0
+  str <- readCString ptr
+  consolePrint str
+  return Advance
+dispatch ReadInt = do
+  mInput <- getInputBuffer
+  case mInput of
+    Nothing -> return RequestInput
+    Just input -> case reads input of
+      [(n, rest)] | all isSpace rest -> do
+        setReg a0 (fromIntegral (n :: Int))
+        clearInputBuffer
+        return Advance
+      _ -> do
+        clearInputBuffer
+        pc <- getPC
+        logFaultAt pc (EInvalidInput pc input)
+        return Terminate
+dispatch ReadString = do
+  bufAddr <- getReg a0
+  maxLen <- getReg a1
+  mInput <- getInputBuffer
+  case mInput of
+    Nothing -> return RequestInput
+    Just input -> do
+      let toWrite = take (fromIntegral maxLen - 1) (input ++ "\n")
+      let bytes = map (fromIntegral . fromEnum) toWrite ++ [0]
+      zipWithM_ (\offset b -> storeByte (bufAddr + offset) b) [0 ..] bytes
+      clearInputBuffer
       return Advance
-    4 -> do
-      -- print_string
-      ptr <- getReg a0
-      str <- readCString ptr
-      consolePrint str
-      return Advance
-    5 -> do
-      -- read_int
-      mInput <- getInputBuffer
-      case mInput of
-        Nothing -> return RequestInput
-        Just input -> case reads input of
-          [(n, rest)] | all isSpace rest -> do
-            setReg a0 (fromIntegral (n :: Int))
-            clearInputBuffer
-            return Advance
-          _ -> do
-            clearInputBuffer
-            pc <- getPC
-            logFaultAt pc (EInvalidInput pc input)
-            return Terminate
-    8 -> do
-      -- read_string
-      bufAddr <- getReg a0
-      maxLen <- getReg a1
+dispatch Exit = do
+  consolePrintLn "Program exited normally"
+  logNotice ProgramExitedNormally
+  return Terminate
+dispatch PrintChar = do
+  charVal <- getReg a0
+  consolePrint [toEnum (fromIntegral (charVal .&. 0xFF))]
+  return Advance
+dispatch OpenAt = do
+  _ <- getReg a0 -- dirfd
+  ptr <- getReg a1 -- pointer to filename string
+  flags <- getReg a2 -- 0 = read, 1 = write, 2 = read/write
+  path <- readCString ptr
+  fd <- openHostFile path (fromIntegral flags)
+  setReg a0 (fromIntegral fd)
+  return Advance
+dispatch Close = do
+  fd <- getReg a0
+  res <- closeHostFile (fromIntegral fd)
+  setReg a0 (fromIntegral res)
+  return Advance
+dispatch Read = do
+  fd <- getReg a0
+  ptrAddr <- getReg a1
+  len <- getReg a2
+
+  if fd == 0
+    then do
       mInput <- getInputBuffer
       case mInput of
         Nothing -> return RequestInput
         Just input -> do
-          let toWrite = take (fromIntegral maxLen - 1) (input ++ "\n")
-          let bytes = map (fromIntegral . fromEnum) toWrite ++ [0]
-          zipWithM_ (\offset b -> storeByte (bufAddr + offset) b) [0 ..] bytes
+          let toWrite = take (fromIntegral len) (input ++ "\n")
+          let bytes = map (fromIntegral . fromEnum) toWrite
+          zipWithM_ (\offset b -> storeByte (ptrAddr + offset) b) [0 ..] bytes
+          setReg a0 (fromIntegral $ length bytes)
           clearInputBuffer
           return Advance
-    10 -> do
-      -- exit
-      consolePrintLn "Program exited normally"
-      logNotice ProgramExitedNormally
-      return Terminate
-    11 -> do
-      -- print_char
-      charVal <- getReg a0
-      consolePrint [toEnum (fromIntegral (charVal .&. 0xFF))]
+    else do
+      bytes <- readHostFile (fromIntegral fd) (fromIntegral len)
+      if null bytes
+        then setReg a0 0
+        else do
+          zipWithM_ (\offset b -> storeByte (ptrAddr + offset) (fromIntegral b)) [0 ..] bytes
+          setReg a0 (fromIntegral $ length bytes)
       return Advance
-    56 -> do
-      -- sys_openat
-      _ <- getReg a0 -- dirfd
-      ptr <- getReg a1 -- pointer to filename string
-      flags <- getReg a2 -- 0 = read, 1 = write, 2 = read/write
-      path <- readCString ptr
-      fd <- openHostFile path (fromIntegral flags)
-      setReg a0 (fromIntegral fd)
-      return Advance
-    57 -> do
-      -- sys_close
-      fd <- getReg a0
-      res <- closeHostFile (fromIntegral fd)
+dispatch Write = do
+  fd <- getReg a0
+  ptrAddr <- getReg a1
+  len <- getReg a2
+
+  if fd == 1 || fd == 2
+    then do
+      str <- readString ptrAddr (fromIntegral len)
+      consolePrint str
+
+      setReg a0 len
+    else do
+      bytes <- mapM (\i -> loadByte (ptrAddr + i)) (take (fromIntegral len) [0 ..])
+      res <- writeHostFile (fromIntegral fd) bytes
       setReg a0 (fromIntegral res)
-      return Advance
-    63 -> do
-      -- sys_read
-      fd <- getReg a0
-      ptrAddr <- getReg a1
-      len <- getReg a2
 
-      if fd == 0
+  return Advance
+dispatch SysExit = do
+  code <- getReg a0
+  let exitCode = code .&. 0xFF
+  consolePrintLn $ "Program exited with code: " ++ show exitCode
+  logNotice (ProgramExited exitCode code)
+  return Terminate
+dispatch Brk = do
+  requestedAddr <- getReg a0
+  currentBreak <- getHeapTop
+  currentSP <- getReg sp
+
+  if requestedAddr == 0
+    then
+      setReg a0 currentBreak
+    else
+      if requestedAddr >= currentSP
         then do
-          mInput <- getInputBuffer
-          case mInput of
-            Nothing -> return RequestInput
-            Just input -> do
-              let toWrite = take (fromIntegral len) (input ++ "\n")
-              let bytes = map (fromIntegral . fromEnum) toWrite
-              zipWithM_ (\offset b -> storeByte (ptrAddr + offset) b) [0 ..] bytes
-              setReg a0 (fromIntegral $ length bytes)
-              clearInputBuffer
-              return Advance
-        else do
-          bytes <- readHostFile (fromIntegral fd) (fromIntegral len)
-          if null bytes
-            then setReg a0 0
-            else do
-              zipWithM_ (\offset b -> storeByte (ptrAddr + offset) (fromIntegral b)) [0 ..] bytes
-              setReg a0 (fromIntegral $ length bytes)
-          return Advance
-    64 -> do
-      -- sys_write
-      fd <- getReg a0
-      ptrAddr <- getReg a1
-      len <- getReg a2
-
-      if fd == 1 || fd == 2
-        then do
-          str <- readString ptrAddr (fromIntegral len)
-          consolePrint str
-
-          setReg a0 len
-        else do
-          bytes <- mapM (\i -> loadByte (ptrAddr + i)) (take (fromIntegral len) [0 ..])
-          res <- writeHostFile (fromIntegral fd) bytes
-          setReg a0 (fromIntegral res)
-
-      return Advance
-    93 -> do
-      -- sys_exit
-      code <- getReg a0
-      let exitCode = code .&. 0xFF
-      consolePrintLn $ "Program exited with code: " ++ show exitCode
-      logNotice (ProgramExited exitCode code)
-      return Terminate
-    214 -> do
-      -- sys_brk
-      requestedAddr <- getReg a0
-      currentBreak <- getHeapTop
-      currentSP <- getReg sp
-
-      if requestedAddr == 0
-        then
+          -- growing into (or past) the stack
+          pc <- getPC
+          logFaultAt pc (EOutOfMemory requestedAddr)
           setReg a0 currentBreak
         else
-          if requestedAddr >= currentSP
-            then do
-              -- growing into (or past) the stack
-              pc <- getPC
-              logFaultAt pc (EOutOfMemory requestedAddr)
+          if requestedAddr < heapBase
+            then -- refuse to move the break below the heap origin
               setReg a0 currentBreak
-            else
-              if requestedAddr < heapBase
-                then -- refuse to move the break below the heap origin
-                  setReg a0 currentBreak
-                else do
-                  setHeapTop requestedAddr
-                  setReg a0 requestedAddr
+            else do
+              setHeapTop requestedAddr
+              setReg a0 requestedAddr
 
-      return Advance
-    _ -> do
-      pc <- getPC
-      logFaultAt pc (EUnknownSyscall pc syscall)
-      return Advance
+  return Advance
 
 readString :: (MonadCPU m) => Word32 -> Int -> m String
 readString addr len = do
