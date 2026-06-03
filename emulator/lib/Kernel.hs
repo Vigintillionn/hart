@@ -186,10 +186,10 @@ readString addr len = do
   return $ C8.unpack $ BS.pack bytes
 
 readCString :: (MonadCPU m) => Word32 -> m String
-readCString addr = do
-  b <- loadByte addr
-  if b == 0
-    then return ""
-    else do
-      rest <- readCString (addr + 1)
-      return (toEnum (fromIntegral b) : rest)
+readCString = go []
+  where
+    go acc addr = do
+      b <- loadByte addr
+      if b == 0
+        then return (reverse acc)
+        else go (toEnum (fromIntegral b) : acc) (addr + 1)
