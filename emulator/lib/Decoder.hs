@@ -152,16 +152,14 @@ decodeSystemType w = do
   let rs1Idx = getRs1 w
   rs1Reg <- mkRegister rs1Idx
 
-  let csrOp = matchOpF3 0x73 f3 :: Maybe SysOp
-  let csrIOp = matchOpF3 0x73 f3 :: Maybe SysIOp
-
-  case (csrOp, csrIOp) of
-    (Just op, _) -> Just $ System op (SysArgs rd imm12 rs1Reg)
-    (_, Just op) -> Just $ SystemI op (SysIArgs rd imm12 rs1Idx)
-    _ -> case (f3, imm12) of
-      (0, 0) -> Just $ Trap ECALL
-      (0, 1) -> Just $ Trap EBREAK
+  case f3 of
+    0 -> case imm12 of
+      0 -> Just $ Trap ECALL
+      1 -> Just $ Trap EBREAK
       _ -> Nothing
+    _
+      | f3 <= 3 -> (\op -> System op (SysArgs rd imm12 rs1Reg)) <$> matchOpF3 0x73 f3
+      | otherwise -> (\op -> SystemI op (SysIArgs rd imm12 rs1Idx)) <$> matchOpF3 0x73 f3
 
 decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =

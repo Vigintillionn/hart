@@ -1,6 +1,7 @@
 module ISA where
 
-import Data.List (find)
+import Data.Map.Strict (Map)
+import Data.Map.Strict qualified as Map
 import Data.Word (Word32)
 import Types
 
@@ -11,20 +12,17 @@ class (Enum a, Bounded a, Eq a) => RISCVEncoding a where
   getFunct7 :: a -> Word32
   getFunct7 _ = 0
 
+  opTableF3 :: Map (Word32, Word32) a
+  opTableF3 = Map.fromList [((getOpcode x, getFunct3 x), x) | x <- [minBound .. maxBound]]
+
+  opTableF7 :: Map (Word32, Word32, Word32) a
+  opTableF7 = Map.fromList [((getOpcode x, getFunct3 x, getFunct7 x), x) | x <- [minBound .. maxBound]]
+
 matchOp :: (RISCVEncoding a) => Word32 -> Word32 -> Word32 -> Maybe a
-matchOp op f3 f7 = find predicate [minBound .. maxBound]
-  where
-    predicate inst =
-      getOpcode inst == op
-        && getFunct3 inst == f3
-        && getFunct7 inst == f7
+matchOp op f3 f7 = Map.lookup (op, f3, f7) opTableF7
 
 matchOpF3 :: (RISCVEncoding a) => Word32 -> Word32 -> Maybe a
-matchOpF3 op f3 = find predicate [minBound .. maxBound]
-  where
-    predicate inst =
-      getOpcode inst == op
-        && getFunct3 inst == f3
+matchOpF3 op f3 = Map.lookup (op, f3) opTableF3
 
 instance RISCVEncoding ROp where
   getOpcode _ = 0x33
