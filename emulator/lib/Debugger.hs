@@ -1,4 +1,18 @@
-module Debugger where
+module Debugger
+  ( Debugger (..),
+    runInteractive,
+    runTrace,
+    resumeTrace,
+    initDebugger,
+    initDebuggerAtEnd,
+    extendBounded,
+    stepForward,
+    stepBack,
+    rewind,
+    atBreakpoint,
+    disassemble,
+  )
+where
 
 import CPU
 import Control.Monad (when)
@@ -58,6 +72,17 @@ boundHistory t
   | otherwise = t
   where
     extra = length t - maxHistory
+
+-- | Append a freshly-recorded trace onto prior history, keeping only the most
+-- recent 'maxHistory' states. The older prefix that would be dropped is never
+-- materialised: only the surviving tail of @history@ is converted and prepended,
+-- so we don't build (then immediately discard) the full concatenation.
+extendBounded :: Seq CPU -> NonEmpty CPU -> NonEmpty CPU
+extendBounded history newTrace =
+  NE.prependList (toList (Seq.drop dropCount history)) newTrace
+  where
+    keep = max 0 (maxHistory - length newTrace)
+    dropCount = Seq.length history - keep
 
 pauseIfRunning :: CPU -> CPU
 pauseIfRunning s
@@ -242,8 +267,7 @@ runInteractive mLimit = go
                   c
               newTrace <- resumeTrace mLimit IntSet.empty False startState
 
-              let fullTrace = NE.prependList (toList (past dbg)) newTrace
-              let newDbg = initDebuggerAtEnd fullTrace
+              let newDbg = initDebuggerAtEnd (extendBounded (past dbg) newTrace)
 
               go newDbg
         ["m", addrStr] -> do

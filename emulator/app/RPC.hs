@@ -8,15 +8,13 @@ import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT, modify, runStateT)
 import Data.Aeson
 import Data.ByteString.Lazy.Char8 qualified as BL
-import Data.Foldable (toList)
 import Data.IntMap.Strict qualified as M
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
 import Data.List.NonEmpty (NonEmpty (..))
-import Data.List.NonEmpty qualified as NE
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
-import Debugger (Debugger (..), atBreakpoint, disassemble, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
+import Debugger (Debugger (..), atBreakpoint, disassemble, extendBounded, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
 import Error (EmulatorError (..), Severity (..))
 import Linker (Executable (..), resolve)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), StopReason (..), appendOutput, emptyCPU, incPC, outputDelta, signedRegs)
@@ -286,8 +284,7 @@ rpcLoop bps lastSent dbg = do
 
                   newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
 
-                  let fullTrace = NE.prependList (toList (past dbg)) newTrace
-                  let newDbg = initDebuggerAtEnd fullTrace
+                  let newDbg = initDebuggerAtEnd (extendBounded (past dbg) newTrace)
 
                   let cFinal = current newDbg
                   lastSent2 <- sendState lastSent1 False cFinal
@@ -318,8 +315,7 @@ executeRun bps lastSent dbg = do
       lastSent1 <- sendState lastSent False startState
       newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
 
-      let fullTrace = NE.prependList (toList (past dbg)) newTrace
-      let newDbg = initDebuggerAtEnd fullTrace
+      let newDbg = initDebuggerAtEnd (extendBounded (past dbg) newTrace)
 
       let cFinal = current newDbg
       lastSent2 <- sendState lastSent1 False cFinal
