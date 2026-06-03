@@ -24,9 +24,6 @@ data Executable = Executable
   }
   deriving (Show)
 
-instrSize :: SomeInstruction a -> Int
-instrSize _ = 4
-
 stmtSize :: Int -> Statement -> Int
 stmtSize _ (StmtInstr i) = sum (map (const 4) (NE.toList $ lower i))
 stmtSize _ (StmtDirective (DirSection _)) = 0

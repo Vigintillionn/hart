@@ -177,11 +177,6 @@ viewMemory c startAddr len =
       hexWidth = max 0 (len * 3 - 1)
    in printf "0x%08x:  %-*s  |%s|" startAddr hexWidth hexPart ascPart
 
-isHalted :: CPU -> IO Bool
-isHalted c = do
-  w <- evalStateT (runEmulator fetch) c
-  return (w == 0)
-
 -- | Interactive trace debugger REPL. @mLimit@ is the optional cycle ceiling
 -- applied to the @[c]@ontinue command (so resuming a looping program can't
 -- hang the CLI); see 'loop'.

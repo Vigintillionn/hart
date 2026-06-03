@@ -185,6 +185,3 @@ decodeWord w =
   case decodeSome w of
     Just instr -> Right instr
     Nothing -> Left (EDecode 0 w)
-
-decode :: [Word32] -> Either EmulatorError Program
-decode = traverse decodeWord

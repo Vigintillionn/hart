@@ -151,6 +151,3 @@ assembleSome (SomeInstruction instr@(JType _ _)) = assembleJType instr
 assembleSome (SomeInstruction instr@(System _ _)) = assembleSystem instr
 assembleSome (SomeInstruction instr@(SystemI _ _)) = assembleSystem instr
 assembleSome (SomeInstruction instr@(Trap _)) = assembleSystem instr
-
-assemble :: Program -> [Word32]
-assemble = map assembleSome

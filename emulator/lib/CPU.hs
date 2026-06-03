@@ -1,7 +1,6 @@
 module CPU (loadProgram, step, fetch, haltCycleLimit) where
 
 import Assembler (assembleSome)
-import Control.Monad
 import Data.Bits (Bits (..))
 import Data.Foldable (traverse_)
 import Data.Int
@@ -71,9 +70,6 @@ remUnsigned :: Word32 -> Word32 -> Word32
 remUnsigned a b
   | b == 0 = a
   | otherwise = a `rem` b
-
-incr :: Word32 -> Int -> Word32
-incr w o = fromIntegral $ fromIntegral w + o
 
 fetch :: (MonadCPU m) => m Word32
 fetch = do
@@ -358,13 +354,3 @@ step = do
                 RequestInput -> do
                   setStatus WaitingForInput
                   return False
-
-run :: (MonadCPU m) => m ()
-run = do
-  running <- step
-  when running run
-
-runProgram :: (MonadCPU m) => Executable -> m ()
-runProgram p = do
-  loadProgram p
-  run

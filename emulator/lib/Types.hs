@@ -318,11 +318,5 @@ decodeCSRName addr =
     Just (name, _) -> name
     Nothing -> "0x" ++ showHex addr ""
 
-decodeCSR :: Int -> Maybe CSRName
-decodeCSR addr =
-  fst <$> find (\(_, a) -> a == addr) allPairs
-  where
-    allPairs = [(c, a) | c <- [minBound .. maxBound], let (_, a) = csrInfo c]
-
 allCSRs :: [(String, Int)]
 allCSRs = [csrInfo c | c <- [minBound .. maxBound]]
