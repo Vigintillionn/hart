@@ -49,7 +49,6 @@ module Machine
   )
 where
 
-import Control.Exception (SomeException, try)
 import Control.Monad.State.Strict
 import Data.Aeson (ToJSON (..), object, (.=))
 import Data.Bits (Bits (..))
@@ -61,6 +60,7 @@ import Data.Vector.Unboxed qualified as V
 import Data.Word (Word16, Word32, Word8)
 import Error (EmulatorError (..), Notice, SystemEvent (..))
 import System.IO (Handle, IOMode (..), hClose, openFile)
+import System.IO.Error (tryIOError)
 
 class (Monad m) => MonadCPU m where
   getReg :: Register -> m Word32
@@ -214,7 +214,7 @@ instance MonadCPU Emulator where
           | flags == 1 = WriteMode
           | otherwise = ReadWriteMode
 
-    res <- liftIO (try (openFile path mode) :: IO (Either SomeException Handle))
+    res <- liftIO (tryIOError (openFile path mode))
 
     case res of
       Left _ -> return (-1)
@@ -227,7 +227,7 @@ instance MonadCPU Emulator where
     case M.lookup fd mmap of
       Nothing -> return (-1)
       Just h -> do
-        _ <- liftIO (try (hClose h) :: IO (Either SomeException ()))
+        _ <- liftIO (tryIOError (hClose h))
         modify' $ \cpu -> cpu {fileMap = M.delete fd (fileMap cpu)}
         return 0
   readHostFile fd len = do
@@ -235,7 +235,7 @@ instance MonadCPU Emulator where
     case M.lookup fd mmap of
       Nothing -> return []
       Just h -> do
-        bytes <- liftIO (try (BS.hGet h len) :: IO (Either SomeException BS.ByteString))
+        bytes <- liftIO (tryIOError (BS.hGet h len))
         case bytes of
           Left _ -> return []
           Right b -> return (BS.unpack b)
@@ -245,7 +245,7 @@ instance MonadCPU Emulator where
     case M.lookup fd mmap of
       Nothing -> return (-1)
       Just h -> do
-        res <- liftIO (try (BS.hPut h (BS.pack bytes)) :: IO (Either SomeException ()))
+        res <- liftIO (tryIOError (BS.hPut h (BS.pack bytes)))
         case res of
           Left _ -> return (-1)
           Right _ -> return (length bytes)
