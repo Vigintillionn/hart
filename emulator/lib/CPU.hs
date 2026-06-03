@@ -88,6 +88,12 @@ alignedJump currentPC target onAligned
   | target .&. 0x3 /= 0 = takeTrap trapInstrMisaligned currentPC target
   | otherwise = onAligned >> return (Jump target)
 
+haltCycleLimit :: (MonadCPU m) => Int -> m ()
+haltCycleLimit limit = do
+  currentPC <- getPC
+  logFaultAt currentPC (ECycleLimit limit)
+  setStatus Halted
+
 illegalInstruction :: (MonadCPU m) => Word32 -> Word32 -> m ()
 illegalInstruction currentPC raw = do
   setCSR 0x341 currentPC -- mepc

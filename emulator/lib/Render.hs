@@ -65,6 +65,8 @@ renderEmulatorError e = case e of
     "Out of memory: sbrk to " ++ hex addr ++ " collided with the stack"
   EInvalidInput pc inp ->
     "Invalid integer input " ++ show inp ++ " at " ++ hex pc
+  ECycleLimit lim ->
+    "Cycle limit exceeded (" ++ show lim ++ " cycles); execution halted (possible infinite loop)"
 
 renderNotice :: Notice -> String
 renderNotice n = case n of

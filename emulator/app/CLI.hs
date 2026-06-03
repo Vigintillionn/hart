@@ -14,9 +14,14 @@ formatFreq hz
     | hz > 1000       = printf "%.2f kHz" (hz / 1000)
     | otherwise       = printf "%.0f Hz" hz
 
-runCLI :: FilePath -> IO ()
-runCLI filepath = do
+-- | Run the interactive CLI. @maxCycles@ bounds how many cycles the program
+-- may execute before it is force-halted (guards against infinite loops); a
+-- value @<= 0@ means unbounded.
+runCLI :: Int -> FilePath -> IO ()
+runCLI maxCycles filepath = do
     sourceCode <- readFile filepath
+
+    let cycleLimit = if maxCycles <= 0 then Nothing else Just maxCycles
 
     case parse sourceCode of
         Left err -> putStrLn $ "Parse error: " ++ renderAssemblyError err
@@ -26,7 +31,7 @@ runCLI filepath = do
                 putStrLn "---- EXECUTING ---"
 --                start <- getCurrentTime
 
-                trace <- runTrace resolved emptyCPU
+                trace <- runTrace cycleLimit resolved emptyCPU
 --                let finalState = last history
 --
 --                end <- getCurrentTime
@@ -46,4 +51,4 @@ runCLI filepath = do
 
                 putStrLn "---- LAUNCHING DEBUGGER ----"
                 let debugger = initDebuggerAtEnd trace
-                runInteractive debugger
+                runInteractive cycleLimit debugger
