@@ -53,6 +53,14 @@
     [activeIndex, options];
     measure();
   });
+
+  let animate = $state(false);
+  $effect(() => {
+    if (indicator.ready && !animate) {
+      const id = requestAnimationFrame(() => (animate = true));
+      return () => cancelAnimationFrame(id);
+    }
+  });
 </script>
 
 <div
@@ -64,9 +72,12 @@
   }}
 >
   <div
-    class="pointer-events-none absolute bg-surface-3 transition-all duration-200 ease-out {indicatorRounded} {indicator.ready
-      ? 'opacity-100'
-      : 'opacity-0'}"
+    class={[
+      "pointer-events-none absolute bg-control",
+      animate && "transition-all duration-200 ease-out",
+      indicatorRounded,
+      indicator.ready ? "opacity-100" : "opacity-0",
+    ]}
     style="left: {indicator.left}px; top: {indicator.top}px; width: {indicator.width}px; height: {indicator.height}px"
   ></div>
 

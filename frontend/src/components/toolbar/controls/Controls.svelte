@@ -1,15 +1,11 @@
 <script lang="ts">
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
-  import { modeStore, toggleMode } from "$lib/store/mode.svelte";
+  import { settingsStore } from "$lib/store/settingsStore.svelte";
   import IconButton from "../../ui/IconButton.svelte";
-  import StyleSettings from "./StyleSettings.svelte";
-  import ExtensionSettings from "./ExtensionSettings.svelte";
   import PanelControls from "./PanelControls.svelte";
 
   let viewOpen = $state(false);
-  let showSettings = $state(false);
-  let showExtensions = $state(false);
 </script>
 
 <div class="flex items-center gap-0.5">
@@ -34,31 +30,10 @@
     <PanelControls bind:open={viewOpen} />
   </div>
 
-  <div class="relative">
-    <IconButton
-      name="chip"
-      title="ISA extensions"
-      active={showExtensions}
-      onclick={() => (showExtensions = !showExtensions)}
-    />
-    <ExtensionSettings bind:open={showExtensions} />
-  </div>
-
   <IconButton
-    name={modeStore.mode === "light" ? "moon" : "sun"}
-    title={modeStore.mode === "light"
-      ? "Switch to dark mode"
-      : "Switch to light mode"}
-    onclick={toggleMode}
+    name="sliders"
+    title="Settings"
+    active={settingsStore.open}
+    onclick={() => settingsStore.toggle()}
   />
-
-  <div class="relative">
-    <IconButton
-      name="sliders"
-      title="Theme"
-      active={showSettings}
-      onclick={() => (showSettings = !showSettings)}
-    />
-    <StyleSettings bind:open={showSettings} />
-  </div>
 </div>

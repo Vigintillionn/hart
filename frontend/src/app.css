@@ -10,6 +10,7 @@
   --color-surface-2: #161619; /* titlebar / toolbar / elevated */
   --color-surface-3: #1d1d22; /* inputs / hover */
   --color-surface-4: #26262d; /* active hover */
+  --color-control: var(--color-surface-3); /* segmented-control pill */
 
   /* hairlines */
   --color-border: rgba(255, 255, 255, 0.065);
@@ -66,6 +67,7 @@
   --color-surface-2: #ececef; /* titlebar / toolbar / elevated */
   --color-surface-3: #e3e3e9; /* inputs / hover */
   --color-surface-4: #d6d7de; /* active hover */
+  --color-control: var(--color-surface-2); /* segmented-control pill */
 
   /* hairlines */
   --color-border: rgba(0, 32, 64, 0.12);

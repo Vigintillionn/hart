@@ -12,6 +12,7 @@
   import { layoutStore, PANE_KEYS } from "$lib/store/layoutStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
   import CollapsibleResizer from "../components/ui/CollapsibleResizer.svelte";
+  import SettingsWindow from "../components/settings/SettingsWindow.svelte";
 
   onMount(() => {
     cpuStore.initListener();
@@ -84,3 +85,5 @@
     </Pane>
   </PaneGroup>
 </div>
+
+<SettingsWindow />
