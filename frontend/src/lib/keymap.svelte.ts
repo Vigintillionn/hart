@@ -105,19 +105,42 @@ function canon(combo: string): string {
   return parts.join("+");
 }
 
+function formatPart(part: string): string {
+  const k = part.trim().toLowerCase();
+  if (k === "mod") return isMac ? "⌘" : "Ctrl";
+  if (k === "alt") return isMac ? "⌥" : "Alt";
+  if (k === "shift") return "⇧";
+  if (k === "space") return "␣";
+  if (k === "arrowup") return "↑";
+  if (k === "arrowdown") return "↓";
+  if (k === "arrowleft") return "←";
+  if (k === "arrowright") return "→";
+  if (k === "escape") return "Esc";
+  if (/^f\d+$/.test(k)) return k.toUpperCase();
+  return k.length === 1 ? k.toUpperCase() : k;
+}
+
+const GLYPHS = new Set(["⌘", "⌥", "⇧", "␣"]);
+export function isGlyph(token: string): boolean {
+  return GLYPHS.has(token);
+}
+
+export const ARROW_PATHS: Record<string, string> = {
+  "↑": "M12 19V6M7 11l5-5 5 5",
+  "↓": "M12 5v13M7 13l5 5 5-5",
+  "←": "M19 12H6M11 7l-5 5 5 5",
+  "→": "M5 12h13M13 7l5 5-5 5",
+};
+
 function format(combo: string): string {
-  const mod = isMac ? "⌘" : "Ctrl";
   return combo
     .split("+")
-    .map((p) => {
-      const k = p.trim().toLowerCase();
-      if (k === "mod") return mod;
-      if (k === "alt") return isMac ? "⌥" : "Alt";
-      if (k === "shift") return isMac ? "⇧" : "Shift";
-      if (/^f\d+$/.test(k)) return k.toUpperCase();
-      return k.length === 1 ? k.toUpperCase() : k;
-    })
+    .map(formatPart)
     .join(isMac ? "" : "+");
+}
+
+export function comboParts(combo: string): string[] {
+  return combo.split("+").filter(Boolean).map(formatPart);
 }
 
 const STORAGE_KEY = "hart:keybindings";
@@ -126,6 +149,9 @@ class Keymap {
   overrides = $state<Record<string, string>>(
     loadJSON<Record<string, string>>(STORAGE_KEY, {}),
   );
+
+  /** id of the command currently listening for a new binding, or null. */
+  capturing = $state<string | null>(null);
 
   public keysFor(id: string): string {
     if (id in this.overrides) return this.overrides[id];
@@ -137,8 +163,19 @@ class Keymap {
     return format(this.keysFor(id));
   }
 
+  /** display tokens for a command's binding, e.g. ["Ctrl", "B"] */
+  public partsFor(id: string): string[] {
+    return comboParts(this.keysFor(id));
+  }
+
   public rebind(id: string, combo: string) {
     this.overrides = { ...this.overrides, [id]: combo };
+    this.persist();
+  }
+
+  public resetBinding(id: string) {
+    const { [id]: _removed, ...rest } = this.overrides;
+    this.overrides = rest;
     this.persist();
   }
 
@@ -147,11 +184,32 @@ class Keymap {
     this.persist();
   }
 
+  public startCapture(id: string) {
+    this.capturing = id;
+  }
+
+  public cancelCapture() {
+    this.capturing = null;
+  }
+
+  public captureKeydown(e: KeyboardEvent): boolean {
+    if (!this.capturing) return false;
+    if (e.key === "Escape") {
+      this.cancelCapture();
+      return true;
+    }
+    if (["Shift", "Control", "Alt", "Meta"].includes(e.key)) return true;
+    this.rebind(this.capturing, eventToCombo(e));
+    this.cancelCapture();
+    return true;
+  }
+
   private persist() {
     saveJSON(STORAGE_KEY, this.overrides);
   }
 
   public handleKeydown = (e: KeyboardEvent) => {
+    if (this.capturing) return;
     const combo = eventToCombo(e);
     for (const cmd of COMMANDS) {
       if (canon(this.keysFor(cmd.id)) !== combo) continue;
