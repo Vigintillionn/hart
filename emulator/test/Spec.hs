@@ -2,6 +2,7 @@ import Test.Hspec
 import qualified Test.AssemblerSpec
 import qualified Test.CSRSpec
 import qualified Test.DebuggerSpec
+import qualified Test.DocSpec
 import qualified Test.ExecutionSpec
 import qualified Test.ExtensionSpec
 import qualified Test.KernelSpec
@@ -22,3 +23,4 @@ main = hspec $ do
     describe "Trap" Test.TrapSpec.spec
     describe "Debugger" Test.DebuggerSpec.spec
     describe "Wire" Test.WireSpec.spec
+    describe "Doc" Test.DocSpec.spec
