@@ -119,35 +119,37 @@
   let dragStartY = 0;
   let dragStartBase = 0;
 
-  const onDragMove = (e: MouseEvent) => {
+  const beginDrag = (e: PointerEvent, startBase: number) => {
+    follow = false;
+    dragging = true;
+    dragStartBase = startBase;
+    dragStartY = e.clientY;
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
+  };
+
+  const onDragMove = (e: PointerEvent) => {
     if (!dragging || usableTrack <= 0) return;
     const dFrac = (e.clientY - dragStartY) / usableTrack;
     base = clampBase(dragStartBase + dFrac * maxBase);
   };
 
-  const onDragEnd = () => {
+  const onDragEnd = (e: PointerEvent) => {
+    if (!dragging) return;
     dragging = false;
-    window.removeEventListener("mousemove", onDragMove);
-    window.removeEventListener("mouseup", onDragEnd);
+    const el = e.currentTarget as Element;
+    if (el.hasPointerCapture(e.pointerId))
+      el.releasePointerCapture(e.pointerId);
   };
 
-  const beginDrag = (startBase: number, clientY: number) => {
-    follow = false;
-    dragging = true;
-    dragStartBase = startBase;
-    dragStartY = clientY;
-    window.addEventListener("mousemove", onDragMove);
-    window.addEventListener("mouseup", onDragEnd);
-  };
-
-  const onThumbDown = (e: MouseEvent) => {
+  const onThumbDown = (e: PointerEvent) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    beginDrag(base, e.clientY);
+    beginDrag(e, base);
   };
 
-  const onTrackDown = (e: MouseEvent) => {
-    if (!trackNode || usableTrack <= 0) return;
+  const onTrackDown = (e: PointerEvent) => {
+    if (e.button !== 0 || !trackNode || usableTrack <= 0) return;
     const rect = trackNode.getBoundingClientRect();
     const frac = Math.min(
       1,
@@ -155,7 +157,7 @@
     );
     follow = false;
     base = clampBase(frac * maxBase);
-    beginDrag(base, e.clientY);
+    beginDrag(e, base);
   };
 </script>
 
@@ -251,7 +253,7 @@
     <div
       bind:this={trackNode}
       bind:clientHeight={trackH}
-      class="relative w-2.5 flex-none cursor-pointer border-l border-border outline-none focus-visible:bg-surface-2"
+      class="relative w-2.5 flex-none cursor-pointer touch-none border-l border-border outline-none focus-visible:bg-surface-2"
       role="scrollbar"
       aria-label="Memory scroll position — arrow, Page, Home/End keys"
       aria-controls="memory-view-grid"
@@ -260,16 +262,22 @@
       aria-valuemax={100}
       aria-valuenow={Math.round(scrollFrac * 100)}
       tabindex="0"
-      onmousedown={onTrackDown}
+      onpointerdown={onTrackDown}
+      onpointermove={onDragMove}
+      onpointerup={onDragEnd}
+      onpointercancel={onDragEnd}
       onkeydown={onKeydown}
     >
       <div
         aria-hidden="true"
-        class="absolute inset-x-0.5 rounded-full transition-colors {dragging
+        class="absolute inset-x-0.5 touch-none rounded-full transition-colors {dragging
           ? 'bg-thumb-active'
           : 'bg-thumb hover:bg-thumb-hover'}"
         style="top: {thumbTop}px; height: {THUMB_H}px;"
-        onmousedown={onThumbDown}
+        onpointerdown={onThumbDown}
+        onpointermove={onDragMove}
+        onpointerup={onDragEnd}
+        onpointercancel={onDragEnd}
       ></div>
     </div>
   </div>
