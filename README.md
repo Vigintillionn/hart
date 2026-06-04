@@ -106,6 +106,7 @@ Each subproject has its own README:
 - [ ] RV64I support
 - [ ] edit register/memory values from the UI while running
 - [ ] LUA for custom memory mapped I/O and custom syscalls
+- [ ] assemble/link multiple files
 
 ---
 
