@@ -4,7 +4,24 @@
   import TextInput from "../ui/TextInput.svelte";
   import AppearancePanel from "./AppearancePanel.svelte";
   import EditorPanel from "./EditorPanel.svelte";
+  import DisplayPanel from "./DisplayPanel.svelte";
+  import TerminalPanel from "./TerminalPanel.svelte";
+  import ShortcutsPanel from "./ShortcutsPanel.svelte";
   import ExtensionsPanel from "./ExtensionsPanel.svelte";
+
+  let confirmingReset = $state(false);
+  let confirmTimer: number;
+
+  function resetAll() {
+    if (!confirmingReset) {
+      confirmingReset = true;
+      confirmTimer = window.setTimeout(() => (confirmingReset = false), 3000);
+      return;
+    }
+    clearTimeout(confirmTimer);
+    confirmingReset = false;
+    settingsStore.resetAll();
+  }
 
   function onKeydown(e: KeyboardEvent) {
     if (settingsStore.open && e.key === "Escape") {
@@ -78,6 +95,28 @@
             </p>
           {/each}
         </nav>
+
+        <div class="flex-none border-t border-border p-2">
+          <button
+            onclick={resetAll}
+            class={[
+              "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
+              confirmingReset
+                ? "bg-red/15 text-red"
+                : "text-text-dim hover:bg-control/60 hover:text-text",
+            ]}
+          >
+            {#if confirmingReset}
+              <Icon name="trash" class="h-4 w-4 flex-none text-red" />
+            {:else}
+              <span
+                class="grid h-4 w-4 flex-none place-items-center text-text-faint"
+                aria-hidden="true">↻</span
+              >
+            {/if}
+            {confirmingReset ? "Click again to confirm" : "Reset all settings"}
+          </button>
+        </div>
       </aside>
 
       <div class="flex min-w-0 flex-1 flex-col">
@@ -104,6 +143,12 @@
             <AppearancePanel />
           {:else if settingsStore.active === "editor"}
             <EditorPanel />
+          {:else if settingsStore.active === "display"}
+            <DisplayPanel />
+          {:else if settingsStore.active === "terminal"}
+            <TerminalPanel />
+          {:else if settingsStore.active === "shortcuts"}
+            <ShortcutsPanel />
           {:else if settingsStore.active === "extensions"}
             <ExtensionsPanel />
           {/if}

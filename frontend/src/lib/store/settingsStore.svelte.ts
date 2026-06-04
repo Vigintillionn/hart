@@ -1,8 +1,21 @@
 import type { IconName } from "../types";
 import { extensionStore } from "./extensionStore.svelte";
+import { editorPrefs } from "./editorPrefs.svelte";
+import { displayStore } from "./displayStore.svelte";
+import { terminalStore } from "./terminalStore.svelte";
+import { modeStore } from "./mode.svelte";
+import { layoutStore } from "./layoutStore.svelte";
+import { resetThemes } from "../editor/theme.svelte";
+import { keymap, COMMANDS } from "../keymap.svelte";
 
 /** The categories shown in the settings window sidebar. */
-export type CategoryId = "appearance" | "editor" | "extensions";
+export type CategoryId =
+  | "appearance"
+  | "editor"
+  | "display"
+  | "terminal"
+  | "shortcuts"
+  | "extensions";
 
 export interface CategoryMeta {
   id: CategoryId;
@@ -21,6 +34,9 @@ export interface SettingDescriptor {
 export const SETTINGS_CATEGORIES: CategoryMeta[] = [
   { id: "appearance", label: "Appearance", icon: "sun" },
   { id: "editor", label: "Editor", icon: "pencil" },
+  { id: "display", label: "Registers & Memory", icon: "memory" },
+  { id: "terminal", label: "Terminal", icon: "term" },
+  { id: "shortcuts", label: "Keyboard", icon: "keyboard" },
   { id: "extensions", label: "ISA Extensions", icon: "chip" },
 ];
 
@@ -39,6 +55,107 @@ export const SETTINGS: SettingDescriptor[] = [
       "color scheme",
       "appearance",
     ],
+  },
+  {
+    id: "editor.fontFamily",
+    category: "editor",
+    title: "Font family",
+    description: "Monospace typeface used in the code editor.",
+    keywords: ["font", "typeface", "family", "monospace", "jetbrains"],
+  },
+  {
+    id: "editor.fontSize",
+    category: "editor",
+    title: "Font size",
+    description: "Editor text size in pixels.",
+    keywords: ["font", "size", "zoom", "text"],
+  },
+  {
+    id: "editor.tabWidth",
+    category: "editor",
+    title: "Tab width",
+    description: "Number of columns a tab occupies.",
+    keywords: ["tab", "width", "indent", "size"],
+  },
+  {
+    id: "editor.indentStyle",
+    category: "editor",
+    title: "Indent with",
+    description: "Insert spaces or a tab character when indenting.",
+    keywords: ["spaces", "tabs", "indent", "indentation"],
+  },
+  {
+    id: "editor.lineNumbers",
+    category: "editor",
+    title: "Line numbers",
+    description: "Absolute, relative, or hidden line numbers.",
+    keywords: ["line", "numbers", "gutter", "relative", "absolute"],
+  },
+  {
+    id: "editor.wordWrap",
+    category: "editor",
+    title: "Word wrap",
+    description: "Wrap long lines instead of scrolling horizontally.",
+    keywords: ["word", "wrap", "soft", "lines"],
+  },
+  {
+    id: "editor.whitespace",
+    category: "editor",
+    title: "Show whitespace",
+    description: "Render whitespace dots and control characters.",
+    keywords: ["whitespace", "spaces", "control", "characters", "invisibles"],
+  },
+  {
+    id: "editor.minimap",
+    category: "editor",
+    title: "Minimap",
+    description: "Show the code overview on the right edge.",
+    keywords: ["minimap", "overview", "preview"],
+  },
+  {
+    id: "display.registerNaming",
+    category: "display",
+    title: "Register names",
+    description: "Show ABI names (ra, sp) or numeric names (x1, x2) first.",
+    keywords: ["register", "abi", "numeric", "names", "alias", "x0"],
+  },
+  {
+    id: "display.endianness",
+    category: "display",
+    title: "Memory byte order",
+    description:
+      "Byte order within each cell — only applies when grouping above 1 byte.",
+    keywords: ["endian", "endianness", "little", "big", "byte", "order"],
+  },
+  {
+    id: "display.byteWidth",
+    category: "display",
+    title: "Bytes per group",
+    description: "How many bytes each memory cell combines.",
+    keywords: ["byte", "width", "group", "word", "halfword", "memory"],
+  },
+  {
+    id: "display.flashChanges",
+    category: "display",
+    title: "Highlight changes",
+    description:
+      "Briefly flash registers and memory that changed after a step.",
+    keywords: ["highlight", "flash", "changed", "diff", "step"],
+  },
+  {
+    id: "terminal.clearOnRun",
+    category: "terminal",
+    title: "Clear program console on run",
+    description: "Wipe the program output each time you start a run.",
+    keywords: ["clear", "console", "program", "output", "run", "terminal"],
+  },
+  {
+    id: "terminal.autoSwitch",
+    category: "terminal",
+    title: "Auto-switch console tabs",
+    description:
+      "Focus the relevant console on compile, error, or input requests.",
+    keywords: ["auto", "switch", "tab", "console", "focus", "terminal"],
   },
   {
     id: "editor.background",
@@ -135,6 +252,9 @@ class SettingsStore {
         `${e.code} ${e.name} ${e.summary}`.toLowerCase().includes(q),
       );
 
+    if (id === "shortcuts")
+      return COMMANDS.some((c) => c.label.toLowerCase().includes(q));
+
     return false;
   }
 
@@ -158,6 +278,16 @@ class SettingsStore {
 
   public select(id: CategoryId) {
     this.active = id;
+  }
+
+  public resetAll() {
+    modeStore.preference = "dark";
+    resetThemes();
+    editorPrefs.reset();
+    displayStore.reset();
+    terminalStore.resetPrefs();
+    keymap.resetBindings();
+    layoutStore.hexMode = true;
   }
 }
 

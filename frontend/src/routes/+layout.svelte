@@ -9,6 +9,11 @@
   import "@fontsource/jetbrains-mono/500.css";
   import "@fontsource/jetbrains-mono/600.css";
   import "@fontsource/jetbrains-mono/700.css";
+  import "@fontsource/geist-mono/latin-400.css";
+  import "@fontsource/fira-code/latin-400.css";
+  import "@fontsource/ibm-plex-mono/latin-400.css";
+  import "@fontsource/source-code-pro/latin-400.css";
+  import "@fontsource/roboto-mono/latin-400.css";
   import "../app.css";
   import Titlebar from "../components/Titlebar.svelte";
   let { children }: { children: Snippet } = $props();

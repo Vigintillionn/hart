@@ -4,11 +4,13 @@
     value = $bindable(),
     size = "md",
     accent = "primary",
+    disabled = false,
   }: {
     options: { value: T; label: string }[];
     value: T;
     size?: "sm" | "md";
     accent?: "primary" | "text";
+    disabled?: boolean;
   } = $props();
 
   const item = $derived(
@@ -64,7 +66,11 @@
 </script>
 
 <div
-  class="relative inline-flex gap-0.5 rounded-md border border-border bg-surface-0 p-0.5"
+  class={[
+    "relative inline-flex gap-0.5 rounded-md border border-border bg-surface-0 p-0.5",
+    disabled && "pointer-events-none opacity-40",
+  ]}
+  aria-disabled={disabled}
   {@attach (node) => {
     const ro = new ResizeObserver(() => measure());
     ro.observe(node);

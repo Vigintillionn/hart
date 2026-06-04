@@ -110,6 +110,20 @@
     />
   {:else if name === "moon"}
     <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
+  {:else if name === "keyboard"}
+    <rect x="2.5" y="6" width="19" height="12" rx="2" />
+    <path
+      d="M6 9.5h.01M9.5 9.5h.01M13 9.5h.01M16.5 9.5h.01M6 13h.01M16.5 13h.01M9 13h6"
+    />
+  {:else if name === "memory"}
+    <rect x="6" y="6" width="12" height="12" rx="1.5" />
+    <path
+      d="M9 2.5v3M15 2.5v3M9 18.5v3M15 18.5v3M2.5 9h3M2.5 15h3M18.5 9h3M18.5 15h3M9.5 9.5h5v5h-5z"
+    />
+  {:else if name === "chevron"}
+    <path d="m6 9 6 6 6-6" />
+  {:else if name === "check"}
+    <path d="m5 12.5 4.5 4.5L19 7" />
   {:else if name === "min"}
     <path d="M5 12h14" stroke-width="1.5" />
   {:else if name === "max"}

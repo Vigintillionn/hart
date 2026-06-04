@@ -54,6 +54,11 @@ export function resetActiveTheme() {
   else Object.assign(darkTheme, DARK_THEME);
 }
 
+export function resetThemes() {
+  Object.assign(darkTheme, DARK_THEME);
+  Object.assign(lightTheme, LIGHT_THEME);
+}
+
 $effect.root(() => {
   $effect(() =>
     saveJSON(STORAGE_KEY, {

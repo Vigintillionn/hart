@@ -10,6 +10,7 @@
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { layoutStore, PANE_KEYS } from "$lib/store/layoutStore.svelte";
+  import { settingsStore } from "$lib/store/settingsStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
   import CollapsibleResizer from "../components/ui/CollapsibleResizer.svelte";
   import SettingsWindow from "../components/settings/SettingsWindow.svelte";
@@ -43,7 +44,7 @@
 {/if}
 
 <Toolbar />
-<div class="min-h-0 flex-1">
+<div class="min-h-0 flex-1" inert={settingsStore.open}>
   <PaneGroup direction="horizontal" autoSaveId={PANE_KEYS.mainH}>
     <Pane defaultSize={68} minSize={32}>
       <PaneGroup direction="vertical" autoSaveId={PANE_KEYS.leftV}>
