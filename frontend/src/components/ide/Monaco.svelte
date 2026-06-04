@@ -5,6 +5,7 @@
   import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
   import { activeTheme } from "../../lib/editor/theme.svelte";
   import { modeStore } from "../../lib/store/mode.svelte";
+  import { editorPrefs, fontStack } from "../../lib/store/editorPrefs.svelte";
   import type { OpenFile } from "$lib/types";
 
   let {
@@ -73,14 +74,21 @@
       language: "riscv",
       theme: "vs-dark",
       automaticLayout: true,
-      minimap: { enabled: false },
+      minimap: { enabled: editorPrefs.minimap },
       scrollBeyondLastLine: false,
       glyphMargin: true,
       lineNumbersMinChars: 3,
       lineDecorationsWidth: 6,
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-      fontSize: 13,
-      lineHeight: 21,
+      fontFamily: fontStack(editorPrefs.fontFamily),
+      fontSize: editorPrefs.fontSize,
+      lineNumbers: editorPrefs.lineNumbers,
+      wordWrap: editorPrefs.wordWrap ? "on" : "off",
+      renderWhitespace: editorPrefs.renderWhitespace ? "all" : "none",
+      renderControlCharacters: editorPrefs.renderWhitespace,
+      detectIndentation: false,
+      tabSize: editorPrefs.tabWidth,
+      insertSpaces: editorPrefs.insertSpaces,
+      lineHeight: 0,
       letterSpacing: 0,
       padding: { top: 12, bottom: 12 },
       renderLineHighlight: "none",
@@ -126,6 +134,29 @@
     editor?.updateOptions({ readOnly });
   });
 
+  let lastFontFamily = editorPrefs.fontFamily;
+  $effect(() => {
+    const family = editorPrefs.fontFamily;
+    if (!editor) return;
+    editor.updateOptions({
+      fontFamily: fontStack(family),
+      fontSize: editorPrefs.fontSize,
+      lineNumbers: editorPrefs.lineNumbers,
+      wordWrap: editorPrefs.wordWrap ? "on" : "off",
+      renderWhitespace: editorPrefs.renderWhitespace ? "all" : "none",
+      renderControlCharacters: editorPrefs.renderWhitespace,
+      minimap: { enabled: editorPrefs.minimap },
+    });
+    const tabSize = editorPrefs.tabWidth;
+    const insertSpaces = editorPrefs.insertSpaces;
+    for (const model of models.values())
+      model.updateOptions({ tabSize, insertSpaces });
+    if (family !== lastFontFamily) {
+      lastFontFamily = family;
+      document.fonts?.ready.then(() => monaco.editor.remeasureFonts());
+    }
+  });
+
   onDestroy(() => {
     if (editor) editor.dispose();
     for (const model of models.values()) {
@@ -163,6 +194,10 @@
       for (const file of files) {
         if (!models.has(file.id)) {
           const newModel = monaco.editor.createModel(file.content, "riscv");
+          newModel.updateOptions({
+            tabSize: editorPrefs.tabWidth,
+            insertSpaces: editorPrefs.insertSpaces,
+          });
           newModel.onDidChangeContent(() => {
             onContentChange(file.id, newModel.getValue());
           });
