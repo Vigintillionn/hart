@@ -2,6 +2,7 @@
   import { fileStore } from "$lib/store/fileStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
   import { settingsStore } from "$lib/store/settingsStore.svelte";
+  import { helpStore } from "$lib/store/helpStore.svelte";
   import IconButton from "../../ui/IconButton.svelte";
   import PanelControls from "./PanelControls.svelte";
 
@@ -29,6 +30,13 @@
     />
     <PanelControls bind:open={viewOpen} />
   </div>
+
+  <IconButton
+    name="book"
+    title="Instruction reference"
+    active={helpStore.open}
+    onclick={() => helpStore.toggle()}
+  />
 
   <IconButton
     name="sliders"

@@ -16,6 +16,7 @@ import Data.Maybe (mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, extendBounded, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
+import Doc (formatCatalogue, instructionCatalogue, pseudoCatalogue, syscallCatalogue)
 import Error (EmulatorError (..), Severity (..))
 import Extension
   ( ExtensionInfo (..),
@@ -45,6 +46,8 @@ data Command
   | -- | enable exactly this set of extensions (by ISA code, e.g. @["I","M"]@)
     CmdSetExtensions [String]
   | CmdGetExtensions
+  | -- | request the static instruction-reference catalogue
+    CmdGetInstructionSet
   | CmdQuit
   deriving (Show, Eq)
 
@@ -62,6 +65,7 @@ instance FromJSON Command where
       "set_breakpoints" -> CmdSetBreakpoints <$> v .: "data"
       "set_extensions" -> CmdSetExtensions <$> v .: "data"
       "get_extensions" -> return CmdGetExtensions
+      "get_instruction_set" -> return CmdGetInstructionSet
       "quit" -> return CmdQuit
       _ -> fail "Unknown command"
 
@@ -77,6 +81,8 @@ data Response
     ResLog Severity String String
   | -- | the extension catalogue and which ones are currently enabled
     ResExtensions ExtensionSet
+  | -- | the static instruction-reference catalogue (formats + instructions)
+    ResInstructionSet
   | ResNeedInput
 
 instance ToJSON Response where
@@ -143,6 +149,14 @@ instance ToJSON Response where
                 "mandatory" .= extMandatory i,
                 "enabled" .= isEnabled e exts
               ]
+  toJSON ResInstructionSet =
+    object
+      [ "type" .= ("instruction_set" :: String),
+        "formats" .= formatCatalogue,
+        "instructions" .= instructionCatalogue,
+        "pseudos" .= pseudoCatalogue,
+        "syscalls" .= syscallCatalogue
+      ]
   toJSON ResNeedInput =
     object
       [ "type" .= ("need_input" :: String)
@@ -167,6 +181,7 @@ runRPC :: FilePath -> IO ()
 runRPC _ = do
   sendLog Info "EMU" "Backend ready. Awaiting code."
   sendResponse (ResExtensions defaultExtensions)
+  sendResponse ResInstructionSet
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
   rpcLoop defaultExtensions IntSet.empty Nothing emptyDbg
 
@@ -238,6 +253,9 @@ rpcLoop exts bps lastSent dbg = do
               rpcLoop exts' bps lastSent dbg
             Just CmdGetExtensions -> do
               sendResponse (ResExtensions exts)
+              rpcLoop exts bps lastSent dbg
+            Just CmdGetInstructionSet -> do
+              sendResponse ResInstructionSet
               rpcLoop exts bps lastSent dbg
             Just CmdPause -> do
               if status c == Running

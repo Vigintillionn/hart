@@ -14,6 +14,7 @@
   import { keymap } from "$lib/keymap.svelte";
   import CollapsibleResizer from "../components/ui/CollapsibleResizer.svelte";
   import SettingsWindow from "../components/settings/SettingsWindow.svelte";
+  import HelpWindow from "../components/help/HelpWindow.svelte";
 
   onMount(() => {
     cpuStore.initListener();
@@ -88,3 +89,4 @@
 </div>
 
 <SettingsWindow />
+<HelpWindow />

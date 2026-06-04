@@ -1,4 +1,4 @@
-module Kernel (handleSyscall) where
+module Kernel (handleSyscall, Syscall (..), syscallCode) where
 
 import Control.Monad (zipWithM_)
 import Data.Bits ((.&.))
@@ -23,22 +23,25 @@ data Syscall
   | Write -- 64
   | SysExit -- 93
   | Brk -- 214
+  deriving (Show, Eq, Enum, Bounded)
+
+syscallCode :: Syscall -> Word32
+syscallCode = \case
+  PrintInt -> 1
+  PrintString -> 4
+  ReadInt -> 5
+  ReadString -> 8
+  Exit -> 10
+  PrintChar -> 11
+  OpenAt -> 56
+  Close -> 57
+  Read -> 63
+  Write -> 64
+  SysExit -> 93
+  Brk -> 214
 
 syscallOf :: Word32 -> Maybe Syscall
-syscallOf n = case n of
-  1 -> Just PrintInt
-  4 -> Just PrintString
-  5 -> Just ReadInt
-  8 -> Just ReadString
-  10 -> Just Exit
-  11 -> Just PrintChar
-  56 -> Just OpenAt
-  57 -> Just Close
-  63 -> Just Read
-  64 -> Just Write
-  93 -> Just SysExit
-  214 -> Just Brk
-  _ -> Nothing
+syscallOf n = lookup n [(syscallCode s, s) | s <- [minBound .. maxBound]]
 
 handleSyscall :: (MonadCPU m) => m PCUpdate
 handleSyscall = do

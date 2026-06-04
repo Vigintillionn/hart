@@ -40,6 +40,7 @@ export type IconName =
   | "moon"
   | "keyboard"
   | "memory"
+  | "book"
   | "chevron"
   | "check"
   | "reset"

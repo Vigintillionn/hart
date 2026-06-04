@@ -188,6 +188,62 @@ pub struct ExtensionInfo {
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
 #[ts(export, export_to = "../src/bindings/")]
+pub struct OperandDoc {
+    pub token: String,
+    pub desc: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct FormatInfo {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub syntax: String,
+    pub operands: Vec<OperandDoc>,
+    pub blurb: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct InstructionInfo {
+    pub mnemonic: String,
+    pub extension: String,
+    pub format: String,
+    pub operation: String,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct PseudoInfo {
+    pub mnemonic: String,
+    pub syntax: String,
+    pub expands: String,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+#[serde(tag = "dir")]
+pub enum RegisterUse {
+    #[serde(rename = "in")]
+    In { reg: String, desc: String },
+    #[serde(rename = "out")]
+    Out { reg: String, desc: String },
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct SyscallInfo {
+    pub name: String,
+    pub code: u32,
+    pub registers: Vec<RegisterUse>,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
 #[serde(tag = "type")]
 pub enum EmulatorResponse {
     #[serde(rename = "state")]
@@ -235,6 +291,13 @@ pub enum EmulatorResponse {
     },
     #[serde(rename = "extensions")]
     Extensions { data: Vec<ExtensionInfo> },
+    #[serde(rename = "instruction_set")]
+    InstructionSet {
+        formats: Vec<FormatInfo>,
+        instructions: Vec<InstructionInfo>,
+        pseudos: Vec<PseudoInfo>,
+        syscalls: Vec<SyscallInfo>,
+    },
     #[serde(rename = "need_input")]
     NeedInput,
 }

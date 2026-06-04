@@ -63,6 +63,7 @@ mandatory.
 | `Assembler` / `Decoder`           | `Instruction <-> Word32`                                        |
 | `ISA`                             | Opcode / funct encoding tables                                  |
 | `Extension`, `Extension.Classify` | Extension registry + opcode classification                      |
+| `Doc`                             | Self-describing instruction reference (`OpDoc` typeclass)       |
 | `Machine`                         | `CPU` state, the `MonadCPU` effect class, memory & trap helpers |
 | `CPU`                             | Per-instruction execution; `step` does fetch → decode → execute |
 | `Kernel`                          | `ecall` syscall ABI (dispatched on `a7`)                        |
@@ -74,5 +75,8 @@ mandatory.
 
 `app/RPC.hs` speaks line-delimited JSON over stdin/stdout, one object per line.
 Commands include `load`, `run`, `pause`, `step_forward`, `step_back`, `rewind`,
-`input`, `set_breakpoints`, and `set_extensions`; responses include `state`,
-`loaded`, `error`, `extensions`, and `need_input`.
+`input`, `set_breakpoints`, `set_extensions`, and `get_instruction_set`;
+responses include `state`, `loaded`, `error`, `extensions`, `instruction_set`,
+and `need_input`. The `instruction_set` response carries the self-describing
+instruction reference (formats, instructions, pseudo-instructions) built from
+`lib/Doc.hs`.

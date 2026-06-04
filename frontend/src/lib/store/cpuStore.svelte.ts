@@ -7,6 +7,7 @@ import { terminalStore } from "./terminalStore.svelte";
 import { logStore, type LogLevel } from "./logStore.svelte";
 import { fileStore } from "./fileStore.svelte";
 import { extensionStore } from "./extensionStore.svelte";
+import { isaStore } from "./isaStore.svelte";
 import { sendToHaskell } from "../util";
 import {
   emulatorErrorLine,
@@ -210,11 +211,19 @@ class CpuStore {
           terminalStore.autoSwitch("program");
         } else if (response.type === "extensions") {
           extensionStore.setCatalogue(response.data);
+        } else if (response.type === "instruction_set") {
+          isaStore.setCatalogue(
+            response.formats,
+            response.instructions,
+            response.pseudos,
+            response.syscalls,
+          );
         }
       },
     );
 
     sendToHaskell("get_extensions");
+    sendToHaskell("get_instruction_set");
   }
 
   /** Adopt a new CPU state and mirror its console + system log to the UI. */
