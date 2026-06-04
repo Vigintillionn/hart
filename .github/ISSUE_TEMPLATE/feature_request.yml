@@ -1,0 +1,20 @@
+name: Feature Request
+description: Suggest an idea or extension for HART
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: checkboxes
+    id: terms
+    attributes:
+      label: Contribution Guidelines
+      description: Please confirm you have read the rules before submitting.
+      options:
+        - label: I have read the `CONTRIBUTING.md` and understand that I should wait for approval before opening a Pull Request.
+          required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What is the feature and why is it needed for HART?
+    validations:
+      required: true
