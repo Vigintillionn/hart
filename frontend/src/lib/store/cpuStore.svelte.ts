@@ -166,7 +166,7 @@ class CpuStore {
           this.compileError = null;
           this.systemLogShown = 0;
           this.mirrorSystemLog();
-          terminalStore.setActiveTab("system");
+          terminalStore.autoSwitch("system");
           if (this.breakpoints.size) {
             // a recompile can move instructions; drop breakpoints whose address
             // is no longer the start of an instruction before re-arming them.
@@ -198,7 +198,7 @@ class CpuStore {
           } else {
             logStore.log("error", "EMU", response.message ?? "Unknown error");
           }
-          terminalStore.setActiveTab("system");
+          terminalStore.autoSwitch("system");
         } else if (response.type === "log") {
           logStore.log(
             severityToLevel(response.severity),
@@ -207,7 +207,7 @@ class CpuStore {
           );
         } else if (response.type === "need_input") {
           if (this.cpuState) this.cpuState.status = "WaitingForInput";
-          terminalStore.setActiveTab("program");
+          terminalStore.autoSwitch("program");
         } else if (response.type === "extensions") {
           extensionStore.setCatalogue(response.data);
         }
@@ -239,7 +239,7 @@ class CpuStore {
     }
     this.systemLogShown = log.length;
 
-    if (sawError) terminalStore.setActiveTab("system");
+    if (sawError) terminalStore.autoSwitch("system");
   }
 
   public cleanup() {
@@ -256,7 +256,7 @@ class CpuStore {
   public handleLoadProgram() {
     // The emulator narrates the build pipeline itself ("Compiling...", etc.);
     // we just surface the system console immediately on user action.
-    terminalStore.setActiveTab("system");
+    terminalStore.autoSwitch("system");
     this.compileError = null;
     const f = fileStore.activeFile;
     this.pendingSnapshot = { fileId: f.id, content: f.content };
@@ -264,6 +264,7 @@ class CpuStore {
   }
 
   public handleRun() {
+    if (terminalStore.clearOnRun) terminalStore.program.clear();
     if (this.isDirty) {
       this.runAfterLoad = true;
       this.handleLoadProgram();
