@@ -1,6 +1,7 @@
 <script lang="ts">
   import { layoutStore } from "$lib/store/layoutStore.svelte";
-  import { hex32, hex2, TEXT_BASE, DATA_BASE, STACK_TOP } from "$lib/util";
+  import { displayStore } from "$lib/store/displayStore.svelte";
+  import { hex32, TEXT_BASE, DATA_BASE, STACK_TOP } from "$lib/util";
   import { createChangeFlasher } from "$lib/changeFlasher.svelte";
   import Icon from "../Icon.svelte";
 
@@ -72,6 +73,37 @@
 
   const memFlasher = createChangeFlasher(() => memMap);
   const changed = $derived(memFlasher.changed);
+
+  const bpg = $derived(displayStore.memBytesPerGroup);
+  const little = $derived(displayStore.endianness === "little");
+  const decPad = $derived(String(2n ** BigInt(8 * bpg) - 1n).length);
+
+  type Cell = { value: bigint; changed: boolean; gap: boolean };
+  function rowCells(addr: number, bytes: number[]): Cell[] {
+    const g = bpg;
+    const out: Cell[] = [];
+    for (let c0 = 0; c0 < ROW_BYTES; c0 += g) {
+      let value = 0n;
+      let chg = false;
+      for (let j = 0; j < g; j++) {
+        const b = bytes[c0 + j] & 0xff;
+        value |= BigInt(b) << BigInt(8 * (little ? j : g - 1 - j));
+        if (changed.has((addr + c0 + j) >>> 0)) chg = true;
+      }
+      out.push({
+        value,
+        changed: chg && displayStore.flashChanges,
+        gap: c0 + g - 1 === 7, // half-row divider, only when it lands on a boundary
+      });
+    }
+    return out;
+  }
+
+  function fmtCell(value: bigint): string {
+    return layoutStore.hexMode
+      ? value.toString(16).padStart(2 * bpg, "0")
+      : value.toString().padStart(decPad, "0");
+  }
 
   // Auto-follow writes. `base` can't be a $derived because it's also driven
   // imperatively by the user (wheel / arrow keys / scrollbar drag set it
@@ -220,24 +252,22 @@
           >
             <span class="mr-3.5 text-secondary opacity-85">{hex32(addr)}</span>
             <span class="text-text-dim">
-              {#each bytes as b, c (addr + c)}
+              {#each rowCells(addr, bytes) as cell, k (k)}
                 <span
-                  class={changed.has((addr + c) >>> 0)
+                  class={cell.changed
                     ? "text-primary"
-                    : b === 0
+                    : cell.value === 0n
                       ? "text-text-ghost"
-                      : ""}
-                  >{(layoutStore.hexMode
-                    ? hex2(b)
-                    : b.toString().padStart(3, "0")) + " "}</span
-                >{#if c === 7}<span class="inline-block w-2"></span>{/if}
+                      : ""}>{fmtCell(cell.value) + " "}</span
+                >{#if cell.gap}<span class="inline-block w-2"></span>{/if}
               {/each}
             </span>
             <span class="ml-3 text-text-faint">
               {#each bytes as b, c (addr + c)}
                 {@const pr = b >= 32 && b < 127}
                 <span
-                  class={changed.has((addr + c) >>> 0)
+                  class={changed.has((addr + c) >>> 0) &&
+                  displayStore.flashChanges
                     ? "text-primary"
                     : pr
                       ? "text-text-dim"

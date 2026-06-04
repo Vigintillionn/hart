@@ -1,5 +1,6 @@
 <script lang="ts">
   import { layoutStore } from "$lib/store/layoutStore.svelte";
+  import { displayStore } from "$lib/store/displayStore.svelte";
   import { fmtRegisterValue, getRegName } from "$lib/util";
   import type { CpuState } from "../../../bindings/CpuState";
   import { createChangeFlasher } from "$lib/changeFlasher.svelte";
@@ -13,7 +14,11 @@
 <div class="grid grid-cols-2 gap-px bg-border-soft">
   {#each registers as value, i (i)}
     {@const isZero = value === 0}
-    {@const isChanged = registerFlasher.changed.has(i)}
+    {@const isChanged = registerFlasher.changed.has(i) && displayStore.flashChanges}
+    {@const abi = displayStore.registerNaming === "abi"}
+    {@const primary = abi ? getRegName(i, true) : `x${i}`}
+    {@const secondary =
+      (abi ? `x${i}` : getRegName(i, true)) + (i === 8 ? "/fp" : "")}
     <div
       class="relative flex items-baseline gap-2 px-2.5 py-1.5 transition-colors {isChanged
         ? "bg-secondary-soft before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-secondary before:content-['']"
@@ -22,11 +27,9 @@
       <span
         class="min-w-7.5 font-mono text-[11.5px] font-semibold {SPECIAL.has(i)
           ? 'text-secondary'
-          : 'text-text-dim'}">{getRegName(i, true)}</span
+          : 'text-text-dim'}">{primary}</span
       >
-      <span class="min-w-5.5 font-mono text-[9px] text-text-ghost"
-        >x{i}{#if i == 8}/fp{/if}</span
-      >
+      <span class="min-w-5.5 font-mono text-[9px] text-text-ghost">{secondary}</span>
       <span
         class="ml-auto font-mono text-[11.5px] tracking-[0.2px] {isChanged
           ? 'text-secondary'
