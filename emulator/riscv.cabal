@@ -116,6 +116,8 @@ test-suite hart-emulator-test
                       Test.CSRSpec
                       Test.KernelSpec
                       Test.TrapSpec
+                      Test.DebuggerSpec
+                      Test.WireSpec
     build-depends:    hart-emulator,
                       hspec,
                       QuickCheck
