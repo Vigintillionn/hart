@@ -297,7 +297,7 @@ instance OpDoc BOp where
     BEQ -> "if rs1 == rs2 → label"
     BNE -> "if rs1 ≠ rs2 → label"
     BLT -> "if rs1 < rs2 → label"
-    BGE -> "if rs1 ≥ rs2 → label"
+    BGE -> "if rs1 >= rs2 → label"
     BLTU -> "if rs1 <ᵤ rs2 → label"
     BGEU -> "if rs1 ≥ᵤ rs2 → label"
   opDescription op = case op of
