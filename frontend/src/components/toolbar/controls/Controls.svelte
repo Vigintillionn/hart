@@ -33,7 +33,7 @@
 
   <IconButton
     name="book"
-    title="Instruction reference"
+    title={`RISC-V reference (${keymap.describe("reference")})`}
     active={helpStore.open}
     onclick={() => helpStore.toggle()}
   />

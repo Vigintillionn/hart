@@ -1,6 +1,7 @@
 import { cpuStore } from "./store/cpuStore.svelte";
 import { fileStore } from "./store/fileStore.svelte";
 import { loadJSON, saveJSON } from "./persist";
+import { helpStore } from "./store/helpStore.svelte";
 
 export interface Command {
   id: string;
@@ -71,6 +72,12 @@ export const COMMANDS: Command[] = [
     label: "Open file",
     defaultKeys: "Mod+O",
     run: () => fileStore.handleOpenFile(),
+  },
+  {
+    id: "reference",
+    label: "Open RISC-V reference",
+    defaultKeys: "F1",
+    run: () => (helpStore.open = !helpStore.open),
   },
 ];
 
