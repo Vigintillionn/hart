@@ -4,6 +4,7 @@
   import ExtensionSection from "./ExtensionSection.svelte";
   import PseudoTable from "./PseudoTable.svelte";
   import SyscallTable from "./SyscallTable.svelte";
+  import AsciiTable from "./AsciiTable.svelte";
 </script>
 
 <div class="scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -17,6 +18,10 @@
 
   {#if helpCatalogue.visibleSyscalls.length}
     <SyscallTable syscalls={helpCatalogue.visibleSyscalls} />
+  {/if}
+
+  {#if helpCatalogue.visibleAscii.length}
+    <AsciiTable items={helpCatalogue.visibleAscii} />
   {/if}
 
   {#if helpCatalogue.isEmpty}

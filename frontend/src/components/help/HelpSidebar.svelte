@@ -33,6 +33,9 @@
 
     {@render heading("Runtime")}
     <HelpNavItem id="syscall" label="System calls" />
+
+    {@render heading("Other")}
+    <HelpNavItem id="ascii" label="ASCII Table" />
   </nav>
 
   <div class="flex-none border-t border-border px-3 py-3">

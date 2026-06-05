@@ -14,6 +14,63 @@ const FALLBACK_NAMES: Record<string, string> = {
 export type ExtGroup = { code: string; name: string; enabled: boolean };
 export type FmtGroup = { fmt: FormatInfo; items: InstructionInfo[] };
 export type ExtSection = ExtGroup & { fmtGroups: FmtGroup[] };
+export type AsciiInfo = {
+  dec: number;
+  hex: string;
+  char: string;
+  desc: string;
+  isControl: boolean;
+};
+
+const ASCII_TABLE: AsciiInfo[] = Array.from({ length: 128 }, (_, i) => {
+  const hex = i.toString(16).padStart(2, "0").toUpperCase();
+  let char = String.fromCharCode(i);
+  let desc = "";
+
+  const controlMap: Record<number, { c: string; d: string }> = {
+    0: { c: "NUL", d: "Null" },
+    1: { c: "SOH", d: "Start of Heading" },
+    2: { c: "STX", d: "Start of Text" },
+    3: { c: "ETX", d: "End of Text" },
+    4: { c: "EOT", d: "End of Trans." },
+    5: { c: "ENQ", d: "Enquiry" },
+    6: { c: "ACK", d: "Acknowledge" },
+    7: { c: "BEL", d: "Bell" },
+    8: { c: "BS", d: "Backspace" },
+    9: { c: "TAB", d: "Horizontal Tab" },
+    10: { c: "LF", d: "Line Feed" },
+    11: { c: "VT", d: "Vertical Tab" },
+    12: { c: "FF", d: "Form Feed" },
+    13: { c: "CR", d: "Carriage Return" },
+    14: { c: "SO", d: "Shift Out" },
+    15: { c: "SI", d: "Shift In" },
+    16: { c: "DLE", d: "Data Link Esc." },
+    17: { c: "DC1", d: "Device Ctrl 1" },
+    18: { c: "DC2", d: "Device Ctrl 2" },
+    19: { c: "DC3", d: "Device Ctrl 3" },
+    20: { c: "DC4", d: "Device Ctrl 4" },
+    21: { c: "NAK", d: "Negative Ack." },
+    22: { c: "SYN", d: "Sync. Idle" },
+    23: { c: "ETB", d: "End Trans. Blk" },
+    24: { c: "CAN", d: "Cancel" },
+    25: { c: "EM", d: "End of Medium" },
+    26: { c: "SUB", d: "Substitute" },
+    27: { c: "ESC", d: "Escape" },
+    28: { c: "FS", d: "File Separator" },
+    29: { c: "GS", d: "Group Separator" },
+    30: { c: "RS", d: "Record Separator" },
+    31: { c: "US", d: "Unit Separator" },
+    32: { c: "SPC", d: "Space" },
+    127: { c: "DEL", d: "Delete" },
+  };
+
+  const isControl = !!controlMap[i];
+  if (isControl) {
+    char = controlMap[i].c;
+    desc = controlMap[i].d;
+  }
+  return { dec: i, hex, char, desc, isControl };
+});
 
 class HelpCatalogue {
   private get query() {
@@ -96,6 +153,14 @@ class HelpCatalogue {
           this.match(
             `${s.name} ${s.code} ${s.registers.map((r) => `${r.reg} ${r.desc}`).join(" ")} ${s.description}`,
           ),
+        )
+      : [],
+  );
+
+  readonly visibleAscii = $derived<AsciiInfo[]>(
+    helpStore.group === "all" || helpStore.group === "ascii"
+      ? ASCII_TABLE.filter((a) =>
+          this.match(`${a.dec} 0x${a.hex} ${a.char} ${a.desc}`),
         )
       : [],
   );
