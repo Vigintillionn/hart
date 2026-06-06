@@ -4,9 +4,10 @@ module Test.DocSpec (spec) where
 
 import Data.Aeson (Value (..), toJSON)
 import Data.Aeson.KeyMap qualified as KM
-import Data.List (nub)
+import Data.List (nub, sort)
 import Doc
-  ( FormatInfo (..),
+  ( FieldDoc (..),
+    FormatInfo (..),
     InstructionInfo (..),
     SyscallInfo (..),
     formatCatalogue,
@@ -48,14 +49,32 @@ spec = do
             ["mnemonic", "extension", "format", "operation", "description"]
         v -> expectationFailure ("expected a JSON object, got: " ++ show v)
 
-  describe "format catalogue" $
+  describe "format catalogue" $ do
     it "emits the keys the frontend bindings read" $
       case toJSON (head formatCatalogue) of
         Object o ->
           mapM_
             (\k -> (k, KM.member k o) `shouldBe` (k, True))
-            ["id", "name", "kind", "syntax", "operands", "blurb"]
+            ["id", "name", "kind", "syntax", "operands", "fields", "blurb"]
         v -> expectationFailure ("expected a JSON object, got: " ++ show v)
+
+    it "tiles every format's 32 bits with no gaps or overlaps" $
+      mapM_
+        ( \f ->
+            let covered = sort (concatMap (\fld -> [fldLo fld .. fldHi fld]) (fmtFields f))
+             in (fmtId f, covered) `shouldBe` (fmtId f, [0 .. 31])
+        )
+        formatCatalogue
+
+    it "uses only known field roles" $ do
+      let roles = ["opcode", "reg", "funct", "imm", "zero"]
+      mapM_
+        ( \f ->
+            mapM_
+              (\fld -> (fmtId f, fldRole fld `elem` roles) `shouldBe` (fmtId f, True))
+              (fmtFields f)
+        )
+        formatCatalogue
 
   describe "pseudo catalogue" $
     it "lists the common pseudo-instructions" $

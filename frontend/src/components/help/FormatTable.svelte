@@ -2,6 +2,7 @@
   import type { FormatInfo } from "../../bindings/FormatInfo";
   import type { InstructionInfo } from "../../bindings/InstructionInfo";
   import ReferenceTable from "./ReferenceTable.svelte";
+  import BitFields from "./BitFields.svelte";
 
   let {
     fmt,
@@ -34,6 +35,8 @@
         {/each}
       </div>
     {/if}
+
+    <BitFields fields={fmt.fields} {dim} />
   </div>
 
   <ReferenceTable columns={["Syntax", "Operation", "Description"]} {dim}>

@@ -291,10 +291,9 @@ executeSystem (SystemI op args) = do
   return Advance
 executeSystem (Trap ECALL) = do
   currentPC <- getPC
-  -- TODO: this is wrong, we don't do an mret after handleSyscall so the CSR registers don't get cleared after the syscall
-  -- we should look into a better way to handle syscalls that still simulate the trap/interrupt mechanism properly
-  -- _ <- takeTrap trapECallM currentPC 0
-
+  -- ecall is handled directly by the host kernel: we do NOT take an architectural trap,
+  -- so the trap CSRs are deliberately left untouched here
+  -- this might change when we add custom trap handlers in the *far* future
   update <- Kernel.handleSyscall
 
   case update of

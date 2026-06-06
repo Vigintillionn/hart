@@ -6,6 +6,7 @@
 module Doc
   ( FormatKind (..),
     OperandDoc (..),
+    FieldDoc (..),
     FormatInfo (..),
     OpDoc (..),
     formatInfo,
@@ -53,15 +54,36 @@ data FormatKind
 data OperandDoc = OperandDoc {opToken :: String, opDesc :: String}
   deriving (Show, Eq)
 
+data FieldDoc = FieldDoc
+  { fldName :: String,
+    fldHi :: Int,
+    fldLo :: Int,
+    fldRole :: String
+  }
+  deriving (Show, Eq)
+
 data FormatInfo = FormatInfo
   { fmtId :: String,
     fmtName :: String,
     fmtKind :: String,
     fmtSyntax :: String,
     fmtOperands :: [OperandDoc],
+    fmtFields :: [FieldDoc],
     fmtBlurb :: String
   }
   deriving (Show, Eq)
+
+opcodeF :: FieldDoc
+opcodeF = FieldDoc "opcode" 6 0 "opcode"
+
+regF :: String -> Int -> FieldDoc
+regF name hi = FieldDoc name hi (hi - 4) "reg"
+
+functF :: String -> Int -> Int -> FieldDoc
+functF name hi lo = FieldDoc name hi lo "funct"
+
+immF :: String -> Int -> Int -> FieldDoc
+immF name hi lo = FieldDoc name hi lo "imm"
 
 formatInfo :: FormatKind -> FormatInfo
 formatInfo FmtR =
@@ -74,6 +96,13 @@ formatInfo FmtR =
       OperandDoc "rs1" "first source register",
       OperandDoc "rs2" "second source register"
     ]
+    [ functF "funct7" 31 25,
+      regF "rs2" 24,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
+    ]
     "Operate on two source registers and write the result to rd. No immediate is encoded, so the operands are always three registers."
 formatInfo FmtI =
   FormatInfo
@@ -84,6 +113,12 @@ formatInfo FmtI =
     [ OperandDoc "rd" "destination register",
       OperandDoc "rs1" "source register",
       OperandDoc "imm" "12-bit signed immediate (-2048…2047)"
+    ]
+    [ immF "imm[11:0]" 31 20,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
     ]
     "Combine a register with a sign-extended 12-bit immediate and write rd."
 formatInfo FmtShift =
@@ -96,6 +131,13 @@ formatInfo FmtShift =
       OperandDoc "rs1" "source register",
       OperandDoc "shamt" "shift amount, 0…31 (5 bits)"
     ]
+    [ functF "funct7" 31 25,
+      immF "shamt" 24 20,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
+    ]
     "Shift rs1 by a constant amount held in the immediate field. Only the low 5 bits are meaningful, so the shift is always 0-31."
 formatInfo FmtLoad =
   FormatInfo
@@ -106,6 +148,12 @@ formatInfo FmtLoad =
     [ OperandDoc "rd" "destination register",
       OperandDoc "imm" "12-bit signed byte offset",
       OperandDoc "rs1" "base address register"
+    ]
+    [ immF "imm[11:0]" 31 20,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
     ]
     "Read from memory at address rs1 + imm into rd. The access width and whether the value is sign- or zero-extended depend on the mnemonic."
 formatInfo FmtS =
@@ -118,6 +166,13 @@ formatInfo FmtS =
       OperandDoc "imm" "12-bit signed byte offset",
       OperandDoc "rs1" "base address register"
     ]
+    [ immF "imm[11:5]" 31 25,
+      regF "rs2" 24,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      immF "imm[4:0]" 11 7,
+      opcodeF
+    ]
     "Write rs2 to memory at address rs1 + imm. There is no destination register, so stores never change the register file."
 formatInfo FmtB =
   FormatInfo
@@ -129,6 +184,15 @@ formatInfo FmtB =
       OperandDoc "rs2" "second register compared",
       OperandDoc "label" "branch target (PC-relative)"
     ]
+    [ immF "imm[12]" 31 31,
+      immF "imm[10:5]" 30 25,
+      regF "rs2" 24,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      immF "imm[4:1]" 11 8,
+      immF "imm[11]" 7 7,
+      opcodeF
+    ]
     "Compare two registers and, if the condition holds, branch to label; otherwise fall through to the next instruction. The target is encoded as a signed PC-relative offset."
 formatInfo FmtU =
   FormatInfo
@@ -139,6 +203,10 @@ formatInfo FmtU =
     [ OperandDoc "rd" "destination register",
       OperandDoc "imm" "20-bit immediate (forms the upper bits)"
     ]
+    [ immF "imm[31:12]" 31 12,
+      regF "rd" 11,
+      opcodeF
+    ]
     "Place a 20-bit immediate in the upper bits of rd with the low 12 bits zeroed. Paired with an addi, this is how any 32-bit constant or address is constructed."
 formatInfo FmtJ =
   FormatInfo
@@ -148,6 +216,13 @@ formatInfo FmtJ =
     "rd, label"
     [ OperandDoc "rd" "register to receive the return address",
       OperandDoc "label" "jump target (PC-relative)"
+    ]
+    [ immF "imm[20]" 31 31,
+      immF "imm[10:1]" 30 21,
+      immF "imm[11]" 20 20,
+      immF "imm[19:12]" 19 12,
+      regF "rd" 11,
+      opcodeF
     ]
     "Jump to label and save the return address (pc + 4) in rd. Using rd = ra makes it a call; using rd = zero makes it a plain jump."
 formatInfo FmtJalr =
@@ -160,6 +235,12 @@ formatInfo FmtJalr =
       OperandDoc "rs1" "base address register",
       OperandDoc "imm" "12-bit signed offset"
     ]
+    [ immF "imm[11:0]" 31 20,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
+    ]
     "Jump to a computed address (rs1 + imm) with the low bit forced to 0, saving pc + 4 in rd. It is the building block for returns and indirect calls."
 formatInfo FmtCsr =
   FormatInfo
@@ -170,6 +251,12 @@ formatInfo FmtCsr =
     [ OperandDoc "rd" "register to receive the old CSR value",
       OperandDoc "csr" "control/status register name or address",
       OperandDoc "rs1" "source register"
+    ]
+    [ immF "csr" 31 20,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
     ]
     "Atomically read a control/status register into rd and update it from rs1. The three variants write, set, or clear bits."
 formatInfo FmtCsrI =
@@ -182,6 +269,12 @@ formatInfo FmtCsrI =
       OperandDoc "csr" "control/status register name or address",
       OperandDoc "uimm" "5-bit zero-extended immediate (0…31)"
     ]
+    [ immF "csr" 31 20,
+      immF "uimm" 19 15,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
+    ]
     "Like the register CSR instructions, but the operand is a 5-bit immediate instead of a register; handy for setting or clearing a few known bits."
 formatInfo FmtTrap =
   FormatInfo
@@ -190,6 +283,10 @@ formatInfo FmtTrap =
     "Environment"
     ""
     []
+    [ functF "funct12" 31 20,
+      FieldDoc "0" 19 7 "zero",
+      opcodeF
+    ]
     "Raise a synchronous trap to the execution environment. These take no operands."
 
 formatCatalogue :: [FormatInfo]
@@ -448,14 +545,24 @@ pseudoCatalogue =
 instance ToJSON OperandDoc where
   toJSON (OperandDoc token desc) = object ["token" .= token, "desc" .= desc]
 
+instance ToJSON FieldDoc where
+  toJSON (FieldDoc name hi lo role) =
+    object
+      [ "name" .= name,
+        "hi" .= hi,
+        "lo" .= lo,
+        "role" .= role
+      ]
+
 instance ToJSON FormatInfo where
-  toJSON (FormatInfo fid name kind syntax operands blurb) =
+  toJSON (FormatInfo fid name kind syntax operands fields blurb) =
     object
       [ "id" .= fid,
         "name" .= name,
         "kind" .= kind,
         "syntax" .= syntax,
         "operands" .= operands,
+        "fields" .= fields,
         "blurb" .= blurb
       ]
 
