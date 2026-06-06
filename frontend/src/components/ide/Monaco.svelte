@@ -3,13 +3,16 @@
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
   import {
-    riscvLanguageDef,
+    buildRiscvLanguageDef,
     riscvLanguageConfig,
   } from "../../lib/editor/riscvMonarch";
   import { registerRiscvHover } from "../../lib/editor/riscvHover";
   import { activeTheme } from "../../lib/editor/theme.svelte";
   import { modeStore } from "../../lib/store/mode.svelte";
   import { editorPrefs, fontStack } from "../../lib/store/editorPrefs.svelte";
+  import { isaStore } from "../../lib/store/isaStore.svelte";
+  import { extensionStore } from "../../lib/store/extensionStore.svelte";
+  import { REGISTERS } from "../../lib/store/helpCatalogue.svelte";
   import type { OpenFile } from "$lib/types";
 
   let {
@@ -64,6 +67,37 @@
     return set;
   });
 
+  const REGISTER_NAMES: string[] = (() => {
+    const set = new Set<string>();
+    for (const r of REGISTERS) {
+      set.add(r.arch);
+      for (const name of r.abi.split("/")) set.add(name);
+    }
+    return [...set];
+  })();
+
+  const keywords = $derived.by(() => {
+    const haveExtensions = extensionStore.catalogue.length > 0;
+    const enabled = new Set(extensionStore.enabledCodes);
+    const set = new Set<string>();
+    for (const i of isaStore.instructions)
+      if (!haveExtensions || enabled.has(i.extension)) set.add(i.mnemonic);
+    for (const p of isaStore.pseudos) set.add(p.mnemonic);
+    return [...set];
+  });
+
+  const disabledMnemonics = $derived.by(() => {
+    const map = new Map<string, string>();
+    if (extensionStore.catalogue.length === 0) return map;
+    const enabled = new Set(extensionStore.enabledCodes);
+    for (const i of isaStore.instructions)
+      if (!enabled.has(i.extension)) map.set(i.mnemonic, i.extension);
+    return map;
+  });
+
+  let languageReady = $state(false);
+  let tokensProvider: monaco.IDisposable | undefined;
+
   if (typeof self !== "undefined") {
     self.MonacoEnvironment = {
       getWorker: () => new editorWorker(),
@@ -72,7 +106,6 @@
 
   onMount(() => {
     monaco.languages.register({ id: "riscv" });
-    monaco.languages.setMonarchTokensProvider("riscv", riscvLanguageDef);
     monaco.languages.setLanguageConfiguration("riscv", riscvLanguageConfig);
     registerRiscvHover(monaco);
 
@@ -134,6 +167,19 @@
     });
 
     document.fonts?.ready.then(() => monaco.editor.remeasureFonts());
+
+    languageReady = true;
+  });
+
+  $effect(() => {
+    const kws = keywords;
+    const regs = REGISTER_NAMES;
+    if (!languageReady) return;
+    tokensProvider?.dispose();
+    tokensProvider = monaco.languages.setMonarchTokensProvider(
+      "riscv",
+      buildRiscvLanguageDef(kws, regs),
+    );
   });
 
   $effect(() => {
@@ -164,6 +210,7 @@
   });
 
   onDestroy(() => {
+    tokensProvider?.dispose();
     if (editor) editor.dispose();
     for (const model of models.values()) {
       model.dispose();
@@ -330,6 +377,36 @@
       line,
       monaco.editor.ScrollType.Smooth,
     );
+  });
+
+  $effect(() => {
+    const disabled = disabledMnemonics;
+    const content = activeContent;
+    const fileId = activeFileId;
+    if (!languageReady) return;
+    const model = fileId ? models.get(fileId) : editor.getModel();
+    if (!model) return;
+
+    const markers: monaco.editor.IMarkerData[] = [];
+    if (disabled.size) {
+      content.split("\n").forEach((raw, i) => {
+        const code = raw.split("#")[0].split("//")[0];
+        const m = code.match(/^\s*(?:[A-Za-z_]\w*\s*:\s*)?([A-Za-z]\w*)/);
+        if (!m) return;
+        const ext = disabled.get(m[1]);
+        if (!ext) return;
+        const startColumn = m[0].length - m[1].length + 1;
+        markers.push({
+          startLineNumber: i + 1,
+          startColumn,
+          endLineNumber: i + 1,
+          endColumn: startColumn + m[1].length,
+          message: `\`${m[1]}\` requires the ${ext} extension, which is disabled`,
+          severity: monaco.MarkerSeverity.Error,
+        });
+      });
+    }
+    monaco.editor.setModelMarkers(model, "hart-ext", markers);
   });
 
   $effect(() => {
