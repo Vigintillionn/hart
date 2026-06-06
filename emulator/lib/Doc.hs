@@ -74,7 +74,7 @@ formatInfo FmtI =
   FormatInfo
     "i"
     "I-type"
-    "Register–immediate"
+    "Register-immediate"
     "rd, rs1, imm"
     [ OperandDoc "rd" "destination register",
       OperandDoc "rs1" "source register",
@@ -200,14 +200,14 @@ class (Show a) => OpDoc a where
   opMnemonic = map toLower . show
 
 -- Useful UNICODE symbols for documentation
--- ᵤ = unsigned, ₛ = signed, × = multiply, ÷, % = remainder, … = range, ≠ = not equal
--- ≥ = greater or equal, ≤ = less or equal, → = arrow
+-- ᵤ = unsigned, ₛ = signed, × = multiply, ÷, % = remainder, … = range, != = not equal
+-- >= = greater or equal, <= = less or equal, → = arrow
 
 instance OpDoc ROp where
   opFormat _ = FmtR
   opOperation op = case op of
     ADD -> "rd = rs1 + rs2"
-    SUB -> "rd = rs1 − rs2"
+    SUB -> "rd = rs1 - rs2"
     XOR -> "rd = rs1 ^ rs2"
     OR -> "rd = rs1 | rs2"
     AND -> "rd = rs1 & rs2"
@@ -295,11 +295,11 @@ instance OpDoc BOp where
   opFormat _ = FmtB
   opOperation op = case op of
     BEQ -> "if rs1 == rs2 → label"
-    BNE -> "if rs1 ≠ rs2 → label"
+    BNE -> "if rs1 != rs2 → label"
     BLT -> "if rs1 < rs2 → label"
     BGE -> "if rs1 >= rs2 → label"
     BLTU -> "if rs1 <ᵤ rs2 → label"
-    BGEU -> "if rs1 ≥ᵤ rs2 → label"
+    BGEU -> "if rs1 >=ᵤ rs2 → label"
   opDescription op = case op of
     BEQ -> "Branches to label when the two registers are equal."
     BNE -> "Branches to label when the two registers differ."
