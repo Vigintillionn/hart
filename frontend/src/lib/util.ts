@@ -105,8 +105,13 @@ export function hex12(addr: number): string {
 }
 
 /** @returns a formatted string for a register value, either in hex or decimal */
-export function fmtRegisterValue(v: number, hexMode: boolean) {
-  return hexMode ? hex32(v) : (v | 0).toString();
+export function fmtRegisterValue(
+  v: number,
+  hexMode: boolean,
+  signedMode: boolean,
+) {
+  if (hexMode) return hex32(v);
+  return signedMode ? (v | 0).toString() : (v >>> 0).toString();
 }
 
 /** @returns 32-bit binary grouped in bytes, e.g. `00000000 11111100 ...` */

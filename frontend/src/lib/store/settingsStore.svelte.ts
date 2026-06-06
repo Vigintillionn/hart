@@ -303,7 +303,6 @@ class SettingsStore {
     displayStore.reset();
     terminalStore.resetPrefs();
     keymap.resetBindings();
-    layoutStore.hexMode = true;
   }
 }
 

@@ -1,10 +1,10 @@
 <script lang="ts">
-  import { layoutStore } from "$lib/store/layoutStore.svelte";
   import SegmentedControl from "../../ui/SegmentedControl.svelte";
+  import { displayStore } from "$lib/store/displayStore.svelte";
 </script>
 
 <SegmentedControl
-  bind:value={layoutStore.hexMode}
+  bind:value={displayStore.hexMode}
   options={[
     { value: true, label: "HEX" },
     { value: false, label: "DEC" },

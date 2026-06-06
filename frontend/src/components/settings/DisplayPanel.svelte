@@ -12,7 +12,16 @@
       bind:value={displayStore.registerNaming}
       options={[
         { value: "abi", label: "ABI" },
-        { value: "numeric", label: "x0–x31" },
+        { value: "numeric", label: "x0-x31" },
+      ]}
+    />
+  </SettingRow>
+  <SettingRow id="display.signedMode">
+    <SegmentedControl
+      bind:value={displayStore.signedMode}
+      options={[
+        { value: false, label: "Unsigned" },
+        { value: true, label: "Signed" },
       ]}
     />
   </SettingRow>
@@ -41,10 +50,20 @@
       ]}
     />
   </SettingRow>
+
+  <SettingRow id="display.followMemoryWrites">
+    <Toggle
+      bind:checked={displayStore.followMemoryWrites}
+      label="Follow memory writes"
+    />
+  </SettingRow>
 </SettingsSection>
 
 <SettingsSection title="Highlighting">
   <SettingRow id="display.flashChanges">
-    <Toggle bind:checked={displayStore.flashChanges} label="Highlight changes" />
+    <Toggle
+      bind:checked={displayStore.flashChanges}
+      label="Highlight changes"
+    />
   </SettingRow>
 </SettingsSection>

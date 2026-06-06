@@ -1,6 +1,6 @@
 <script lang="ts">
   import { createChangeFlasher } from "$lib/changeFlasher.svelte";
-  import { layoutStore } from "$lib/store/layoutStore.svelte";
+  import { displayStore } from "$lib/store/displayStore.svelte";
   import {
     fmtRegisterValue,
     getCsrDescription,
@@ -45,8 +45,12 @@
               ? 'text-text-faint'
               : 'text-text'}"
         >
-          {#if layoutStore.hexMode}<span class="text-text-ghost">0x</span
-            >{/if}{fmtRegisterValue(value, layoutStore.hexMode)}
+          {#if displayStore.hexMode}<span class="text-text-ghost">0x</span
+            >{/if}{fmtRegisterValue(
+            value,
+            displayStore.hexMode,
+            displayStore.signedMode,
+          )}
         </span>
       </div>
     {/each}

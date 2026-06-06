@@ -1,8 +1,8 @@
 <script lang="ts">
   import { untrack } from "svelte";
   import { cpuStore } from "$lib/store/cpuStore.svelte";
-  import { layoutStore } from "$lib/store/layoutStore.svelte";
   import { toHex, bin32 } from "$lib/util";
+  import { displayStore } from "$lib/store/displayStore.svelte";
 
   const rows = $derived(cpuStore.textRows);
   const pc = $derived(cpuStore.cpuState?.pc ?? -1);
@@ -86,14 +86,14 @@
         </button>
 
         <span class="text-secondary opacity-85"
-          >{#if layoutStore.hexMode}{toHex(
+          >{#if displayStore.hexMode}{toHex(
               row.addr,
             )}{:else}{row.addr}{/if}</span
         >
         <span class={isPc ? "text-primary" : "text-text-dim"}
           >{#if showBinary}{bin32(
               row.code,
-            )}{:else if layoutStore.hexMode}{toHex(
+            )}{:else if displayStore.hexMode}{toHex(
               row.code,
             )}{:else}{row.code}{/if}</span
         >

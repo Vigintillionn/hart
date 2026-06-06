@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { layoutStore } from "$lib/store/layoutStore.svelte";
   import { displayStore } from "$lib/store/displayStore.svelte";
   import { hex32, TEXT_BASE, DATA_BASE, STACK_TOP } from "$lib/util";
   import { createChangeFlasher } from "$lib/changeFlasher.svelte";
@@ -103,7 +102,7 @@
   }
 
   function fmtCell(value: bigint): string {
-    return layoutStore.hexMode
+    return displayStore.hexMode
       ? value.toString(16).padStart(2 * bpg, "0")
       : value.toString().padStart(decPad, "0");
   }

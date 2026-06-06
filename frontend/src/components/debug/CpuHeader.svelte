@@ -1,7 +1,7 @@
 <script lang="ts">
   import { cpuStore } from "$lib/store/cpuStore.svelte";
+  import { displayStore } from "$lib/store/displayStore.svelte";
   import { fileStore } from "$lib/store/fileStore.svelte";
-  import { layoutStore } from "$lib/store/layoutStore.svelte";
   import { toHex, hex32 } from "$lib/util";
 
   const st = $derived(cpuStore.cpuState);
@@ -19,7 +19,7 @@
   });
 
   const pcText = $derived(
-    st ? (layoutStore.hexMode ? toHex(st.pc) : (st.pc >>> 0).toString()) : "",
+    st ? (displayStore.hexMode ? toHex(st.pc) : (st.pc >>> 0).toString()) : "",
   );
 </script>
 
@@ -41,7 +41,7 @@
       <div
         class="font-mono text-base font-semibold tracking-[0.3px] text-primary"
       >
-        {#if st && layoutStore.hexMode}<span class="text-text-faint">0x</span
+        {#if st && displayStore.hexMode}<span class="text-text-faint">0x</span
           >{hex32(st.pc)}{:else}{pcText}{/if}
       </div>
     </div>
