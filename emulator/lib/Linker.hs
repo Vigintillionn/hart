@@ -46,7 +46,7 @@ lower (PseudoInstr op) = case op of
   P_LI rd (ImmVal v)
     | v < -2048 || v > 2047 ->
         let hi = (v + 0x800) `shiftR` 12
-            lo = v .&. 0xFFF
+            lo = (v .&. 0xFFF) - (if testBit v 11 then 0x1000 else 0)
          in SomeInstruction (UType LUI (UTypeArgs rd (ImmVal hi)))
               :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (ImmVal lo)))]
   P_LI rd imm -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)

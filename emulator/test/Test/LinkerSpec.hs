@@ -34,6 +34,13 @@ spec = do
     it "expands a large li into lui + addi" $
       length (execProgram (assemble "li a0, 0x12345\n")) `shouldBe` 2
 
+    it "sign-extends the lo part when bit 11 is set (li 0xDEADBEEF)" $
+      case execProgram (assemble "li a0, 0xDEADBEEF\n") of
+        [SomeInstruction (UType LUI hiArgs), SomeInstruction (ArithI ADDI loArgs)] -> do
+          u_imm hiArgs `shouldBe` 0xDEADC
+          i_imm loArgs `shouldBe` -273
+        _ -> expectationFailure "expected li to lower to lui + addi"
+
     it "lowers nop to addi x0, x0, 0" $
       case execProgram (assemble "nop\n") of
         [SomeInstruction (ArithI ADDI args)] -> do
