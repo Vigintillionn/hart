@@ -14,7 +14,8 @@
     if (disasm) return disasm;
     const line = pcToLine.get(st.pc);
     if (!line) return null;
-    const text = fileStore.activeFile.content.split("\n")[line - 1] ?? "";
+    const text =
+      (fileStore.activeFile?.content ?? "").split("\n")[line - 1] ?? "";
     return text.trim().replace(/\s*#.*$/, "") || null;
   });
 

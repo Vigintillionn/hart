@@ -177,7 +177,7 @@
       <Terminal
         outputBuffer={stdout}
         waitingForInput={cpuStore.status === "WaitingForInput"}
-        filename={fileStore.activeFile.name}
+        filename={fileStore.activeFile?.name ?? "program"}
         exited={exitInfo !== null}
         exitLabel={exitInfo?.label ?? ""}
         onSubmitInput={(text: string) => cpuStore.submitInput(text)}

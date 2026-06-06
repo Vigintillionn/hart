@@ -42,7 +42,7 @@
   >
     <span>HART</span>
     <span class="h-0.75 w-0.75 rounded-full bg-text-ghost"></span>
-    <span class="text-text">{fileStore.activeFile.name}</span>
+    <span class="text-text">{fileStore.activeFile?.name ?? "No file"}</span>
     {#if debugging}
       <span
         class="h-1.75 w-1.75 rounded-full bg-primary shadow-[0_0_8px_var(--primary-glow)] animate-pulse"

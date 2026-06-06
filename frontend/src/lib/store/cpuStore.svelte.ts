@@ -103,6 +103,7 @@ class CpuStore {
   get isDirty() {
     if (!this.loadedSnapshot) return false;
     const f = fileStore.activeFile;
+    if (!f) return false;
     return (
       f.id !== this.loadedSnapshot.fileId ||
       f.content !== this.loadedSnapshot.content
@@ -196,7 +197,7 @@ class CpuStore {
               line !== null ? `At line ${line}: ${message}` : message,
             );
             const fileId =
-              this.pendingSnapshot?.fileId ?? fileStore.activeFile.id;
+              this.pendingSnapshot?.fileId ?? fileStore.activeFile?.id ?? "";
             this.compileError = { fileId, line, message };
           } else {
             logStore.log("error", "EMU", response.message ?? "Unknown error");
@@ -279,11 +280,15 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
+    const f = fileStore.activeFile;
+    if (!f) {
+      logStore.log("error", "BUILD", "No file open to compile.");
+      return;
+    }
     // The emulator narrates the build itself (the "assembled N ... entry" line,
     // plus any faults); we just surface the system console on user action.
     terminalStore.autoSwitch("system");
     this.compileError = null;
-    const f = fileStore.activeFile;
     this.pendingSnapshot = { fileId: f.id, content: f.content };
     sendToHaskell("load", f.content);
   }

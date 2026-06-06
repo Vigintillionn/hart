@@ -202,12 +202,22 @@ pub struct OperandDoc {
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
 #[ts(export, export_to = "../src/bindings/")]
+pub struct FieldDoc {
+    pub name: String,
+    pub hi: i32,
+    pub lo: i32,
+    pub role: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
 pub struct FormatInfo {
     pub id: String,
     pub name: String,
     pub kind: String,
     pub syntax: String,
     pub operands: Vec<OperandDoc>,
+    pub fields: Vec<FieldDoc>,
     pub blurb: String,
 }
 

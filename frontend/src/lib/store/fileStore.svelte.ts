@@ -2,60 +2,71 @@ import { open, save, confirm } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import type { OpenFile } from "../types";
 import { logStore } from "./logStore.svelte";
+import { loadJSON, saveJSON } from "../persist";
+import { EXAMPLES } from "../examples";
 
-const STARTER = `# Welcome to HART - a RISC-V (RV32IM) time-travel debugger.
-#
-# Press Compile to assemble and Run to execute this program, then use the
-# step controls to walk through it forwards AND backwards while
-# the registers and memory update live on the right.
+const SESSION_KEY = "hart:session";
+const LAUNCHED_KEY = "hart:launched";
 
-.data
-msg:     .string "sum(1..5) = "
-newline: .string "\\n"
+type Session = {
+  files: OpenFile[];
+  activeFileId: string;
+};
 
-.text
-main:
-        la      a0, msg         # address of the string
-        li      a7, 4           # syscall 4: print_string
-        ecall
+function firstLaunchSession(): Session {
+  const files: OpenFile[] = EXAMPLES.map((ex, i) => ({
+    id: `example-${i}`,
+    name: ex.name,
+    path: null,
+    content: ex.content,
+    savedContent: ex.content,
+  }));
+  return { files, activeFileId: files[0]?.id ?? "" };
+}
 
-        li      t0, 0           # t0 = running sum
-        li      t1, 1           # t1 = i (the counter)
-        li      t2, 6           # stop once i reaches 6
-loop:
-        add     t0, t0, t1      # sum += i
-        addi    t1, t1, 1       # i++
-        blt     t1, t2, loop    # repeat while i < 6
+function initialSession(): Session {
+  if (!loadJSON<boolean>(LAUNCHED_KEY, false)) {
+    saveJSON(LAUNCHED_KEY, true);
+    const session = firstLaunchSession();
+    saveJSON(SESSION_KEY, session);
+    return session;
+  }
 
-        mv      a0, t0          # print the result...
-        li      a7, 1           # syscall 1: print_int
-        ecall
-
-        la      a0, newline     # print a newline
-        li      a7, 4           # syscall 4: print_string
-        ecall
-
-        li      a7, 10          # syscall 10: exit
-        ecall
-`;
+  const stored = loadJSON<Partial<Session>>(SESSION_KEY, {});
+  const files = Array.isArray(stored.files) ? stored.files : [];
+  const activeFileId =
+    files.find((f) => f.id === stored.activeFileId)?.id ?? files[0]?.id ?? "";
+  return { files, activeFileId };
+}
 
 class FileStore {
-  openFiles = $state<OpenFile[]>([
-    {
-      id: "default",
-      name: "untitled.s",
-      path: null,
-      content: STARTER,
-      savedContent: STARTER,
-    },
-  ]);
-  activeFileId = $state("default");
+  openFiles = $state<OpenFile[]>([]);
+  activeFileId = $state("");
 
-  public get activeFile() {
+  constructor() {
+    const session = initialSession();
+    this.openFiles = session.files;
+    this.activeFileId = session.activeFileId;
+
+    $effect.root(() => {
+      $effect(() =>
+        saveJSON(SESSION_KEY, {
+          files: this.openFiles,
+          activeFileId: this.activeFileId,
+        } satisfies Session),
+      );
+    });
+  }
+
+  public get activeFile(): OpenFile | undefined {
     return (
-      this.openFiles.find((f) => f.id === this.activeFileId) ||
+      this.openFiles.find((f) => f.id === this.activeFileId) ??
       this.openFiles[0]
     );
+  }
+
+  public get hasFiles(): boolean {
+    return this.openFiles.length > 0;
   }
 
   /** @returns true if the file has edits not yet written to disk */
@@ -67,6 +78,27 @@ class FileStore {
     return this.openFiles.some((f) => this.isDirty(f));
   }
 
+  private uniqueUntitledName(): string {
+    const taken = new Set(this.openFiles.map((f) => f.name));
+    if (!taken.has("untitled.s")) return "untitled.s";
+    for (let n = 1; ; n++) {
+      const name = `untitled-${n}.s`;
+      if (!taken.has(name)) return name;
+    }
+  }
+
+  public newFile() {
+    const id = `untitled-${Date.now()}`;
+    this.openFiles.push({
+      id,
+      name: this.uniqueUntitledName(),
+      path: null,
+      content: "",
+      savedContent: "",
+    });
+    this.activeFileId = id;
+  }
+
   public async handleOpenFile() {
     try {
       const selected = await open({
@@ -74,6 +106,12 @@ class FileStore {
         filters: [{ name: "Assembly", extensions: ["s", "asm"] }],
       });
       if (!selected || typeof selected !== "string") return;
+
+      const existing = this.openFiles.find((f) => f.path === selected);
+      if (existing) {
+        this.activeFileId = existing.id;
+        return;
+      }
 
       const content = await readTextFile(selected);
       const name = selected.split(/[/\\]/).pop() || "untitled.s";
@@ -117,7 +155,6 @@ class FileStore {
 
   public async closeFile(id: string, e?: Event) {
     if (e) e.stopPropagation();
-    if (this.openFiles.length === 1) return; // don't close last file
 
     const idx = this.openFiles.findIndex((f) => f.id === id);
     if (idx < 0) return;
@@ -132,7 +169,8 @@ class FileStore {
 
     this.openFiles.splice(idx, 1);
     if (this.activeFileId === id) {
-      this.activeFileId = this.openFiles[Math.max(0, idx - 1)].id;
+      const next = this.openFiles[Math.max(0, idx - 1)];
+      this.activeFileId = next ? next.id : "";
     }
   }
 
