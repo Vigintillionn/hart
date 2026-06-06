@@ -244,6 +244,22 @@ pub struct SyscallInfo {
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]
 #[ts(export, export_to = "../src/bindings/")]
+pub struct DirectiveInfo {
+    pub name: String,
+    pub args: String,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
+pub struct CsrInfo {
+    pub name: String,
+    pub address: String,
+    pub description: String,
+}
+
+#[derive(Serialize, Deserialize, TS, Clone, Debug)]
+#[ts(export, export_to = "../src/bindings/")]
 #[serde(tag = "type")]
 pub enum EmulatorResponse {
     #[serde(rename = "state")]
@@ -297,6 +313,8 @@ pub enum EmulatorResponse {
         instructions: Vec<InstructionInfo>,
         pseudos: Vec<PseudoInfo>,
         syscalls: Vec<SyscallInfo>,
+        directives: Vec<DirectiveInfo>,
+        csrs: Vec<CsrInfo>,
     },
     #[serde(rename = "need_input")]
     NeedInput,

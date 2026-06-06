@@ -217,6 +217,8 @@ class CpuStore {
             response.instructions,
             response.pseudos,
             response.syscalls,
+            response.directives,
+            response.csrs,
           );
         }
       },

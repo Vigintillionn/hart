@@ -33,15 +33,20 @@
       />
     {/each}
 
-    {@render heading("Macros")}
+    {@render heading("Assembler")}
     <HelpNavItem id="pseudo" label="Pseudo-instructions" />
+    <HelpNavItem id="directives" label="Directives" />
 
     {@render heading("Runtime")}
     <HelpNavItem id="syscall" label="System calls" />
+    <HelpNavItem id="csrs" label="Control &amp; status registers" />
 
     {@render heading("Other")}
     <HelpNavItem id="registers" label="Calling conventions" />
     <HelpNavItem id="ascii" label="ASCII Table" />
+
+    {@render heading("Tools")}
+    <HelpNavItem id="converter" label="Number converter" />
   </ScrollArea>
 
   <div class="flex-none border-t border-border px-3 py-3">

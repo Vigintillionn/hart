@@ -2,6 +2,8 @@ import type { FormatInfo } from "../../bindings/FormatInfo";
 import type { InstructionInfo } from "../../bindings/InstructionInfo";
 import type { PseudoInfo } from "../../bindings/PseudoInfo";
 import type { SyscallInfo } from "../../bindings/SyscallInfo";
+import type { DirectiveInfo } from "../../bindings/DirectiveInfo";
+import type { CsrInfo } from "../../bindings/CsrInfo";
 import { extensionStore } from "./extensionStore.svelte";
 import { helpStore } from "./helpStore.svelte";
 import { isaStore } from "./isaStore.svelte";
@@ -10,6 +12,16 @@ const FALLBACK_NAMES: Record<string, string> = {
   I: "Base Integer",
   M: "Multiply / Divide",
 };
+
+const SPECIAL_GROUPS = [
+  "pseudo",
+  "syscall",
+  "registers",
+  "ascii",
+  "directives",
+  "csrs",
+  "converter",
+];
 
 export type ExtGroup = { code: string; name: string; enabled: boolean };
 export type FmtGroup = { fmt: FormatInfo; items: InstructionInfo[] };
@@ -159,7 +171,7 @@ class HelpCatalogue {
     const codes =
       helpStore.group === "all"
         ? this.extGroups.map((g) => g.code)
-        : helpStore.group === "pseudo" || helpStore.group === "syscall"
+        : SPECIAL_GROUPS.includes(helpStore.group)
           ? []
           : [helpStore.group];
 
@@ -229,12 +241,32 @@ class HelpCatalogue {
       : [],
   );
 
+  /** Assembler directives matching the query */
+  readonly visibleDirectives = $derived<DirectiveInfo[]>(
+    helpStore.group === "all" || helpStore.group === "directives"
+      ? isaStore.directives.filter((d) =>
+          this.match(`${d.name} ${d.args} ${d.description}`),
+        )
+      : [],
+  );
+
+  /** Control/status registers matching the query */
+  readonly visibleCsrs = $derived<CsrInfo[]>(
+    helpStore.group === "all" || helpStore.group === "csrs"
+      ? isaStore.csrs.filter((c) =>
+          this.match(`${c.name} ${c.address} ${c.description}`),
+        )
+      : [],
+  );
+
   readonly isEmpty = $derived(
     this.extSections.length === 0 &&
       this.visiblePseudos.length === 0 &&
       this.visibleSyscalls.length === 0 &&
       this.visibleAscii.length === 0 &&
-      this.visibleRegisters.length === 0,
+      this.visibleRegisters.length === 0 &&
+      this.visibleDirectives.length === 0 &&
+      this.visibleCsrs.length === 0,
   );
 }
 
