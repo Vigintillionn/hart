@@ -80,11 +80,16 @@ export function formatEmulatorError(e: EmulatorError): string {
 export function formatNotice(n: Notice): string {
   switch (n.kind) {
     case "ProgramExitedNormally":
-      return "Program exited normally";
+      return "program exited with code 0";
     case "ProgramExited":
-      return `Program exited with code: ${n.code} (raw: ${n.raw})`;
+      return `program exited with code ${n.code}`;
     case "BreakpointHit":
-      return "Breakpoint hit";
+      return "breakpoint hit";
+    case "Syscall": {
+      const times = n.count > 1 ? ` ×${n.count}` : "";
+      const bytes = n.bytes !== null ? ` (${n.bytes}B)` : "";
+      return `${n.name} @${hex(n.pc)}${times}${bytes}`;
+    }
   }
 }
 
@@ -128,9 +133,23 @@ export function emulatorErrorTag(e: EmulatorError): string {
   }
 }
 
+export function noticeTag(n: Notice): string {
+  switch (n.kind) {
+    case "Syscall":
+      return "ECALL";
+    case "ProgramExitedNormally":
+    case "ProgramExited":
+      return "EXIT";
+    case "BreakpointHit":
+      return "BREAK";
+  }
+}
+
 /** Tag for a system-log entry derived from the event (fault kind, or notice). */
 export function systemEventTag(ev: SystemEvent): string {
-  return ev.fault ? emulatorErrorTag(ev.fault) : "CPU";
+  if (ev.fault) return emulatorErrorTag(ev.fault);
+  if (ev.notice) return noticeTag(ev.notice);
+  return "CPU";
 }
 
 /** The source line an assembly error points at, if any (via `Located`). */

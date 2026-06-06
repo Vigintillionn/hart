@@ -83,6 +83,13 @@ renderNotice n = case n of
   ProgramExitedNormally -> "Program exited normally"
   ProgramExited code raw -> "Program exited with code: " ++ show code ++ " (raw: " ++ show raw ++ ")"
   BreakpointHit -> "Breakpoint hit"
+  SyscallCalled name p mbytes cnt ->
+    "ecall "
+      ++ name
+      ++ " @"
+      ++ hex p
+      ++ (if cnt > 1 then " ×" ++ show cnt else "")
+      ++ maybe "" (\b -> " (" ++ show b ++ "B)") mbytes
 
 renderSystemEvent :: SystemEvent -> String
 renderSystemEvent (SysFault e) = renderEmulatorError e

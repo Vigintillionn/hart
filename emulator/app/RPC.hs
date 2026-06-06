@@ -29,7 +29,7 @@ import Extension
     readExtensionCode,
   )
 import Linker (Executable (..), resolve)
-import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), StopReason (..), appendOutput, emptyCPU, incPC, outputDelta, signedRegs)
+import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), StopReason (..), appendOutput, emptyCPU, entryPoint, incPC, outputDelta, signedRegs)
 import Numeric (showHex)
 import Parser (parse)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
@@ -189,13 +189,11 @@ runRPC _ = do
 
 compileAndLoad :: ExtensionSet -> String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)], [(Word32, Word32)]))
 compileAndLoad exts sourceCode = do
-  sendLog Info "BUILD" "Compiling..."
   case parse exts sourceCode of
     Left err -> do
       sendResponse $ ResFault (EParse err)
       return Nothing
     Right parsed -> do
-      sendLog Info "BUILD" "Linking..."
       case resolve parsed of
         Left err -> do
           sendResponse $ ResFault (ELink err)
@@ -217,7 +215,7 @@ compileAndLoad exts sourceCode = do
               return Nothing
             else do
               readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU {enabledExts = exts}
-              sendLog Info "BUILD" ("Loaded " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ " at 0x0")
+              sendLog Info "BUILD" ("assembled " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ " · entry 0x" ++ showHex entryPoint "")
               let disasmMap =
                     zipWith
                       (\instr (addr, _) -> (addr, disassemble instr))
@@ -275,10 +273,7 @@ rpcLoop exts bps lastSent dbg = do
                   -- a freshly loaded program is a full snapshot and the new base
                   sendResponse (ResLoaded (current newDbg) smap dmap cmap)
                   rpcLoop exts bps (Just (current newDbg)) newDbg
-            Just CmdRun -> do
-              when (status c /= Halted) $
-                sendLog Info "EXEC" ("Starting execution from 0x" ++ showHex (pc c) "")
-              executeRun exts bps lastSent dbg
+            Just CmdRun -> executeRun exts bps lastSent dbg
             Just CmdStepFwd -> do
               if not (Seq.null (future dbg))
                 then do
@@ -349,6 +344,7 @@ rpcLoop exts bps lastSent dbg = do
 
                   let cFinal = current newDbg
                   lastSent2 <- sendState lastSent1 False cFinal
+                  logRunFinished cFinal
                   when (status cFinal == WaitingForInput) (sendResponse ResNeedInput)
                   rpcLoop exts bps lastSent2 newDbg
                 else do
@@ -380,5 +376,12 @@ executeRun exts bps lastSent dbg = do
 
       let cFinal = current newDbg
       lastSent2 <- sendState lastSent1 False cFinal
+      logRunFinished cFinal
       when (status cFinal == WaitingForInput) (sendResponse ResNeedInput)
       rpcLoop exts bps lastSent2 newDbg
+
+logRunFinished :: CPU -> IO ()
+logRunFinished cFinal =
+  when (status cFinal == Halted) $
+    let n = cycles cFinal
+     in sendLog Info "CPU" ("finished · executed " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s"))

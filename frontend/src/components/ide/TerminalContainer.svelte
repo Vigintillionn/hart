@@ -2,6 +2,7 @@
   import { terminalStore } from "$lib/store/terminalStore.svelte";
   import { logStore } from "$lib/store/logStore.svelte";
   import { cpuStore } from "$lib/store/cpuStore.svelte";
+  import { fileStore } from "$lib/store/fileStore.svelte";
   import Terminal from "./Terminal.svelte";
   import Icon from "../Icon.svelte";
   import IconButton from "../ui/IconButton.svelte";
@@ -14,7 +15,39 @@
     error: "text-red",
   };
 
+  type Seg = { t: string; hot: boolean };
+  function highlight(msg: string): Seg[] {
+    const re = /0x[0-9a-fA-F]+|\b\d+\b/g;
+    const segs: Seg[] = [];
+    let last = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(msg))) {
+      if (m.index > last)
+        segs.push({ t: msg.slice(last, m.index), hot: false });
+      segs.push({ t: m[0], hot: true });
+      last = m.index + m[0].length;
+    }
+    if (last < msg.length) segs.push({ t: msg.slice(last), hot: false });
+    return segs;
+  }
+
   const stdout = $derived(terminalStore.program.logs.join("\n"));
+
+  const exitInfo = $derived.by(() => {
+    const st = cpuStore.cpuState;
+    if (!st || st.status !== "Halted") return null;
+    let label = "process halted";
+    let faulted = false;
+    for (const ev of st.systemLog) {
+      if (ev.notice?.kind === "ProgramExitedNormally")
+        label = "process exited with code 0";
+      else if (ev.notice?.kind === "ProgramExited")
+        label = `process exited with code ${ev.notice.code}`;
+      if (ev.fault) faulted = true;
+    }
+    if (faulted && label === "process halted") label = "process terminated";
+    return { label };
+  });
 
   const outputLineCount = $derived.by(() => {
     if (!stdout) return 0;
@@ -125,7 +158,10 @@
             >
             <span
               class="flex-1 whitespace-pre-wrap wrap-break-word text-text-dim"
-              >{l.msg}</span
+              >{#each highlight(l.msg) as seg}<span
+                  class:text-text={seg.hot}
+                  class:font-medium={seg.hot}>{seg.t}</span
+                >{/each}</span
             >
           </div>
         {/each}
@@ -141,6 +177,9 @@
       <Terminal
         outputBuffer={stdout}
         waitingForInput={cpuStore.status === "WaitingForInput"}
+        filename={fileStore.activeFile.name}
+        exited={exitInfo !== null}
+        exitLabel={exitInfo?.label ?? ""}
         onSubmitInput={(text: string) => cpuStore.submitInput(text)}
       />
     {:else}

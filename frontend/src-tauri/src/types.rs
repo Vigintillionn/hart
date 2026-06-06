@@ -147,6 +147,13 @@ pub enum Notice {
         raw: u32,
     },
     BreakpointHit,
+    #[serde(rename = "Syscall")]
+    Syscall {
+        name: String,
+        pc: u32,
+        bytes: Option<u32>,
+        count: u32,
+    },
 }
 
 #[derive(Serialize, Deserialize, TS, Clone, Debug)]

@@ -1,112 +1,107 @@
 <script lang="ts">
-  import { onMount } from "svelte";
-  import { Terminal } from "@xterm/xterm";
-  import { FitAddon } from "@xterm/addon-fit";
-  import { modeStore } from "$lib/store/mode.svelte";
-
-  // Kept in sync with the surface-0 / text / primary tokens in app.css.
-  const TERM_THEMES = {
-    dark: {
-      background: "#0d0d10",
-      foreground: "#e7e7ec",
-      cursor: "#fdb515",
-      selectionBackground: "rgba(253, 181, 21, 0.2)",
-    },
-    light: {
-      background: "#ffffff",
-      foreground: "#14213a",
-      cursor: "#b06f00",
-      selectionBackground: "rgba(253, 181, 21, 0.28)",
-    },
-  };
+  import { tick } from "svelte";
 
   let {
     outputBuffer = "",
     waitingForInput = false,
+    filename = "program.s",
+    exited = false,
+    exitLabel = "",
     onSubmitInput = (_text: string) => {},
   }: {
     outputBuffer?: string;
     waitingForInput?: boolean;
+    filename?: string;
+    exited?: boolean;
+    exitLabel?: string;
     onSubmitInput?: (text: string) => void;
   } = $props();
 
-  let terminalContainer: HTMLDivElement;
-  let term: Terminal;
-  let fitAddon: FitAddon;
+  let scrollEl = $state<HTMLDivElement>();
+  let inputEl = $state<HTMLInputElement>();
+  let draft = $state("");
+  let pinned = true;
 
-  let localInputBuffer = "";
-  let localLastBuffer = "";
+  function onScroll() {
+    const el = scrollEl;
+    if (!el) return;
+    pinned = el.scrollHeight - el.scrollTop - el.clientHeight < 16;
+  }
 
-  onMount(() => {
-    term = new Terminal({
-      theme: TERM_THEMES[modeStore.mode],
-      fontFamily: "'JetBrains Mono', ui-monospace, monospace",
-      fontSize: 12.5,
-      cursorBlink: true,
-      convertEol: true,
-    });
-
-    fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-
-    term.open(terminalContainer);
-    fitAddon.fit();
-
-    term.onData((data) => {
-      if (!waitingForInput) return;
-
-      const char = data;
-      if (char === "\r") {
-        term.write("\r\n");
-        onSubmitInput(localInputBuffer);
-        localLastBuffer = (outputBuffer || "") + localInputBuffer + "\n";
-        localInputBuffer = "";
-      } else if (char === "\x7F") {
-        if (localInputBuffer.length > 0) {
-          localInputBuffer = localInputBuffer.slice(0, -1);
-          term.write("\b \b");
-        }
-      } else {
-        localInputBuffer += char;
-        term.write(char);
-      }
-    });
-
-    const resizeObserver = new ResizeObserver(() => {
-      if (
-        terminalContainer.clientWidth > 0 &&
-        terminalContainer.clientHeight > 0
-      ) {
-        fitAddon.fit();
-      }
-    });
-    resizeObserver.observe(terminalContainer);
-
-    return () => {
-      resizeObserver.disconnect();
-      term.dispose();
-    };
-  });
-
+  // Keep the view pinned to the latest output (and the live input line).
   $effect(() => {
-    if (term) term.options.theme = TERM_THEMES[modeStore.mode];
+    void outputBuffer;
+    void draft;
+    void exited;
+    if (!pinned) return;
+    tick().then(() => {
+      if (scrollEl) scrollEl.scrollTop = scrollEl.scrollHeight;
+    });
   });
 
+  // Grab focus the moment the program asks for input.
   $effect(() => {
-    if (term && outputBuffer !== undefined) {
-      if (!outputBuffer.startsWith(localLastBuffer)) {
-        term.reset();
-        term.write(outputBuffer, () => term.scrollToBottom());
-      } else if (outputBuffer.length > localLastBuffer.length) {
-        const newText = outputBuffer.slice(localLastBuffer.length);
-        term.write(newText, () => term.scrollToBottom());
-      }
-      localLastBuffer = outputBuffer;
-    }
+    if (waitingForInput) inputEl?.focus();
   });
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    if (!waitingForInput) return;
+    onSubmitInput(draft);
+    draft = "";
+  }
 </script>
 
-<div
-  class="box-border h-full w-full overflow-hidden bg-surface-0 px-3.5 py-2"
-  bind:this={terminalContainer}
-></div>
+<div class="flex h-full min-h-0 flex-col bg-surface-0 font-mono text-[12.5px]">
+  <div
+    class="flex-none truncate border-b border-border-soft px-3.5 py-1.5 text-[11px] text-text-faint"
+  >
+    hart · <span class="text-text-dim">./{filename}</span>
+  </div>
+
+  <!-- svelte-ignore a11y_no_static_element_interactions -->
+  <!-- svelte-ignore a11y_click_events_have_key_events -->
+  <div
+    bind:this={scrollEl}
+    onscroll={onScroll}
+    onclick={() => inputEl?.focus()}
+    class="min-h-0 flex-1 cursor-text overflow-auto px-3.5 py-2 leading-4.5"
+  >
+    <pre
+      class="m-0 whitespace-pre-wrap wrap-break-word font-mono text-text">{outputBuffer}{#if waitingForInput}{draft}{/if}{#if !exited}<span
+          class="caret"></span>{/if}</pre>
+    {#if exited}
+      <div class="mt-0.5 text-text-faint">[{exitLabel}]</div>
+    {/if}
+
+    <input
+      bind:this={inputEl}
+      bind:value={draft}
+      onkeydown={onKeydown}
+      disabled={!waitingForInput}
+      spellcheck="false"
+      autocomplete="off"
+      aria-label="program input"
+      class="absolute h-0 w-0 border-0 p-0 opacity-0"
+    />
+  </div>
+</div>
+
+<style>
+  .caret {
+    display: inline-block;
+    width: 0.55em;
+    background: var(--color-primary);
+    animation: blink 1.1s step-end infinite;
+  }
+  @keyframes blink {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0;
+    }
+  }
+</style>

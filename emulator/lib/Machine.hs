@@ -62,7 +62,7 @@ import Data.IntMap.Strict qualified as M
 import Data.Vector.Unboxed ((//))
 import Data.Vector.Unboxed qualified as V
 import Data.Word (Word16, Word32, Word8)
-import Error (EmulatorError (..), Notice, SystemEvent (..))
+import Error (EmulatorError (..), Notice, SystemEvent (..), recordNotice)
 import Extension (ExtensionSet, defaultExtensions)
 import System.IO (Handle, IOMode (..), hClose, openFile)
 import System.IO.Error (tryIOError)
@@ -218,7 +218,7 @@ instance MonadCPU Emulator where
   terminate = modify' $ \cpu -> cpu {status = Halted}
 
   logFault e = modify' $ \cpu -> cpu {systemLog = SysFault e : systemLog cpu}
-  logNotice n = modify' $ \cpu -> cpu {systemLog = SysNotice n : systemLog cpu}
+  logNotice n = modify' $ \cpu -> cpu {systemLog = recordNotice n (systemLog cpu)}
 
   getInputBuffer = gets inputBuffer
   clearInputBuffer = modify' $ \cpu -> cpu {inputBuffer = Nothing}

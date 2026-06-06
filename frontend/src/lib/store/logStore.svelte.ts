@@ -18,11 +18,18 @@ class LogStore {
     return ((performance.now() - this.#t0) / 1000).toFixed(3);
   }
 
-  public log(level: LogLevel, tag: string, msg: string) {
-    this.entries.push({ id: this.#seq++, ts: this.#stamp(), level, tag, msg });
+  public log(level: LogLevel, tag: string, msg: string): number {
+    const id = this.#seq++;
+    this.entries.push({ id, ts: this.#stamp(), level, tag, msg });
     if (this.entries.length > 400) {
       this.entries = this.entries.slice(-400);
     }
+    return id;
+  }
+
+  public update(id: number, msg: string) {
+    const e = this.entries.find((x) => x.id === id);
+    if (e) e.msg = msg;
   }
 
   public clear() {

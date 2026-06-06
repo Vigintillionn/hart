@@ -13,6 +13,7 @@ module Error
     Notice (..),
     SystemEvent (..),
     eventSeverity,
+    recordNotice,
   )
 where
 
@@ -86,12 +87,33 @@ data Notice
     ProgramExited Word32 Word32
   | -- | `ebreak`
     BreakpointHit
+  | -- | one or more `ecall`s were dispatched: the syscall's friendly name, the
+    -- pc it was issued from, an optional payload size in bytes (summed across
+    -- repeats, for I/O syscalls), and how many consecutive identical calls were
+    -- folded into this entry (1 for a single call)
+    SyscallCalled String Word32 (Maybe Int) Int
   deriving (Show, Eq)
 
 data SystemEvent
   = SysFault EmulatorError
   | SysNotice Notice
   deriving (Show, Eq)
+
+recordNotice :: Notice -> [SystemEvent] -> [SystemEvent]
+recordNotice n@(SyscallCalled nm p by cnt) evs =
+  case break (sameSite nm p) evs of
+    (before, SysNotice (SyscallCalled _ _ by' cnt') : after) ->
+      before ++ SysNotice (SyscallCalled nm p (addBytes by' by) (cnt' + cnt)) : after
+    _ -> SysNotice n : evs
+  where
+    sameSite a b (SysNotice (SyscallCalled a' b' _ _)) = a == a' && b == b'
+    sameSite _ _ _ = False
+recordNotice n evs = SysNotice n : evs
+
+addBytes :: Maybe Int -> Maybe Int -> Maybe Int
+addBytes (Just a) (Just b) = Just (a + b)
+addBytes Nothing b = b
+addBytes a Nothing = a
 
 eventSeverity :: SystemEvent -> Severity
 eventSeverity (SysNotice _) = Info
@@ -158,6 +180,8 @@ instance ToJSON Notice where
     ProgramExitedNormally -> kind "ProgramExitedNormally"
     ProgramExited code raw -> object ["kind" .= s "ProgramExited", "code" .= code, "raw" .= raw]
     BreakpointHit -> kind "BreakpointHit"
+    SyscallCalled name p bytes cnt ->
+      object ["kind" .= s "Syscall", "name" .= name, "pc" .= p, "bytes" .= bytes, "count" .= cnt]
 
 instance ToJSON SystemEvent where
   toJSON ev = object (("severity" .= eventSeverity ev) : body)

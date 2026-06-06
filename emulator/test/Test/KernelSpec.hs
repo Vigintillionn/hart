@@ -1,6 +1,7 @@
 module Test.KernelSpec (spec) where
 
-import Machine (RunStatus (..), heapTop, status)
+import Error (Notice (..), SystemEvent (..))
+import Machine (RunStatus (..), heapTop, status, systemLog)
 import Test.Hspec
 import Test.Support
 
@@ -38,15 +39,17 @@ spec = do
       regS cpu a0 `shouldBe` 123
 
   describe "process exit" $ do
-    it "exit (10) halts and prints the normal-exit message" $ do
+    it "exit (10) halts and records a normal-exit notice (no stdout)" $ do
       cpu <- runProgram "li a7, 10\necall\n"
       status cpu `shouldBe` Halted
-      output cpu `shouldBe` "Program exited normally\n"
+      output cpu `shouldBe` ""
+      systemLog cpu `shouldContain` [SysNotice ProgramExitedNormally]
 
-    it "exit2 (93) reports the low 8 bits of the exit code" $ do
+    it "exit2 (93) records the low 8 bits of the exit code (no stdout)" $ do
       cpu <- runProgram "li a0, 42\nli a7, 93\necall\n"
       status cpu `shouldBe` Halted
-      output cpu `shouldBe` "Program exited with code: 42\n"
+      output cpu `shouldBe` ""
+      systemLog cpu `shouldContain` [SysNotice (ProgramExited 42 42)]
 
   describe "sbrk (214)" $ do
     it "returns the current break when asked for 0" $ do

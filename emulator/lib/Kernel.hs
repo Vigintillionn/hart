@@ -43,11 +43,48 @@ syscallCode = \case
 syscallOf :: Word32 -> Maybe Syscall
 syscallOf n = lookup n [(syscallCode s, s) | s <- [minBound .. maxBound]]
 
+syscallName :: Syscall -> String
+syscallName = \case
+  PrintInt -> "print_int"
+  PrintString -> "print_str"
+  ReadInt -> "read_int"
+  ReadString -> "read_str"
+  Exit -> "exit"
+  PrintChar -> "print_char"
+  OpenAt -> "openat"
+  Close -> "close"
+  Read -> "read"
+  Write -> "write"
+  SysExit -> "exit"
+  Brk -> "sbrk"
+
+syscallBytes :: (MonadCPU m) => Syscall -> m (Maybe Int)
+syscallBytes = \case
+  PrintString -> do
+    ptr <- getReg a0
+    str <- readCString ptr
+    return (Just (length str))
+  PrintChar -> return (Just 1)
+  PrintInt -> do
+    val <- getReg a0
+    return (Just (length (show (fromIntegral val :: Int32))))
+  Write -> do
+    len <- getReg a2
+    return (Just (fromIntegral len))
+  _ -> return Nothing
+
 handleSyscall :: (MonadCPU m) => m PCUpdate
 handleSyscall = do
   syscall <- getReg a7
   case syscallOf syscall of
-    Just call -> dispatch call
+    -- exit syscalls narrate themselves through their own notice; skip the ecall
+    -- trace line so the console shows a single EXIT entry, not ECALL + EXIT
+    Just call | call `elem` [Exit, SysExit] -> dispatch call
+    Just call -> do
+      pc <- getPC
+      bytes <- syscallBytes call
+      logNotice (SyscallCalled (syscallName call) pc bytes 1)
+      dispatch call
     Nothing -> do
       pc <- getPC
       logFaultAt pc (EUnknownSyscall pc syscall)
@@ -90,7 +127,6 @@ dispatch ReadString = do
       clearInputBuffer
       return Advance
 dispatch Exit = do
-  consolePrintLn "Program exited normally"
   logNotice ProgramExitedNormally
   return Terminate
 dispatch PrintChar = do
@@ -155,7 +191,6 @@ dispatch Write = do
 dispatch SysExit = do
   code <- getReg a0
   let exitCode = code .&. 0xFF
-  consolePrintLn $ "Program exited with code: " ++ show exitCode
   logNotice (ProgramExited exitCode code)
   return Terminate
 dispatch Brk = do

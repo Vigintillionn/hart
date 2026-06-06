@@ -81,6 +81,7 @@ class CpuStore {
   /** set when a `run` should fire automatically after a recompile succeeds */
   private runAfterLoad = false;
   private systemLogShown = 0;
+  private syscallEntries = new Map<number, { id: number; msg: string }>();
   /**
    * Accumulated memory, keyed by byte address. The backend ships full memory
    * only on `loaded`/full `state`; forward `state_delta` messages carry just
@@ -166,6 +167,7 @@ class CpuStore {
           this.loadedSnapshot = this.pendingSnapshot;
           this.compileError = null;
           this.systemLogShown = 0;
+          this.syscallEntries.clear();
           this.mirrorSystemLog();
           terminalStore.autoSwitch("system");
           if (this.breakpoints.size) {
@@ -239,16 +241,28 @@ class CpuStore {
 
   private mirrorSystemLog() {
     const log = this.cpuState?.systemLog ?? [];
-    if (log.length <= this.systemLogShown) return;
 
     let sawError = false;
     for (let i = this.systemLogShown; i < log.length; i++) {
       const ev = log[i];
       const level = severityToLevel(ev.severity);
-      logStore.log(level, systemEventTag(ev), formatSystemEvent(ev));
+      const msg = formatSystemEvent(ev);
+      const id = logStore.log(level, systemEventTag(ev), msg);
+      if (ev.notice?.kind === "Syscall")
+        this.syscallEntries.set(i, { id, msg });
       if (level === "error") sawError = true;
     }
-    this.systemLogShown = log.length;
+    if (log.length > this.systemLogShown) this.systemLogShown = log.length;
+
+    for (const [i, entry] of this.syscallEntries) {
+      const ev = log[i];
+      if (ev?.notice?.kind !== "Syscall") continue;
+      const msg = formatSystemEvent(ev);
+      if (msg !== entry.msg) {
+        logStore.update(entry.id, msg);
+        entry.msg = msg;
+      }
+    }
 
     if (sawError) terminalStore.autoSwitch("system");
   }
@@ -265,8 +279,8 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
-    // The emulator narrates the build pipeline itself ("Compiling...", etc.);
-    // we just surface the system console immediately on user action.
+    // The emulator narrates the build itself (the "assembled N ... entry" line,
+    // plus any faults); we just surface the system console on user action.
     terminalStore.autoSwitch("system");
     this.compileError = null;
     const f = fileStore.activeFile;
