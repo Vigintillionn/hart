@@ -14,8 +14,11 @@
   const align16 = (x: number) => Math.floor(x / 16) * 16;
 
   let base = $state(DATA_BASE);
-  let follow = $state(true);
   let query = $state("");
+
+  const FOLLOW_SUPPRESS_MS = 1200;
+  let lastManualNavAt = 0;
+  const markManualNav = () => (lastManualNavAt = Date.now());
 
   let viewportH = $state(0);
   const visibleRows = $derived(Math.max(1, Math.ceil(viewportH / ROW_PX) + 1));
@@ -38,7 +41,7 @@
   function onWheel(e: WheelEvent) {
     if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
     e.preventDefault();
-    follow = false;
+    markManualNav();
     wheelAccum += e.deltaMode === 1 ? e.deltaY * ROW_PX : e.deltaY;
     const rowsToMove = Math.trunc(wheelAccum / ROW_PX);
     if (rowsToMove !== 0) {
@@ -50,13 +53,13 @@
   function onKeydown(e: KeyboardEvent) {
     if (e.key === "Home") {
       e.preventDefault();
-      follow = false;
+      markManualNav();
       base = clampBase(0);
       return;
     }
     if (e.key === "End") {
       e.preventDefault();
-      follow = false;
+      markManualNav();
       base = clampBase(maxBase);
       return;
     }
@@ -67,7 +70,7 @@
     else if (e.key === "PageUp") rows = -Math.max(1, visibleRows - 2);
     else return;
     e.preventDefault();
-    follow = false;
+    markManualNav();
     base = clampBase(base + rows * ROW_BYTES);
   }
 
@@ -108,10 +111,16 @@
   // Auto-follow writes. `base` can't be a $derived because it's also driven
   // imperatively by the user (wheel / arrow keys / scrollbar drag set it
   // directly). Here we only want to *react* to a new set of changed addresses
-  // by jumping there (and only while `follow` is on) so an effect that writes
-  // `base` is the right tool rather than turning it into a pure derivation.
+  // by jumping there (while the setting is on and the user isn't mid-navigation)
+  // so an effect that writes `base` is the right tool rather than turning it
+  // into a pure derivation.
   $effect(() => {
-    if (follow && changed.size) base = clampBase(Math.min(...changed));
+    if (
+      displayStore.followMemoryWrites &&
+      changed.size &&
+      Date.now() - lastManualNavAt > FOLLOW_SUPPRESS_MS
+    )
+      base = clampBase(Math.min(...changed));
   });
 
   const rows = $derived.by(() => {
@@ -131,7 +140,7 @@
     if (!t) return;
     const addr = t.startsWith("0x") ? parseInt(t, 16) : parseInt(t, 10);
     if (!isNaN(addr)) {
-      follow = false;
+      markManualNav();
       base = clampBase(addr >>> 0);
     }
   };
@@ -152,7 +161,7 @@
   let dragStartBase = 0;
 
   const beginDrag = (e: PointerEvent, startBase: number) => {
-    follow = false;
+    markManualNav();
     dragging = true;
     dragStartBase = startBase;
     dragStartY = e.clientY;
@@ -161,6 +170,7 @@
 
   const onDragMove = (e: PointerEvent) => {
     if (!dragging || usableTrack <= 0) return;
+    markManualNav();
     const dFrac = (e.clientY - dragStartY) / usableTrack;
     base = clampBase(dragStartBase + dFrac * maxBase);
   };
@@ -187,7 +197,7 @@
       1,
       Math.max(0, (e.clientY - rect.top - THUMB_H / 2) / usableTrack),
     );
-    follow = false;
+    markManualNav();
     base = clampBase(frac * maxBase);
     beginDrag(e, base);
   };
@@ -219,18 +229,17 @@
         >
       {/snippet}
       {@render chip(".text", base === (TEXT_BASE & ~0xf), () => {
-        follow = false;
+        markManualNav();
         base = clampBase(TEXT_BASE);
       })}
       {@render chip(".data", base === (DATA_BASE & ~0xf), () => {
-        follow = false;
+        markManualNav();
         base = clampBase(DATA_BASE);
       })}
       {@render chip("stack", base === clampBase(STACK_TOP - 0xf0), () => {
-        follow = false;
+        markManualNav();
         base = clampBase(STACK_TOP - 0xf0);
       })}
-      {@render chip("⌖ writes", follow, () => (follow = !follow))}
     </div>
   </div>
 

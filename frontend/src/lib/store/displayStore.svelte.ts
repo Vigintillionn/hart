@@ -11,13 +11,16 @@ export interface DisplayPrefs {
   endianness: Endianness;
   memBytesPerGroup: ByteWidth;
   flashChanges: boolean;
+  followMemoryWrites: boolean;
 }
 
+// TODO: also add signed/unsigned register here and move HEX/DEC as well
 export const DEFAULT_DISPLAY: DisplayPrefs = {
   registerNaming: "abi",
   endianness: "little",
   memBytesPerGroup: 1,
   flashChanges: true,
+  followMemoryWrites: true,
 };
 
 class DisplayStore {
@@ -25,6 +28,7 @@ class DisplayStore {
   endianness = $state<Endianness>(DEFAULT_DISPLAY.endianness);
   memBytesPerGroup = $state<ByteWidth>(DEFAULT_DISPLAY.memBytesPerGroup);
   flashChanges = $state(DEFAULT_DISPLAY.flashChanges);
+  followMemoryWrites = $state(true);
 
   constructor() {
     const stored = loadJSON<Partial<DisplayPrefs>>(STORAGE_KEY, {});
@@ -41,6 +45,7 @@ class DisplayStore {
       endianness: this.endianness,
       memBytesPerGroup: this.memBytesPerGroup,
       flashChanges: this.flashChanges,
+      followMemoryWrites: this.followMemoryWrites,
     };
   }
 

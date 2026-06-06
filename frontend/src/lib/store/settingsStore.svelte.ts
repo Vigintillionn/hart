@@ -120,11 +120,19 @@ export const SETTINGS: SettingDescriptor[] = [
     keywords: ["register", "abi", "numeric", "names", "alias", "x0"],
   },
   {
+    id: "display.signedMode",
+    category: "display",
+    title: "Signed mode",
+    description:
+      "Display register values as signed or unsigned integers when viewing them as decimal values.",
+    keywords: ["signed", "unsigned", "integer", "values", "display"],
+  },
+  {
     id: "display.endianness",
     category: "display",
     title: "Memory byte order",
     description:
-      "Byte order within each cell — only applies when grouping above 1 byte.",
+      "Byte order within each cell; only applies when grouping above 1 byte.",
     keywords: ["endian", "endianness", "little", "big", "byte", "order"],
   },
   {
@@ -133,6 +141,14 @@ export const SETTINGS: SettingDescriptor[] = [
     title: "Bytes per group",
     description: "How many bytes each memory cell combines.",
     keywords: ["byte", "width", "group", "word", "halfword", "memory"],
+  },
+  {
+    id: "display.followMemoryWrites",
+    category: "display",
+    title: "Follow memory writes",
+    description:
+      "Automatically scroll to memory locations when they are written to.",
+    keywords: ["follow", "memory", "writes", "scroll", "auto-scroll"],
   },
   {
     id: "display.flashChanges",
