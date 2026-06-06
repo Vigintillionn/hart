@@ -13,6 +13,9 @@ export interface EditorPrefs {
   wordWrap: boolean;
   renderWhitespace: boolean;
   minimap: boolean;
+  hoverInstructions: boolean;
+  hoverDirectives: boolean;
+  hoverRegisters: boolean;
 }
 
 export const DEFAULT_PREFS: EditorPrefs = {
@@ -24,6 +27,9 @@ export const DEFAULT_PREFS: EditorPrefs = {
   wordWrap: false,
   renderWhitespace: false,
   minimap: false,
+  hoverInstructions: true,
+  hoverDirectives: true,
+  hoverRegisters: true,
 };
 
 export const FONT_FAMILIES: string[] = [
@@ -52,6 +58,9 @@ class EditorPrefsStore {
   wordWrap = $state(DEFAULT_PREFS.wordWrap);
   renderWhitespace = $state(DEFAULT_PREFS.renderWhitespace);
   minimap = $state(DEFAULT_PREFS.minimap);
+  hoverInstructions = $state(DEFAULT_PREFS.hoverInstructions);
+  hoverDirectives = $state(DEFAULT_PREFS.hoverDirectives);
+  hoverRegisters = $state(DEFAULT_PREFS.hoverRegisters);
 
   constructor() {
     const stored = loadJSON<Partial<EditorPrefs>>(STORAGE_KEY, {});
@@ -72,6 +81,9 @@ class EditorPrefsStore {
       wordWrap: this.wordWrap,
       renderWhitespace: this.renderWhitespace,
       minimap: this.minimap,
+      hoverInstructions: this.hoverInstructions,
+      hoverDirectives: this.hoverDirectives,
+      hoverRegisters: this.hoverRegisters,
     };
   }
 

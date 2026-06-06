@@ -21,6 +21,17 @@
 
   const palette = $derived(modeStore.mode === "light" ? lightTheme : darkTheme);
 
+  const allHover = $derived(
+    editorPrefs.hoverInstructions &&
+      editorPrefs.hoverDirectives &&
+      editorPrefs.hoverRegisters,
+  );
+  function setAllHover(v: boolean) {
+    editorPrefs.hoverInstructions = v;
+    editorPrefs.hoverDirectives = v;
+    editorPrefs.hoverRegisters = v;
+  }
+
   const rows: { id: string; key: keyof ThemeColors }[] = [
     { id: "editor.background", key: "background" },
     { id: "editor.keyword", key: "keyword" },
@@ -93,6 +104,33 @@
 
   <SettingRow id="editor.minimap">
     <Toggle bind:checked={editorPrefs.minimap} label="Minimap" />
+  </SettingRow>
+</SettingsSection>
+
+<SettingsSection title="Editor hover">
+  <SettingRow id="editor.hover">
+    <Toggle checked={allHover} onchange={setAllHover} label="All hover docs" />
+  </SettingRow>
+
+  <SettingRow id="editor.hoverInstructions">
+    <Toggle
+      bind:checked={editorPrefs.hoverInstructions}
+      label="Instruction hover"
+    />
+  </SettingRow>
+
+  <SettingRow id="editor.hoverDirectives">
+    <Toggle
+      bind:checked={editorPrefs.hoverDirectives}
+      label="Directive hover"
+    />
+  </SettingRow>
+
+  <SettingRow id="editor.hoverRegisters">
+    <Toggle
+      bind:checked={editorPrefs.hoverRegisters}
+      label="Register hover"
+    />
   </SettingRow>
 </SettingsSection>
 

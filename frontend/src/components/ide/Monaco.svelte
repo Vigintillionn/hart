@@ -3,6 +3,7 @@
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
   import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
+  import { registerRiscvHover } from "../../lib/editor/riscvHover";
   import { activeTheme } from "../../lib/editor/theme.svelte";
   import { modeStore } from "../../lib/store/mode.svelte";
   import { editorPrefs, fontStack } from "../../lib/store/editorPrefs.svelte";
@@ -69,6 +70,7 @@
   onMount(() => {
     monaco.languages.register({ id: "riscv" });
     monaco.languages.setMonarchTokensProvider("riscv", riscvLanguageDef);
+    registerRiscvHover(monaco);
 
     editor = monaco.editor.create(editorContainer, {
       language: "riscv",

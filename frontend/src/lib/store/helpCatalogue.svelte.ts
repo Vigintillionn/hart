@@ -90,55 +90,91 @@ const ASCII_TABLE: AsciiInfo[] = Array.from({ length: 128 }, (_, i) => {
   return { dec: i, hex, char, desc, isControl };
 });
 
-const REGISTER_TABLE: RegisterInfo[] = [
-  { abi: "zero", arch: "x0", saver: "N/A", desc: "Hard-wired zero" },
-  { abi: "ra", arch: "x1", saver: "Caller", desc: "Return address" },
+export const REGISTERS: RegisterInfo[] = [
+  { abi: "zero", arch: "x0", saver: "N/A", desc: "Hard-wired zero." },
+  { abi: "ra", arch: "x1", saver: "Caller", desc: "Return address." },
   {
     abi: "sp",
     arch: "x2",
     saver: "Callee",
-    desc: "Stack pointer; points to current top of the stack.",
+    desc: "Stack pointer; the current top of the stack.",
   },
   {
     abi: "gp",
     arch: "x3",
     saver: "N/A",
-    desc: "Global pointer; provides access to global variables.",
+    desc: "Global pointer; access to global variables.",
   },
   {
     abi: "tp",
     arch: "x4",
     saver: "N/A",
-    desc: "Thread pointer; provides access to thread-local storage variables.",
+    desc: "Thread pointer; access to thread-local storage.",
   },
-  { abi: "t0…t2", arch: "x5…x7", saver: "Caller", desc: "Temporary registers" },
+  { abi: "t0", arch: "x5", saver: "Caller", desc: "Temporary register." },
+  { abi: "t1", arch: "x6", saver: "Caller", desc: "Temporary register." },
+  { abi: "t2", arch: "x7", saver: "Caller", desc: "Temporary register." },
   {
     abi: "s0/fp",
     arch: "x8",
     saver: "Callee",
-    desc: "Saved register / frame pointer; points to the base of the current stack frame.",
+    desc: "Saved register / frame pointer.",
   },
-  { abi: "s1", arch: "x9", saver: "Callee", desc: "Saved register" },
+  { abi: "s1", arch: "x9", saver: "Callee", desc: "Saved register." },
   {
-    abi: "a0…a1",
-    arch: "x10…x11",
+    abi: "a0",
+    arch: "x10",
     saver: "Caller",
-    desc: "Function arguments / return values",
+    desc: "Function argument / return value.",
   },
   {
-    abi: "a2…a7",
-    arch: "x12…x17",
+    abi: "a1",
+    arch: "x11",
     saver: "Caller",
-    desc: "Function arguments",
+    desc: "Function argument / return value.",
   },
-  { abi: "s2…s11", arch: "x18…x27", saver: "Callee", desc: "Saved registers" },
-  {
-    abi: "t3…t6",
-    arch: "x27…x31",
-    saver: "Caller",
-    desc: "Temporary registers",
-  },
+  { abi: "a2", arch: "x12", saver: "Caller", desc: "Function argument." },
+  { abi: "a3", arch: "x13", saver: "Caller", desc: "Function argument." },
+  { abi: "a4", arch: "x14", saver: "Caller", desc: "Function argument." },
+  { abi: "a5", arch: "x15", saver: "Caller", desc: "Function argument." },
+  { abi: "a6", arch: "x16", saver: "Caller", desc: "Function argument." },
+  { abi: "a7", arch: "x17", saver: "Caller", desc: "Function argument." },
+  { abi: "s2", arch: "x18", saver: "Callee", desc: "Saved register." },
+  { abi: "s3", arch: "x19", saver: "Callee", desc: "Saved register." },
+  { abi: "s4", arch: "x20", saver: "Callee", desc: "Saved register." },
+  { abi: "s5", arch: "x21", saver: "Callee", desc: "Saved register." },
+  { abi: "s6", arch: "x22", saver: "Callee", desc: "Saved register." },
+  { abi: "s7", arch: "x23", saver: "Callee", desc: "Saved register." },
+  { abi: "s8", arch: "x24", saver: "Callee", desc: "Saved register." },
+  { abi: "s9", arch: "x25", saver: "Callee", desc: "Saved register." },
+  { abi: "s10", arch: "x26", saver: "Callee", desc: "Saved register." },
+  { abi: "s11", arch: "x27", saver: "Callee", desc: "Saved register." },
+  { abi: "t3", arch: "x28", saver: "Caller", desc: "Temporary register." },
+  { abi: "t4", arch: "x29", saver: "Caller", desc: "Temporary register." },
+  { abi: "t5", arch: "x30", saver: "Caller", desc: "Temporary register." },
+  { abi: "t6", arch: "x31", saver: "Caller", desc: "Temporary register." },
 ];
+
+function groupRegisters(regs: RegisterInfo[]): RegisterInfo[] {
+  const groups: RegisterInfo[][] = [];
+  for (const r of regs) {
+    const g = groups.at(-1);
+    if (g && g[0].saver === r.saver && g[0].desc === r.desc) g.push(r);
+    else groups.push([r]);
+  }
+  return groups.map((g) =>
+    g.length === 1
+      ? g[0]
+      : {
+          abi: `${g[0].abi}…${g.at(-1)!.abi}`,
+          arch: `${g[0].arch}…${g.at(-1)!.arch}`,
+          saver: g[0].saver,
+          desc: g[0].desc,
+        },
+  );
+}
+
+export const REGISTER_TABLE: RegisterInfo[] = groupRegisters(REGISTERS);
 
 class HelpCatalogue {
   private get query() {
