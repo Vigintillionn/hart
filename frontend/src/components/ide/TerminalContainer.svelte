@@ -5,6 +5,7 @@
   import Terminal from "./Terminal.svelte";
   import Icon from "../Icon.svelte";
   import IconButton from "../ui/IconButton.svelte";
+  import ScrollArea from "../ui/ScrollArea.svelte";
 
   const tagColor: Record<string, string> = {
     info: "text-secondary",
@@ -22,7 +23,7 @@
     return lines.length;
   });
 
-  let systemScrollEl = $state<HTMLDivElement | undefined>();
+  let systemScrollEl = $state<HTMLElement | undefined>();
   let systemPinned = true;
   let lastTab = terminalStore.activeTab;
 
@@ -101,9 +102,10 @@
     class="relative min-h-0 flex-1 overflow-hidden"
     class:hidden={terminalStore.activeTab !== "system"}
   >
-    <div
-      class="scroll-thin h-full overflow-auto py-2"
-      bind:this={systemScrollEl}
+    <ScrollArea
+      class="h-full"
+      viewportClass="h-full py-2"
+      bind:viewport={systemScrollEl}
       onscroll={onSystemScroll}
     >
       {#if logStore.entries.length === 0}
@@ -128,7 +130,7 @@
           </div>
         {/each}
       {/if}
-    </div>
+    </ScrollArea>
   </div>
 
   <div

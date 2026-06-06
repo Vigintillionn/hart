@@ -8,6 +8,7 @@
   import TerminalPanel from "./TerminalPanel.svelte";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
   import ExtensionsPanel from "./ExtensionsPanel.svelte";
+  import ScrollArea from "../ui/ScrollArea.svelte";
 
   let confirmingReset = $state(false);
   let confirmTimer: number;
@@ -70,7 +71,11 @@
             autofocus
           />
         </div>
-        <nav class="scroll flex-1 overflow-y-auto p-2">
+        <ScrollArea
+          class="min-h-0 flex-1"
+          viewportClass="h-full p-2"
+          role="navigation"
+        >
           {#each settingsStore.visibleCategories as cat (cat.id)}
             <button
               onclick={() => settingsStore.select(cat.id)}
@@ -94,7 +99,7 @@
               No settings found.
             </p>
           {/each}
-        </nav>
+        </ScrollArea>
 
         <div class="flex-none border-t border-border p-2">
           <button
@@ -138,7 +143,7 @@
           </button>
         </header>
 
-        <div class="scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
+        <ScrollArea class="min-h-0 flex-1" viewportClass="h-full px-5 py-4">
           {#if settingsStore.active === "appearance"}
             <AppearancePanel />
           {:else if settingsStore.active === "editor"}
@@ -152,7 +157,7 @@
           {:else if settingsStore.active === "extensions"}
             <ExtensionsPanel />
           {/if}
-        </div>
+        </ScrollArea>
       </div>
     </div>
   </div>

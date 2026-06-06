@@ -3,6 +3,7 @@
   import CsrFile from "./registers/CsrFile.svelte";
   import RegisterFile from "./registers/RegisterFile.svelte";
   import SegmentedControl from "../ui/SegmentedControl.svelte";
+  import ScrollArea from "../ui/ScrollArea.svelte";
 
   let {
     registers,
@@ -37,11 +38,11 @@
     </span>
   </div>
 
-  <div class="scroll-thin min-h-0 flex-1 overflow-auto">
+  <ScrollArea class="min-h-0 flex-1" viewportClass="h-full">
     {#if view === "regs"}
       <RegisterFile {registers} />
     {:else}
       <CsrFile {csrs} />
     {/if}
-  </div>
+  </ScrollArea>
 </div>

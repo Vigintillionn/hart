@@ -6,9 +6,10 @@
   import SyscallTable from "./SyscallTable.svelte";
   import AsciiTable from "./AsciiTable.svelte";
   import RegisterTable from "./RegisterTable.svelte";
+  import ScrollArea from "../ui/ScrollArea.svelte";
 </script>
 
-<div class="scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
+<ScrollArea class="min-h-0 flex-1" viewportClass="h-full px-5 py-4">
   {#each helpCatalogue.extSections as section (section.code)}
     <ExtensionSection {section} />
   {/each}
@@ -33,4 +34,4 @@
       Nothing matches “{helpStore.query}”.
     </p>
   {/if}
-</div>
+</ScrollArea>

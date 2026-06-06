@@ -3,6 +3,7 @@
   import { helpCatalogue } from "$lib/store/helpCatalogue.svelte";
   import TextInput from "../ui/TextInput.svelte";
   import HelpNavItem from "./HelpNavItem.svelte";
+  import ScrollArea from "../ui/ScrollArea.svelte";
 </script>
 
 <aside class="flex w-56 flex-none flex-col border-r border-border bg-surface-1">
@@ -15,7 +16,11 @@
       autofocus
     />
   </div>
-  <nav class="scroll flex-1 overflow-y-auto p-2">
+  <ScrollArea
+    class="min-h-0 flex-1"
+    viewportClass="h-full p-2"
+    role="navigation"
+  >
     <HelpNavItem id="all" label="Everything" />
 
     {@render heading("Extensions")}
@@ -37,7 +42,7 @@
     {@render heading("Other")}
     <HelpNavItem id="registers" label="Calling conventions" />
     <HelpNavItem id="ascii" label="ASCII Table" />
-  </nav>
+  </ScrollArea>
 
   <div class="flex-none border-t border-border px-3 py-3">
     <p

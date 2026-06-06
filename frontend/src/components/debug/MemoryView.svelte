@@ -245,7 +245,7 @@
   <div class="relative flex min-h-0 flex-1 bg-surface-0">
     <div
       id="memory-view-grid"
-      class="scroll-thin min-h-0 flex-1 overflow-x-auto overflow-y-hidden outline-none"
+      class="hide-native-scroll min-h-0 flex-1 overflow-x-auto overflow-y-hidden outline-none"
       tabindex="0"
       role="grid"
       aria-label="Memory view — scroll or arrow keys to navigate"

@@ -3,6 +3,7 @@
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import { toHex, bin32 } from "$lib/util";
   import { displayStore } from "$lib/store/displayStore.svelte";
+  import ScrollArea from "../ui/ScrollArea.svelte";
 
   const rows = $derived(cpuStore.textRows);
   const pc = $derived(cpuStore.cpuState?.pc ?? -1);
@@ -33,7 +34,12 @@
   });
 </script>
 
-<div bind:this={scroller} class="scroll-thin h-full min-h-0 overflow-auto">
+<ScrollArea
+  bind:viewport={scroller}
+  axis="both"
+  class="h-full min-h-0"
+  viewportClass="h-full"
+>
   <div class="min-w-max" style="--code-w: {showBinary ? '17rem' : '6rem'}">
     <div
       class="{COLS} sticky top-0 z-10 border-b border-border bg-surface-1 px-3 py-1.5 text-[9px] font-semibold uppercase tracking-[1px] text-text-faint"
@@ -106,4 +112,4 @@
       </div>
     {/each}
   </div>
-</div>
+</ScrollArea>
