@@ -70,7 +70,7 @@
   >
     <pre
       class="m-0 whitespace-pre-wrap wrap-break-word font-mono text-text">{outputBuffer}{#if waitingForInput}{draft}{/if}{#if !exited}<span
-          class="caret"></span>{/if}</pre>
+          class="term-caret"></span>{/if}</pre>
     {#if exited}
       <div class="mt-0.5 text-text-faint">[{exitLabel}]</div>
     {/if}
@@ -87,21 +87,3 @@
     />
   </div>
 </div>
-
-<style>
-  .caret {
-    display: inline-block;
-    width: 0.55em;
-    background: var(--color-primary);
-    animation: blink 1.1s step-end infinite;
-  }
-  @keyframes blink {
-    0%,
-    100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0;
-    }
-  }
-</style>
