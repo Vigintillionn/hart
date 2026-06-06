@@ -5,6 +5,7 @@
   import PseudoTable from "./PseudoTable.svelte";
   import SyscallTable from "./SyscallTable.svelte";
   import AsciiTable from "./AsciiTable.svelte";
+  import RegisterTable from "./RegisterTable.svelte";
 </script>
 
 <div class="scroll min-h-0 flex-1 overflow-y-auto px-5 py-4">
@@ -20,6 +21,9 @@
     <SyscallTable syscalls={helpCatalogue.visibleSyscalls} />
   {/if}
 
+  {#if helpCatalogue.visibleRegisters.length}
+    <RegisterTable items={helpCatalogue.visibleRegisters} />
+  {/if}
   {#if helpCatalogue.visibleAscii.length}
     <AsciiTable items={helpCatalogue.visibleAscii} />
   {/if}

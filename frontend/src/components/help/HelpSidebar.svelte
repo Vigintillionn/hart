@@ -35,6 +35,7 @@
     <HelpNavItem id="syscall" label="System calls" />
 
     {@render heading("Other")}
+    <HelpNavItem id="registers" label="Calling conventions" />
     <HelpNavItem id="ascii" label="ASCII Table" />
   </nav>
 

@@ -21,6 +21,12 @@ export type AsciiInfo = {
   desc: string;
   isControl: boolean;
 };
+export type RegisterInfo = {
+  abi: string;
+  arch: string;
+  saver: "Caller" | "Callee" | "N/A";
+  desc: string;
+};
 
 const ASCII_TABLE: AsciiInfo[] = Array.from({ length: 128 }, (_, i) => {
   const hex = i.toString(16).padStart(2, "0").toUpperCase();
@@ -71,6 +77,56 @@ const ASCII_TABLE: AsciiInfo[] = Array.from({ length: 128 }, (_, i) => {
   }
   return { dec: i, hex, char, desc, isControl };
 });
+
+const REGISTER_TABLE: RegisterInfo[] = [
+  { abi: "zero", arch: "x0", saver: "N/A", desc: "Hard-wired zero" },
+  { abi: "ra", arch: "x1", saver: "Caller", desc: "Return address" },
+  {
+    abi: "sp",
+    arch: "x2",
+    saver: "Callee",
+    desc: "Stack pointer; points to current top of the stack.",
+  },
+  {
+    abi: "gp",
+    arch: "x3",
+    saver: "N/A",
+    desc: "Global pointer; provides access to global variables.",
+  },
+  {
+    abi: "tp",
+    arch: "x4",
+    saver: "N/A",
+    desc: "Thread pointer; provides access to thread-local storage variables.",
+  },
+  { abi: "t0…t2", arch: "x5…x7", saver: "Caller", desc: "Temporary registers" },
+  {
+    abi: "s0/fp",
+    arch: "x8",
+    saver: "Callee",
+    desc: "Saved register / frame pointer; points to the base of the current stack frame.",
+  },
+  { abi: "s1", arch: "x9", saver: "Callee", desc: "Saved register" },
+  {
+    abi: "a0…a1",
+    arch: "x10…x11",
+    saver: "Caller",
+    desc: "Function arguments / return values",
+  },
+  {
+    abi: "a2…a7",
+    arch: "x12…x17",
+    saver: "Caller",
+    desc: "Function arguments",
+  },
+  { abi: "s2…s11", arch: "x18…x27", saver: "Callee", desc: "Saved registers" },
+  {
+    abi: "t3…t6",
+    arch: "x27…x31",
+    saver: "Caller",
+    desc: "Temporary registers",
+  },
+];
 
 class HelpCatalogue {
   private get query() {
@@ -160,7 +216,15 @@ class HelpCatalogue {
   readonly visibleAscii = $derived<AsciiInfo[]>(
     helpStore.group === "all" || helpStore.group === "ascii"
       ? ASCII_TABLE.filter((a) =>
-          this.match(`${a.dec} 0x${a.hex} ${a.char} ${a.desc}`),
+          this.match(`ascii ${a.char} ${a.dec} 0x${a.hex} ${a.desc}`),
+        )
+      : [],
+  );
+
+  readonly visibleRegisters = $derived<RegisterInfo[]>(
+    helpStore.group === "all" || helpStore.group === "registers"
+      ? REGISTER_TABLE.filter((r) =>
+          this.match(`${r.abi} ${r.arch} ${r.saver} ${r.desc}`),
         )
       : [],
   );
@@ -168,7 +232,9 @@ class HelpCatalogue {
   readonly isEmpty = $derived(
     this.extSections.length === 0 &&
       this.visiblePseudos.length === 0 &&
-      this.visibleSyscalls.length === 0,
+      this.visibleSyscalls.length === 0 &&
+      this.visibleAscii.length === 0 &&
+      this.visibleRegisters.length === 0,
   );
 }
 
