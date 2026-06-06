@@ -52,7 +52,8 @@ function registerMarkdown(r: RegisterInfo): string {
 const registerByName = new Map<string, RegisterInfo>();
 for (const r of REGISTERS) {
   registerByName.set(r.arch.toLowerCase(), r);
-  for (const name of r.abi.split("/")) registerByName.set(name.toLowerCase(), r);
+  for (const name of r.abi.split("/"))
+    registerByName.set(name.toLowerCase(), r);
 }
 
 /**
@@ -77,12 +78,12 @@ function lookup(token: string): string | null {
   return null;
 }
 
-let registered = false;
+const HOVER_KEY = Symbol.for("hart.riscvHoverProvider");
 
 export function registerRiscvHover(monaco: typeof Monaco): void {
-  if (registered) return;
-  registered = true;
-  monaco.languages.registerHoverProvider("riscv", {
+  const g = globalThis as Record<symbol, Monaco.IDisposable | undefined>;
+  g[HOVER_KEY]?.dispose();
+  g[HOVER_KEY] = monaco.languages.registerHoverProvider("riscv", {
     provideHover(model, position) {
       const word = model.getWordAtPosition(position);
       if (!word) return null;
