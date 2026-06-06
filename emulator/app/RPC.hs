@@ -16,7 +16,7 @@ import Data.Maybe (mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
 import Debugger (Debugger (..), atBreakpoint, disassemble, extendBounded, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
-import Doc (formatCatalogue, instructionCatalogue, pseudoCatalogue, syscallCatalogue)
+import Doc (csrCatalogue, directiveCatalogue, formatCatalogue, instructionCatalogue, pseudoCatalogue, syscallCatalogue)
 import Error (EmulatorError (..), Severity (..))
 import Extension
   ( ExtensionInfo (..),
@@ -155,7 +155,9 @@ instance ToJSON Response where
         "formats" .= formatCatalogue,
         "instructions" .= instructionCatalogue,
         "pseudos" .= pseudoCatalogue,
-        "syscalls" .= syscallCatalogue
+        "syscalls" .= syscallCatalogue,
+        "directives" .= directiveCatalogue,
+        "csrs" .= csrCatalogue
       ]
   toJSON ResNeedInput =
     object

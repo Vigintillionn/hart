@@ -18,6 +18,10 @@ module Doc
     SyscallInfo (..),
     RegisterUse (..),
     syscallCatalogue,
+    DirectiveInfo (..),
+    directiveCatalogue,
+    CsrInfo (..),
+    csrCatalogue,
   )
 where
 
@@ -27,6 +31,7 @@ import Data.Word (Word32)
 import Extension (extensionCode)
 import Extension.Classify (HasExtension (..))
 import Kernel (Syscall (..), syscallCode)
+import Numeric (showHex)
 import Types
 
 -- | The instruction formats, in display order
@@ -550,5 +555,68 @@ instance ToJSON SyscallInfo where
       [ "name" .= name,
         "code" .= code,
         "registers" .= registers,
+        "description" .= desc
+      ]
+
+data DirectiveInfo = DirectiveInfo
+  { dirName :: String,
+    dirArgs :: String,
+    dirDescription :: String
+  }
+  deriving (Show, Eq)
+
+directiveCatalogue :: [DirectiveInfo]
+directiveCatalogue =
+  [ DirectiveInfo ".text" "" "Switch to the text section, where instructions are assembled (base address 0x0).",
+    DirectiveInfo ".data" "" "Switch to the data section, where initialised data is placed (base address 0x10000000).",
+    DirectiveInfo ".bss" "" "Switch to the bss section, for zero-initialised data.",
+    DirectiveInfo ".string" "\"…\"" "Emit the string followed by a NUL terminator. .asciz is an alias.",
+    DirectiveInfo ".ascii" "\"…\"" "Emit the string bytes without a trailing NUL.",
+    DirectiveInfo ".byte" "v, …" "Emit one or more 8-bit values.",
+    DirectiveInfo ".half" "v, …" "Emit one or more 16-bit values (little-endian). .short is an alias.",
+    DirectiveInfo ".word" "v, …" "Emit one or more 32-bit values (little-endian).",
+    DirectiveInfo ".space" "n" "Reserve n zero-filled bytes. .zero is an alias.",
+    DirectiveInfo ".align" "n" "Pad with zero bytes until the location counter is a multiple of 2^n."
+  ]
+
+instance ToJSON DirectiveInfo where
+  toJSON (DirectiveInfo name args desc) =
+    object
+      [ "name" .= name,
+        "args" .= args,
+        "description" .= desc
+      ]
+
+data CsrInfo = CsrInfo
+  { csrInfoName :: String,
+    csrInfoAddr :: String,
+    csrInfoDescription :: String
+  }
+  deriving (Show, Eq)
+
+csrDescription :: CSRName -> String
+csrDescription c = case c of
+  MSTATUS -> "Machine status: global interrupt-enable and prior-state bits."
+  MISA -> "Machine ISA: reports the supported base ISA and extensions."
+  MIE -> "Machine interrupt-enable: per-source interrupt enable bits."
+  MTVEC -> "Machine trap-vector base address: where the PC jumps on a trap."
+  MSCRATCH -> "Machine scratch: a free register for trap handlers to stash a value."
+  MEPC -> "Machine exception PC: the PC saved when a trap is taken."
+  MCAUSE -> "Machine cause: the code identifying what caused the most recent trap."
+  MTVAL -> "Machine trap value: faulting address or instruction bits for the trap."
+  MIP -> "Machine interrupt-pending: per-source interrupt pending bits."
+
+csrCatalogue :: [CsrInfo]
+csrCatalogue =
+  [ CsrInfo name ("0x" ++ showHex addr "") (csrDescription c)
+    | c <- [minBound .. maxBound],
+      let (name, addr) = csrInfo c
+  ]
+
+instance ToJSON CsrInfo where
+  toJSON (CsrInfo name addr desc) =
+    object
+      [ "name" .= name,
+        "address" .= addr,
         "description" .= desc
       ]

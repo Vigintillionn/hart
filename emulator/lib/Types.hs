@@ -35,6 +35,8 @@ module Types
     Program,
     encodeCSR,
     decodeCSRName,
+    CSRName (..),
+    csrInfo,
   )
 where
 
