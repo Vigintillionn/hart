@@ -82,7 +82,7 @@ export function formatNotice(n: Notice): string {
     case "ProgramExitedNormally":
       return "program exited with code 0";
     case "ProgramExited":
-      return `program exited with code ${n.code}`;
+      return `program exited with code ${n.code} (raw: ${hex(n.raw)})`;
     case "BreakpointHit":
       return "breakpoint hit";
     case "Syscall": {

@@ -69,9 +69,9 @@ describe("formatEmulatorError", () => {
     expect(
       formatEmulatorError({ kind: "LoadMisaligned", pc: 0x10, address: 0x201 }),
     ).toBe("Load address misaligned at 0x10 (address: 0x201)");
-    expect(
-      formatEmulatorError({ kind: "CycleLimit", limit: 10000 }),
-    ).toContain("Cycle limit exceeded (10000 cycles)");
+    expect(formatEmulatorError({ kind: "CycleLimit", limit: 10000 })).toContain(
+      "Cycle limit exceeded (10000 cycles)",
+    );
   });
 });
 
@@ -102,9 +102,9 @@ describe("error line extraction", () => {
 
 describe("tags", () => {
   it("derives a short tag from the error kind", () => {
-    expect(emulatorErrorTag({ kind: "LoadMisaligned", pc: 0, address: 0 })).toBe(
-      "TRAP",
-    );
+    expect(
+      emulatorErrorTag({ kind: "LoadMisaligned", pc: 0, address: 0 }),
+    ).toBe("TRAP");
     expect(
       emulatorErrorTag({
         kind: "Located",
@@ -121,7 +121,7 @@ describe("tags", () => {
         fault: null,
         notice: { kind: "BreakpointHit" },
       }),
-    ).toBe("CPU");
+    ).toBe("BREAK");
     expect(
       systemEventTag({
         severity: "error",
@@ -134,9 +134,9 @@ describe("tags", () => {
 
 describe("notices & system events", () => {
   it("formats notices", () => {
-    expect(formatNotice({ kind: "ProgramExited", code: 246, raw: 4294967286 })).toBe(
-      "Program exited with code: 246 (raw: 4294967286)",
-    );
+    expect(
+      formatNotice({ kind: "ProgramExited", code: 246, raw: 4294967286 }),
+    ).toBe("program exited with code 246 (raw: 0xfffffff6)");
   });
 
   it("prefixes located faults with the source line", () => {

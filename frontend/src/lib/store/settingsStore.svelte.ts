@@ -4,7 +4,6 @@ import { editorPrefs } from "./editorPrefs.svelte";
 import { displayStore } from "./displayStore.svelte";
 import { terminalStore } from "./terminalStore.svelte";
 import { modeStore } from "./mode.svelte";
-import { layoutStore } from "./layoutStore.svelte";
 import { resetThemes } from "../editor/theme.svelte";
 import { keymap, COMMANDS } from "../keymap.svelte";
 

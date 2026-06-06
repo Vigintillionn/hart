@@ -158,7 +158,7 @@
             >
             <span
               class="flex-1 whitespace-pre-wrap wrap-break-word text-text-dim"
-              >{#each highlight(l.msg) as seg}<span
+              >{#each highlight(l.msg) as seg, i (i)}<span
                   class:text-text={seg.hot}
                   class:font-medium={seg.hot}>{seg.t}</span
                 >{/each}</span

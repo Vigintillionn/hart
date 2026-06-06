@@ -72,9 +72,9 @@ describe("CSR metadata", () => {
 
 describe("value formatting", () => {
   it("fmtRegisterValue switches between hex and signed decimal", () => {
-    expect(fmtRegisterValue(0xffffffff, true)).toBe("ffffffff");
-    expect(fmtRegisterValue(0xffffffff, false)).toBe("-1");
-    expect(fmtRegisterValue(42, false)).toBe("42");
+    expect(fmtRegisterValue(0xffffffff, true, false)).toBe("ffffffff");
+    expect(fmtRegisterValue(0xffffffff, false, true)).toBe("-1");
+    expect(fmtRegisterValue(42, false, false)).toBe("42");
   });
 
   it("bin32 groups 32 bits into bytes", () => {
