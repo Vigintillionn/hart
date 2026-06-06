@@ -39,6 +39,30 @@ spec = do
       realInstrOf "   addi a0, zero, 1   # set a0\n"
         `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (ImmVal 1)))
 
+  describe "comments" $ do
+    let addi = SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (ImmVal 1)))
+
+    it "ignores a // line comment" $
+      realInstrOf "addi a0, zero, 1 // set a0\n" `shouldBe` addi
+
+    it "ignores a full-line // comment above an instruction" $
+      realInstrOf "// header\naddi a0, zero, 1\n" `shouldBe` addi
+
+    it "ignores an inline /* */ block comment between operands" $
+      realInstrOf "addi a0, /* rd */ zero, 1\n" `shouldBe` addi
+
+    it "ignores a multi-line /* */ block comment" $
+      realInstrOf "/* a\n   b */\naddi a0, zero, 1\n" `shouldBe` addi
+
+    it "does not treat /* inside a string literal as a comment" $
+      directiveOf ".string \"a /* b\"\n" `shouldBe` DirString "a /* b"
+
+    it "does not treat // inside a string literal as a comment" $
+      directiveOf ".string \"http://x\"\n" `shouldBe` DirString "http://x"
+
+    it "reports an unterminated block comment" $
+      parseErr defaultExtensions "addi a0, zero, 1 /* oops\n" `shouldBe` EOF
+
   describe "directives" $ do
     it "parses a .word list" $
       directiveOf ".word 1, 2, 3\n" `shouldBe` DirWord [1, 2, 3]

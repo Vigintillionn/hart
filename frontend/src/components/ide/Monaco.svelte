@@ -2,7 +2,10 @@
   import { onMount, onDestroy } from "svelte";
   import * as monaco from "monaco-editor";
   import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-  import { riscvLanguageDef } from "../../lib/editor/riscvMonarch";
+  import {
+    riscvLanguageDef,
+    riscvLanguageConfig,
+  } from "../../lib/editor/riscvMonarch";
   import { registerRiscvHover } from "../../lib/editor/riscvHover";
   import { activeTheme } from "../../lib/editor/theme.svelte";
   import { modeStore } from "../../lib/store/mode.svelte";
@@ -70,6 +73,7 @@
   onMount(() => {
     monaco.languages.register({ id: "riscv" });
     monaco.languages.setMonarchTokensProvider("riscv", riscvLanguageDef);
+    monaco.languages.setLanguageConfiguration("riscv", riscvLanguageConfig);
     registerRiscvHover(monaco);
 
     editor = monaco.editor.create(editorContainer, {

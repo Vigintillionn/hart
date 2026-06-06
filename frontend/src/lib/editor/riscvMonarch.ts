@@ -137,6 +137,8 @@ export const riscvLanguageDef = <monaco.languages.IMonarchLanguage>{
 
       // Comments
       [/#.*/, "custom-comment"],
+      [/\/\/.*/, "custom-comment"],
+      [/\/\*/, "custom-comment", "@blockComment"],
 
       // Numbers
       [/\b0[xX][0-9a-fA-F]+\b/, "custom-number"],
@@ -150,10 +152,28 @@ export const riscvLanguageDef = <monaco.languages.IMonarchLanguage>{
       ],
     ],
 
+    blockComment: [
+      [/[^/*]+/, "custom-comment"],
+      [/\*\//, "custom-comment", "@pop"],
+      [/[/*]/, "custom-comment"],
+    ],
+
     string: [
       [/[^\\"]+/, "custom-string"],
       [/\\./, "custom-string.escape"],
       [/"/, { token: "custom-string.quote", bracket: "@close", next: "@pop" }],
     ],
   },
+};
+
+export const riscvLanguageConfig: monaco.languages.LanguageConfiguration = {
+  comments: {
+    lineComment: "#",
+    blockComment: ["/*", "*/"],
+  },
+  autoClosingPairs: [
+    { open: "/*", close: "*/" },
+    { open: '"', close: '"' },
+    { open: "(", close: ")" },
+  ],
 };

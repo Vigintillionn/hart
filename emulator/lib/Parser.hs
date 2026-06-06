@@ -163,13 +163,23 @@ comma :: Parser ()
 comma = void $ lexeme (char ',')
 
 sc :: Parser ()
-sc = void $ many (satisfy (`elem` " \t"))
+sc = void $ many (blockComment <|> void (satisfy (`elem` " \t")))
 
 lexeme :: Parser a -> Parser a
 lexeme p = p <* sc
 
+anyChar :: Parser Char
+anyChar = satisfy (const True)
+
+blockComment :: Parser ()
+blockComment = string "/*" *> commit go
+  where
+    go = void (string "*/") <|> (anyChar *> go)
+
 comment :: Parser ()
-comment = void $ char '#' *> many (satisfy (/= '\n'))
+comment =
+  void $
+    (void (char '#') <|> void (string "//")) *> many (satisfy (/= '\n'))
 
 escapeChar :: Parser Char
 escapeChar = do
@@ -631,8 +641,8 @@ getLineNum = Parser $ \l s -> Right (l, l, s)
 
 parseLine :: ExtensionSet -> Parser (Int, SourceLine)
 parseLine exts = do
-  ln <- getLineNum
   sc
+  ln <- getLineNum
   l <- optional labelDef
   sc
   i <- optional (parseStatement exts)
