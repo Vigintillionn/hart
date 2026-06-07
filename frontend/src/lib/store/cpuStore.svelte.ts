@@ -2,7 +2,13 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { CpuState } from "../../bindings/CpuState";
 import type { EmulatorResponse } from "../../bindings/EmulatorResponse";
 import type { Severity } from "../../bindings/Severity";
-import type { SourceMap, DisasmMap, CodeMap, TextRow } from "../types";
+import type {
+  SourceMap,
+  DisasmMap,
+  CodeMap,
+  TextRow,
+  DisplayRow,
+} from "../types";
 import { terminalStore } from "./terminalStore.svelte";
 import { logStore, type LogLevel } from "./logStore.svelte";
 import { fileStore } from "./fileStore.svelte";
@@ -46,6 +52,18 @@ class CpuStore {
       prevLine = line;
       return { addr, code: codeByAddr.get(addr) ?? 0, basic, line, source };
     });
+  });
+  textRowsDisplay = $derived.by<DisplayRow[]>(() => {
+    const out: DisplayRow[] = [];
+    let prevEnd: number | null = null;
+    for (const row of this.textRows) {
+      if (prevEnd !== null && row.addr > prevEnd) {
+        out.push({ kind: "pad", addr: prevEnd, bytes: row.addr - prevEnd });
+      }
+      out.push({ kind: "instr", ...row });
+      prevEnd = row.addr + 4;
+    }
+    return out;
   });
   lineToAddrs = $derived.by(() => {
     const m = new Map<number, number[]>();

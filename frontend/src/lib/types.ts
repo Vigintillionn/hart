@@ -18,6 +18,10 @@ export type TextRow = {
   source: string | null;
 };
 
+export type DisplayRow =
+  | ({ kind: "instr" } & TextRow)
+  | { kind: "pad"; addr: number; bytes: number };
+
 export type IconName =
   | "play"
   | "pause"
