@@ -86,10 +86,10 @@ pnpm tauri build
 Three small pieces talk over a line-delimited JSON protocol:
 
 ```
-┌──────────────────┐   JSON / stdio   ┌──────────────────┐   events   ┌──────────────┐
+┌──────────────────┐   JSON / stdio    ┌──────────────────┐   events    ┌──────────────┐
 │ Haskell emulator │ ───────────────▶ │  Rust/Tauri core │ ─────────▶ │  Svelte UI   │
 │  (hart-emulator) │ ◀─────────────── │   (supervisor)   │ ◀───────── │   (Monaco)   │
-└──────────────────┘    commands      └──────────────────┘  commands  └──────────────┘
+└──────────────────┘    commands       └──────────────────┘  commands   └──────────────┘
 ```
 
 - The **Haskell emulator** parses, assembles, runs, and records execution.
