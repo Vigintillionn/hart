@@ -79,7 +79,7 @@
           {:else}
             <button
               class="flex h-full min-w-0 items-center gap-2 pl-4 pr-1.5"
-              title="{file.name} — double-click to rename"
+              title={`${file.path ?? "Not saved to disk"}\nDouble-click to rename`}
               onclick={() => fileStore.setActiveFileId(file.id)}
               ondblclick={() => fileStore.startRename(file.id)}
             >

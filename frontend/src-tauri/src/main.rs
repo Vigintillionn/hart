@@ -24,6 +24,29 @@ fn send_command(state: tauri::State<'_, EmulatorState>, cmd: String) -> Result<(
     Ok(())
 }
 
+#[tauri::command]
+fn rename_file(from: String, to: String) -> Result<(), String> {
+    use std::path::Path;
+
+    if from == to {
+        return Ok(());
+    }
+    let to_path = Path::new(&to);
+    if to_path.exists() {
+        let name = to_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(to.as_str());
+        return Err(format!("A file named \"{name}\" already exists in that folder."));
+    }
+    std::fs::rename(&from, &to).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn write_file(path: String, contents: String) -> Result<(), String> {
+    std::fs::write(&path, contents).map_err(|e| e.to_string())
+}
+
 /// Work around a Tauri AppImage packaging bug on Wayland.
 ///
 /// The AppImage bundles its own (older) `libwayland-client.so.0`, which shadows
@@ -147,7 +170,11 @@ fn main() {
 
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![send_command])
+        .invoke_handler(tauri::generate_handler![
+            send_command,
+            rename_file,
+            write_file
+        ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
         .run(|app_handle, event| {

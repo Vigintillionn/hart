@@ -1,5 +1,6 @@
+import { invoke } from "@tauri-apps/api/core";
 import { open, save, confirm } from "@tauri-apps/plugin-dialog";
-import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { readTextFile } from "@tauri-apps/plugin-fs";
 import type { OpenFile } from "../types";
 import { logStore } from "./logStore.svelte";
 import { loadJSON, saveJSON } from "../persist";
@@ -7,6 +8,8 @@ import { EXAMPLES } from "../examples";
 
 const SESSION_KEY = "hart:session";
 const LAUNCHED_KEY = "hart:launched";
+
+const basename = (p: string) => p.split(/[/\\]/).pop() ?? "";
 
 type Session = {
   files: OpenFile[];
@@ -70,9 +73,11 @@ class FileStore {
     return this.openFiles.length > 0;
   }
 
-  /** @returns true if the file has edits not yet written to disk */
   public isDirty(file: OpenFile): boolean {
-    return file.content !== file.savedContent;
+    return (
+      file.content !== file.savedContent ||
+      (file.path !== null && basename(file.path) !== file.name)
+    );
   }
 
   public get hasUnsavedChanges(): boolean {
@@ -154,6 +159,16 @@ class FileStore {
     if (!file) return;
 
     try {
+      if (file.path !== null && basename(file.path) !== file.name) {
+        const dir = file.path.slice(
+          0,
+          file.path.length - basename(file.path).length,
+        );
+        const target = dir + file.name;
+        await invoke("rename_file", { from: file.path, to: target });
+        file.path = target;
+      }
+
       let path = file.path;
       if (!path) {
         const selected = await save({
@@ -162,11 +177,11 @@ class FileStore {
         });
         if (!selected) return; // user cancelled
         path = selected;
+        file.path = path;
+        file.name = basename(path) || file.name;
       }
 
-      await writeTextFile(path, file.content);
-      file.path = path;
-      file.name = path.split(/[/\\]/).pop() || file.name;
+      await invoke("write_file", { path, contents: file.content });
       file.savedContent = file.content;
     } catch (e) {
       logStore.log("error", "FILE", `could not save file: ${e}`);

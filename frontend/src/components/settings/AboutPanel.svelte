@@ -68,8 +68,7 @@
 <SettingsSection title="Feedback">
   <p class="mb-3 text-[12px] leading-relaxed text-text-dim">
     Hit a bug, a crash, or something that behaves unexpectedly? Opening a report
-    takes you to GitHub with a short form — your app version and platform are
-    filled in for you.
+    takes you to GitHub with a short form.
   </p>
   <div class="flex flex-wrap items-center gap-2">
     <button
