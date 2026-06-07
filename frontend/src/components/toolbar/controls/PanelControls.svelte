@@ -18,11 +18,16 @@
     {@render item("Debug Panel", layoutStore.isDebugVisible, () =>
       layoutStore.toggleDebug(),
     )}
-    {@render item("Registers", layoutStore.isRegistersVisible, () =>
-      layoutStore.toggleRegisters(),
+    {@render item(
+      "Registers",
+      layoutStore.isDebugVisible && layoutStore.isRegistersVisible,
+      () => layoutStore.toggleRegisters(),
     )}
-    {@render item("Memory", layoutStore.isMemoryVisible, () =>
-      layoutStore.toggleMemory(),
+
+    {@render item(
+      "Memory",
+      layoutStore.isDebugVisible && layoutStore.isMemoryVisible,
+      () => layoutStore.toggleMemory(),
     )}
     {@render item("Console", layoutStore.isConsoleVisible, () =>
       layoutStore.toggleConsole(),

@@ -7,8 +7,6 @@ export const PANE_KEYS = {
 } as const;
 
 class LayoutStore {
-  /** global HEX/DEC number base, shared by registers, memory & CPU header */
-
   isDebugVisible = $state(true);
   isConsoleVisible = $state(true);
   isRegistersVisible = $state(true);
@@ -40,16 +38,39 @@ class LayoutStore {
   }
 
   public toggleRegisters() {
-    if (this.registersPaneRef?.isCollapsed()) this.registersPaneRef.expand();
-    else if (this.memoryPaneRef?.isCollapsed()) this.debugPaneRef?.collapse();
-    else this.registersPaneRef?.collapse();
+    if (this.debugPaneRef?.isCollapsed()) {
+      this.debugPaneRef.expand();
+      this.registersPaneRef?.expand();
+      return;
+    }
+
+    if (this.registersPaneRef?.isCollapsed()) {
+      this.registersPaneRef.expand();
+    } else {
+      if (this.memoryPaneRef?.isCollapsed()) {
+        this.debugPaneRef?.collapse();
+      } else {
+        this.registersPaneRef?.collapse();
+      }
+    }
   }
 
   public toggleMemory() {
-    if (this.memoryPaneRef?.isCollapsed()) this.memoryPaneRef.expand();
-    else if (this.registersPaneRef?.isCollapsed())
-      this.debugPaneRef?.collapse();
-    else this.memoryPaneRef?.collapse();
+    if (this.debugPaneRef?.isCollapsed()) {
+      this.debugPaneRef.expand();
+      this.memoryPaneRef?.expand();
+      return;
+    }
+
+    if (this.memoryPaneRef?.isCollapsed()) {
+      this.memoryPaneRef.expand();
+    } else {
+      if (this.registersPaneRef?.isCollapsed()) {
+        this.debugPaneRef?.collapse();
+      } else {
+        this.memoryPaneRef?.collapse();
+      }
+    }
   }
 
   public resetLayout() {
