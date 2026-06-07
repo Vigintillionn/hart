@@ -203,6 +203,11 @@ data Directive
   | DirWord [Int]
   | DirSpace Int
   | DirAlign Int
+  | DirEqu String Int
+  | DirEquiv String Int
+  | DirGlobl [String]
+  | DirLocal [String]
+  | DirWeak [String]
   deriving (Show, Eq)
 
 data Statement

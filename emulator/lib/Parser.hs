@@ -635,6 +635,12 @@ parseSection =
       DirSection BssSection <$ lexeme (string ".bss")
     ]
 
+symbolName :: Parser String
+symbolName = lexeme identifier
+
+parseSymbolValue :: (String -> Int -> Directive) -> Parser Directive
+parseSymbolValue mk = mk <$> symbolName <* comma <*> immediate
+
 parseDirective :: Parser Directive
 parseDirective =
   choice
@@ -648,7 +654,14 @@ parseDirective =
       lexeme (string ".word") *> (DirWord <$> sepBy1 immediate comma),
       lexeme (string ".space") *> (DirSpace <$> immediate),
       lexeme (string ".zero") *> (DirSpace <$> immediate),
-      lexeme (string ".align") *> (DirAlign <$> immediate)
+      lexeme (string ".align") *> (DirAlign <$> immediate),
+      lexeme (string ".equiv") *> parseSymbolValue DirEquiv,
+      lexeme (string ".equ") *> parseSymbolValue DirEqu,
+      lexeme (string ".set") *> parseSymbolValue DirEqu,
+      lexeme (string ".global") *> (DirGlobl <$> sepBy1 symbolName comma),
+      lexeme (string ".globl") *> (DirGlobl <$> sepBy1 symbolName comma),
+      lexeme (string ".local") *> (DirLocal <$> sepBy1 symbolName comma),
+      lexeme (string ".weak") *> (DirWeak <$> sepBy1 symbolName comma)
     ]
 
 parseStatement :: ExtensionSet -> Parser Statement

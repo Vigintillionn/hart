@@ -150,3 +150,20 @@ spec = do
               "end:"
             ]
       regU cpu a0 `shouldBe` 15
+
+  describe "symbol constants and text-section layout" $ do
+    it "uses a .equ constant as an immediate at runtime" $ do
+      cpu <- runProgram ".equ ANSWER, 42\nli a0, ANSWER\n"
+      regU cpu a0 `shouldBe` 42
+
+    it "jumps correctly across a .align gap in .text (layout/resolution stay in sync)" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "j done",
+              "li a0, 99", -- skipped
+              ".align 4", -- pad to a 16-byte boundary
+              "done:",
+              "li a0, 7"
+            ]
+      regU cpu a0 `shouldBe` 7

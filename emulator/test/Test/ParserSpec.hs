@@ -75,6 +75,21 @@ spec = do
     it "parses a .string literal with escapes" $
       directiveOf ".string \"hi\\n\"\n" `shouldBe` DirString "hi\n"
 
+    it "parses .equ and .set as constant definitions" $ do
+      directiveOf ".equ SIZE, 16\n" `shouldBe` DirEqu "SIZE" 16
+      directiveOf ".set SIZE, 16\n" `shouldBe` DirEqu "SIZE" 16
+
+    it "parses .equiv as a define-once constant" $
+      directiveOf ".equiv MAGIC, 0x2a\n" `shouldBe` DirEquiv "MAGIC" 42
+
+    it "parses .globl/.global with a symbol list" $ do
+      directiveOf ".globl main\n" `shouldBe` DirGlobl ["main"]
+      directiveOf ".global a, b, c\n" `shouldBe` DirGlobl ["a", "b", "c"]
+
+    it "parses .local and .weak symbol lists" $ do
+      directiveOf ".local helper\n" `shouldBe` DirLocal ["helper"]
+      directiveOf ".weak maybe_defined\n" `shouldBe` DirWeak ["maybe_defined"]
+
   describe "diagnostics" $ do
     it "reports an unknown instruction" $
       parseErr defaultExtensions "frobnicate a0\n" `shouldBe` UnknownInstruction "frobnicate"

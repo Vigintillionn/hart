@@ -102,7 +102,7 @@ loadProgram :: (MonadCPU m) => Executable -> m ()
 loadProgram (Executable instr dataMem srcMap) = do
   setPC entryPoint
 
-  let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
+  let assembled = zip (map fst srcMap) (map assembleSome instr)
   traverse_ (uncurry storeWord) assembled
   setInstrMem (M.fromList [(fromIntegral addr, w) | (addr, w) <- assembled])
   setSourceMap (M.fromList [(fromIntegral addr, ln) | (addr, ln) <- srcMap])

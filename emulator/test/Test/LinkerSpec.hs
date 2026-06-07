@@ -1,5 +1,6 @@
 module Test.LinkerSpec (spec) where
 
+import Data.IntMap.Strict qualified as IM
 import Error (LinkError (..))
 import Linker (Executable (..))
 import Test.Hspec
@@ -74,3 +75,40 @@ spec = do
 
     it "rejects an out-of-range shift amount" $
       linkErr "slli a0, a0, 40\n" `shouldBe` ShiftOutOfRange 40
+
+  describe "symbols and constants (.equ/.set/.equiv/.globl)" $ do
+    it "resolves a .equ constant to its absolute value in an immediate" $
+      case execProgram (assemble ".equ FIVE, 5\naddi a0, a0, FIVE\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 5
+        _ -> expectationFailure "expected a single addi"
+
+    it "lets .equ/.set redefine an earlier constant (last wins)" $
+      case execProgram (assemble ".equ X, 1\n.set X, 7\naddi a0, a0, X\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 7
+        _ -> expectationFailure "expected a single addi"
+
+    it "rejects redefining a .equiv constant" $
+      linkErr ".equiv K, 1\n.equiv K, 2\n" `shouldBe` DuplicateLabel "K"
+
+    it "rejects a label that collides with a constant name" $
+      linkErr ".equ foo, 1\nfoo: nop\n" `shouldBe` DuplicateLabel "foo"
+
+    it "accepts .globl without affecting resolution" $
+      length (execProgram (assemble ".globl main\nmain: nop\n")) `shouldBe` 1
+
+  describe "data emission" $ do
+    it "emits .half as two little-endian bytes" $ do
+      let dm = execDataMem (assemble ".data\n.half 0x1234\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0x34
+      IM.lookup 0x10000001 dm `shouldBe` Just 0x12
+
+    it "emits .word as four little-endian bytes" $ do
+      let dm = execDataMem (assemble ".data\n.word 0xAABBCCDD\n")
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0xDD, Just 0xCC, Just 0xBB, Just 0xAA]
+
+    it "treats .bss as NOBITS (reserves space, emits no bytes) without consuming .data space" $ do
+      let dm = execDataMem (assemble ".bss\nbuf: .space 4\n.data\n.word 0xAABBCCDD\n")
+      -- bss emitted nothing; the .word still lands at the data base, intact
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xDD
+      IM.size dm `shouldBe` 4
