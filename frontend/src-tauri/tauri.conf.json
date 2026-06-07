@@ -28,7 +28,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["appimage", "deb", "rpm", "nsis", "msi", "app", "dmg"],
+    "targets": ["appimage", "deb", "rpm", "nsis", "app", "dmg"],
     "publisher": "Vigintillionn",
     "copyright": "Copyright (C) 2025-2026 Vigintillionn",
     "category": "DeveloperTool",

@@ -41,7 +41,7 @@ Grab the build for your platform from the [Releases][releases] page:
 | ----------- | --------------------------- |
 | **macOS**   | `.dmg` / `.app`             |
 | **Linux**   | `.AppImage`, `.deb`, `.rpm` |
-| **Windows** | `.msi`, `.exe`              |
+| **Windows** | `.exe` (NSIS installer)     |
 
 The emulator is bundled inside the app, there's nothing else to install.
 
