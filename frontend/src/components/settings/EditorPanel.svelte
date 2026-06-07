@@ -24,18 +24,21 @@
   const allHover = $derived(
     editorPrefs.hoverInstructions &&
       editorPrefs.hoverDirectives &&
-      editorPrefs.hoverRegisters,
+      editorPrefs.hoverRegisters &&
+      editorPrefs.hoverCsrs,
   );
   function setAllHover(v: boolean) {
     editorPrefs.hoverInstructions = v;
     editorPrefs.hoverDirectives = v;
     editorPrefs.hoverRegisters = v;
+    editorPrefs.hoverCsrs = v;
   }
 
   const rows: { id: string; key: keyof ThemeColors }[] = [
     { id: "editor.background", key: "background" },
     { id: "editor.keyword", key: "keyword" },
     { id: "editor.register", key: "register" },
+    { id: "editor.csr", key: "csr" },
     { id: "editor.directive", key: "directive" },
     { id: "editor.number", key: "number" },
     { id: "editor.string", key: "string" },
@@ -131,6 +134,10 @@
       bind:checked={editorPrefs.hoverRegisters}
       label="Register hover"
     />
+  </SettingRow>
+
+  <SettingRow id="editor.hoverCsrs">
+    <Toggle bind:checked={editorPrefs.hoverCsrs} label="CSR hover" />
   </SettingRow>
 </SettingsSection>
 

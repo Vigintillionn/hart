@@ -81,15 +81,15 @@ instance HasExtension JOp where
 
 instance HasExtension SysOp where
   extensionOf op = case op of
-    CSRRW -> IExt
-    CSRRS -> IExt
-    CSRRC -> IExt
+    CSRRW -> ZicsrExt
+    CSRRS -> ZicsrExt
+    CSRRC -> ZicsrExt
 
 instance HasExtension SysIOp where
   extensionOf op = case op of
-    CSRRWI -> IExt
-    CSRRSI -> IExt
-    CSRRCI -> IExt
+    CSRRWI -> ZicsrExt
+    CSRRSI -> ZicsrExt
+    CSRRCI -> ZicsrExt
 
 instance HasExtension TrapOp where
   extensionOf op = case op of

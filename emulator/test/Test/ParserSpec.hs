@@ -78,3 +78,20 @@ spec = do
       -- mkExtensionSet [] keeps only the mandatory base I set, so M is off
       parseErr (mkExtensionSet []) "mul a0, a1, a2\n"
         `shouldBe` ExtensionDisabled "M" "mul"
+
+    it "reports a CSR pseudo from a disabled extension" $
+      -- with Zicsr off, csrr is recognised but reported as disabled, not unknown
+      parseErr (mkExtensionSet []) "csrr a0, mscratch\n"
+        `shouldBe` ExtensionDisabled "Zicsr" "csrr"
+
+    it "rejects an out-of-range numeric CSR address" $
+      parseErr defaultExtensions "csrrw a0, 5000, a1\n"
+        `shouldBe` CsrOutOfRange "CSR address" 0 4095 5000
+
+    it "rejects an out-of-range CSR immediate" $
+      parseErr defaultExtensions "csrrwi a0, mscratch, 50\n"
+        `shouldBe` CsrOutOfRange "CSR immediate" 0 31 50
+
+    it "rejects an li constant that doesn't fit in 32 bits" $
+      parseErr defaultExtensions "li t0, 10000000000000\n"
+        `shouldBe` ImmediateTooLarge 10000000000000

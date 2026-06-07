@@ -84,6 +84,13 @@ lower (PseudoInstr op) = case op of
   P_TAIL lbl ->
     SomeInstruction (UType AUIPC (UTypeArgs x6 (LabelHi lbl)))
       :| [SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (LabelLo lbl)))]
+  P_CSRR rd csr -> pure $ SomeInstruction $ System CSRRS (SysArgs rd csr x0)
+  P_CSRW csr rs -> pure $ SomeInstruction $ System CSRRW (SysArgs x0 csr rs)
+  P_CSRS csr rs -> pure $ SomeInstruction $ System CSRRS (SysArgs x0 csr rs)
+  P_CSRC csr rs -> pure $ SomeInstruction $ System CSRRC (SysArgs x0 csr rs)
+  P_CSRWI csr imm -> pure $ SomeInstruction $ SystemI CSRRWI (SysIArgs x0 csr imm)
+  P_CSRSI csr imm -> pure $ SomeInstruction $ SystemI CSRRSI (SysIArgs x0 csr imm)
+  P_CSRCI csr imm -> pure $ SomeInstruction $ SystemI CSRRCI (SysIArgs x0 csr imm)
 
 expandProgram :: [(Int, ArchInstr 'Parsed)] -> [(Int, SomeInstruction Operand)]
 expandProgram = concatMap (\(ln, instr) -> map (ln,) (NE.toList . lower $ instr))

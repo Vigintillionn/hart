@@ -3,11 +3,12 @@ module Parser (parse) where
 import Control.Applicative
 import Control.Monad (void)
 import Data.Bifunctor (second)
+import Data.Bits (bit, shiftR)
 import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit)
 import Data.Map.Strict qualified as M
 import Data.Maybe (mapMaybe)
 import Error (AssemblyError (..))
-import Extension (Extension, ExtensionSet, extensionCode, isEnabled)
+import Extension (Extension (..), ExtensionSet, extensionCode, isEnabled)
 import Extension.Classify (HasExtension (..))
 import GHC.Base (when)
 import Machine
@@ -253,7 +254,11 @@ memOperand = do
   return (off, base)
 
 csrOperand :: Parser Int
-csrOperand = namedCSR <|> immediate
+csrOperand = do
+  addr <- namedCSR <|> immediate
+  when (addr < 0 || addr > 4095) $
+    failWith (CsrOutOfRange "CSR address" 0 4095 addr)
+  return addr
   where
     namedCSR = do
       name <- identifier
@@ -386,8 +391,7 @@ parseSystemImm op = do
   uimm <- immediate
 
   when (uimm < 0 || uimm > 31) $
-    fail $
-      "CSR immediate must be 0-31, got: " ++ show uimm
+    failWith (CsrOutOfRange "CSR immediate" 0 31 uimm)
 
   let args = SysIArgs {ci_rd = rd, ci_csr = csr, ci_uimm = ImmVal (fromIntegral uimm)}
   return $ RealInstr $ SomeInstruction $ SystemI op args
@@ -402,7 +406,18 @@ parsePseudoDoubleReg :: (Register -> Register -> PseudoOp) -> Parser PseudoOp
 parsePseudoDoubleReg op = op <$> register <* comma <*> register
 
 parseLi :: Parser PseudoOp
-parseLi = P_LI <$> register <* comma <*> operand
+parseLi = do
+  rd <- register
+  comma
+  op <- operand
+  case op of
+    ImmVal v | not (liFits v) -> failWith (ImmediateTooLarge v)
+    _ -> return ()
+  return (P_LI rd op)
+  where
+    liFits v =
+      let hi = (v + 0x800) `shiftR` 12
+       in hi >= negate (bit 19) && hi <= bit 20 - 1
 
 parseLa :: Parser PseudoOp
 parseLa = P_LA <$> register <* comma <*> identifier
@@ -428,6 +443,21 @@ parsePseudoBranchCompare :: (Register -> Register -> Operand -> PseudoOp) -> Par
 parsePseudoBranchCompare op = do
   args <- parseBTypeOperands
   return $ op (b_rs1 args) (b_rs2 args) (b_imm args)
+
+parseCsrRead :: Parser PseudoOp
+parseCsrRead = P_CSRR <$> register <* comma <*> csrOperand
+
+parseCsrReg :: (Int -> Register -> PseudoOp) -> Parser PseudoOp
+parseCsrReg op = op <$> csrOperand <* comma <*> register
+
+parseCsrImm :: (Int -> Operand -> PseudoOp) -> Parser PseudoOp
+parseCsrImm op = op <$> csrOperand <* comma <*> csrUImm
+  where
+    csrUImm = do
+      uimm <- immediate
+      when (uimm < 0 || uimm > 31) $
+        failWith (CsrOutOfRange "CSR immediate" 0 31 uimm)
+      return $ ImmVal (fromIntegral uimm)
 
 rOpTable :: [(String, ROp)]
 rOpTable =
@@ -504,6 +534,17 @@ sysTable = [("csrrw", CSRRW), ("csrrs", CSRRS), ("csrrc", CSRRC)]
 trapTable :: [(String, TrapOp)]
 trapTable = [("ecall", ECALL), ("ebreak", EBREAK)]
 
+extPseudoOps :: [(String, Parser PseudoOp, Extension)]
+extPseudoOps =
+  [ ("csrr", parseCsrRead, ZicsrExt),
+    ("csrw", parseCsrReg P_CSRW, ZicsrExt),
+    ("csrs", parseCsrReg P_CSRS, ZicsrExt),
+    ("csrc", parseCsrReg P_CSRC, ZicsrExt),
+    ("csrwi", parseCsrImm P_CSRWI, ZicsrExt),
+    ("csrsi", parseCsrImm P_CSRSI, ZicsrExt),
+    ("csrci", parseCsrImm P_CSRCI, ZicsrExt)
+  ]
+
 keepEnabled :: (HasExtension op) => ExtensionSet -> [(String, op)] -> [(String, op)]
 keepEnabled exts = filter (\(_, op) -> isEnabled (extensionOf op) exts)
 
@@ -520,7 +561,8 @@ classifiedMnemonics =
       tag jTable,
       tag sysImmTable,
       tag sysTable,
-      tag trapTable
+      tag trapTable,
+      [(n, e) | (n, _, e) <- extPseudoOps]
     ]
   where
     tag :: (HasExtension op) => [(String, op)] -> [(String, Extension)]
@@ -539,6 +581,7 @@ parseInstruction exts =
         map (\(n, op) -> uType n (UType op)) (keep uTable),
         map (\(n, op) -> jType n (JType op)) (keep jTable),
         map (uncurry pseudoType) pseudoOps,
+        map (uncurry pseudoType) enabledExtPseudos,
         map (\(n, op) -> keyword n >> commit (parseSystemImm op)) (keep sysImmTable),
         map (\(n, op) -> keyword n >> commit (parseSystem op)) (keep sysTable),
         map (\(n, op) -> keyword n >> parseTrap op) (keep trapTable)
@@ -546,6 +589,8 @@ parseInstruction exts =
   where
     keep :: (HasExtension op) => [(String, op)] -> [(String, op)]
     keep = keepEnabled exts
+    enabledExtPseudos =
+      [(n, p) | (n, p, e) <- extPseudoOps, isEnabled e exts]
     pseudoOps =
       [ ("nop", parseNop),
         ("mv", parsePseudoDoubleReg P_MV),

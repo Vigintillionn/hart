@@ -26,6 +26,15 @@ describe("formatAssemblyError", () => {
         extension: "M",
       }),
     ).toBe("`mul` requires the M extension, which is disabled");
+    expect(
+      formatAssemblyError({
+        kind: "CsrOutOfRange",
+        context: "CSR address",
+        lo: 0,
+        hi: 4095,
+        value: 5000n,
+      }),
+    ).toBe("CSR address out of range [0, 4095]: 5000");
   });
 
   it("unwraps Located to its inner error", () => {
@@ -50,7 +59,7 @@ describe("formatLinkError", () => {
         context: "addi immediate",
         lo: -2048,
         hi: 2047,
-        value: 5000,
+        value: 5000n,
       }),
     ).toBe("addi immediate out of range [-2048, 2047]: 5000");
   });

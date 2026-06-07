@@ -22,6 +22,8 @@ data Extension
     IExt
   | -- | RV32M — integer multiply / divide
     MExt
+  | -- | Zicsr — control and status register access
+    ZicsrExt
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 type ExtensionSet = Set Extension
@@ -73,6 +75,15 @@ extensionInfo MExt =
       extSummary =
         "Hardware multiplication, division and remainder "
           ++ "(mul, mulh, mulhsu, mulhu, div, divu, rem, remu).",
+      extMandatory = False
+    }
+extensionInfo ZicsrExt =
+  ExtensionInfo
+    { extCode = "Zicsr",
+      extName = "Control and Status Registers",
+      extSummary =
+        "Atomic read/modify/write access to control and status registers "
+          ++ "(csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci).",
       extMandatory = False
     }
 

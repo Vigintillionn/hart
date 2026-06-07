@@ -76,13 +76,16 @@
     return [...set];
   })();
 
+  const CSR_NAMES = $derived(isaStore.csrs.map((c) => c.name));
+
   const keywords = $derived.by(() => {
     const haveExtensions = extensionStore.catalogue.length > 0;
     const enabled = new Set(extensionStore.enabledCodes);
     const set = new Set<string>();
     for (const i of isaStore.instructions)
       if (!haveExtensions || enabled.has(i.extension)) set.add(i.mnemonic);
-    for (const p of isaStore.pseudos) set.add(p.mnemonic);
+    for (const p of isaStore.pseudos)
+      if (!haveExtensions || enabled.has(p.extension)) set.add(p.mnemonic);
     return [...set];
   });
 
@@ -92,6 +95,8 @@
     const enabled = new Set(extensionStore.enabledCodes);
     for (const i of isaStore.instructions)
       if (!enabled.has(i.extension)) map.set(i.mnemonic, i.extension);
+    for (const p of isaStore.pseudos)
+      if (!enabled.has(p.extension)) map.set(p.mnemonic, p.extension);
     return map;
   });
 
@@ -174,11 +179,12 @@
   $effect(() => {
     const kws = keywords;
     const regs = REGISTER_NAMES;
+    const csrs = CSR_NAMES;
     if (!languageReady) return;
     tokensProvider?.dispose();
     tokensProvider = monaco.languages.setMonarchTokensProvider(
       "riscv",
-      buildRiscvLanguageDef(kws, regs),
+      buildRiscvLanguageDef(kws, regs, csrs),
     );
   });
 
@@ -227,6 +233,7 @@
         rules: [
           { token: "custom-keyword", foreground: t.keyword },
           { token: "custom-register", foreground: t.register },
+          { token: "custom-csr", foreground: t.csr },
           { token: "custom-directive", foreground: t.directive },
           { token: "custom-number", foreground: t.number },
           { token: "custom-comment", foreground: t.comment },

@@ -16,6 +16,7 @@ export interface EditorPrefs {
   hoverInstructions: boolean;
   hoverDirectives: boolean;
   hoverRegisters: boolean;
+  hoverCsrs: boolean;
 }
 
 export const DEFAULT_PREFS: EditorPrefs = {
@@ -30,6 +31,7 @@ export const DEFAULT_PREFS: EditorPrefs = {
   hoverInstructions: true,
   hoverDirectives: true,
   hoverRegisters: true,
+  hoverCsrs: true,
 };
 
 export const FONT_FAMILIES: string[] = [
@@ -61,6 +63,7 @@ class EditorPrefsStore {
   hoverInstructions = $state(DEFAULT_PREFS.hoverInstructions);
   hoverDirectives = $state(DEFAULT_PREFS.hoverDirectives);
   hoverRegisters = $state(DEFAULT_PREFS.hoverRegisters);
+  hoverCsrs = $state(DEFAULT_PREFS.hoverCsrs);
 
   constructor() {
     const stored = loadJSON<Partial<EditorPrefs>>(STORAGE_KEY, {});
@@ -84,6 +87,7 @@ class EditorPrefsStore {
       hoverInstructions: this.hoverInstructions,
       hoverDirectives: this.hoverDirectives,
       hoverRegisters: this.hoverRegisters,
+      hoverCsrs: this.hoverCsrs,
     };
   }
 

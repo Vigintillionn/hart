@@ -16,12 +16,19 @@ class ExtensionStore {
 
   /**
    * The ISA naming string for the enabled set, in catalogue order
-   * (e.g. `RV32IM`, or `RV32I` with M disabled). Falls back to `RV32I` until
-   * the backend has announced its catalogue.
+   * (e.g. `RV32IM`, or `RV32I` with M disabled). Multi-letter "Z" extensions
+   * are underscore-separated per the RISC-V naming convention
+   * (e.g. `RV32IM_Zicsr`). Falls back to `RV32I` until the backend has
+   * announced its catalogue.
    */
   public get isaString(): string {
     const codes = this.enabledCodes;
-    return "RV32" + (codes.length ? codes.join("") : "I");
+    if (!codes.length) return "RV32I";
+    let out = "RV32";
+    for (const code of codes) {
+      out += code.length > 1 ? "_" + code : code;
+    }
+    return out;
   }
 
   /** true once the catalogue has at least one toggleable (optional) extension */

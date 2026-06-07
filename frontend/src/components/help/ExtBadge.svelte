@@ -4,7 +4,8 @@
 
 <span
   class={[
-    "flex h-5 w-5 flex-none items-center justify-center rounded border text-[11px] font-semibold",
+    "flex h-5 min-w-5 flex-none items-center justify-center rounded border px-1 font-semibold",
+    code.length > 1 ? "text-[9px]" : "text-[11px]",
     enabled
       ? "border-primary/40 bg-primary-soft text-primary"
       : "border-border text-text-faint",

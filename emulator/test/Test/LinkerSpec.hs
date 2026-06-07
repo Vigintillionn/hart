@@ -52,6 +52,22 @@ spec = do
     it "expands call into auipc + jalr" $
       length (execProgram (assemble "call target\ntarget: nop\n")) `shouldBe` 3
 
+    it "lowers csrr to csrrs rd, csr, x0" $
+      case execProgram (assemble "csrr a1, mscratch\n") of
+        [SomeInstruction (System CSRRS args)] -> do
+          c_rd args `shouldBe` reg 11
+          c_csr args `shouldBe` 0x340
+          c_rs1 args `shouldBe` reg 0
+        _ -> expectationFailure "expected csrr to lower to a single csrrs"
+
+    it "lowers csrw to csrrw x0, csr, rs" $
+      case execProgram (assemble "csrw mscratch, a1\n") of
+        [SomeInstruction (System CSRRW args)] -> do
+          c_rd args `shouldBe` reg 0
+          c_csr args `shouldBe` 0x340
+          c_rs1 args `shouldBe` reg 11
+        _ -> expectationFailure "expected csrw to lower to a single csrrw"
+
   describe "immediate range and alignment checks" $ do
     it "rejects an out-of-range arithmetic immediate" $
       linkErr "addi a0, a0, 5000\n" `shouldBe` ImmOutOfRange "immediate" (-2048) 2047 5000

@@ -155,6 +155,13 @@ export const SETTINGS: SettingDescriptor[] = [
     keywords: ["hover", "register", "abi", "saver", "calling", "convention"],
   },
   {
+    id: "editor.hoverCsrs",
+    category: "editor",
+    title: "CSR hover",
+    description: "Show the address and role of CSR names such as mscratch.",
+    keywords: ["hover", "csr", "control", "status", "register", "address"],
+  },
+  {
     id: "display.registerNaming",
     category: "display",
     title: "Register names",
@@ -235,6 +242,13 @@ export const SETTINGS: SettingDescriptor[] = [
     title: "Registers",
     description: "Register operands such as x0, a0, sp.",
     keywords: ["register", "operand", "syntax", "color"],
+  },
+  {
+    id: "editor.csr",
+    category: "editor",
+    title: "CSR names",
+    description: "Control/status register names such as mscratch, mtvec.",
+    keywords: ["csr", "control", "status", "register", "syntax", "color"],
   },
   {
     id: "editor.directive",

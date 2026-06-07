@@ -241,11 +241,20 @@ class HelpCatalogue {
     );
   }
 
-  /** Pseudo-instructions matching the query */
+  private extEnabled(code: string): boolean {
+    const cat = extensionStore.catalogue.find((e) => e.code === code);
+    return cat ? cat.enabled : true;
+  }
+
+  /** Pseudo-instructions matching the query, from enabled extensions only */
   readonly visiblePseudos = $derived<PseudoInfo[]>(
     helpStore.group === "all" || helpStore.group === "pseudo"
-      ? isaStore.pseudos.filter((p) =>
-          this.match(`${p.mnemonic} ${p.syntax} ${p.description} ${p.expands}`),
+      ? isaStore.pseudos.filter(
+          (p) =>
+            this.extEnabled(p.extension) &&
+            this.match(
+              `${p.mnemonic} ${p.syntax} ${p.description} ${p.expands}`,
+            ),
         )
       : [],
   );

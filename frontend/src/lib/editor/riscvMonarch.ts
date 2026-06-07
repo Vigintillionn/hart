@@ -3,25 +3,28 @@ import type * as monaco from "monaco-editor";
 export function buildRiscvLanguageDef(
   keywords: string[],
   registers: string[],
+  csrs: string[] = [],
 ): monaco.languages.IMonarchLanguage {
   return <monaco.languages.IMonarchLanguage>{
     ignoreCase: false,
 
     keywords,
     registers,
+    csrs,
 
     tokenizer: {
       root: [
         // Directives
         [/\.[a-zA-Z_]\w*/, "custom-directive"],
 
-        // Identifiers (could be keywords or registers)
+        // Identifiers (could be keywords, registers or CSR names)
         [
           /[a-zA-Z_]\w*/,
           {
             cases: {
               "@keywords": "custom-keyword",
               "@registers": "custom-register",
+              "@csrs": "custom-csr",
               "@default": "identifier",
             },
           },

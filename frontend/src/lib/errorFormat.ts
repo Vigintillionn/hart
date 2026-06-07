@@ -26,6 +26,8 @@ export function formatAssemblyError(e: AssemblyError): string {
       return "unexpected end of input";
     case "ExtensionDisabled":
       return `\`${e.mnemonic.trim()}\` requires the ${e.extension} extension, which is disabled`;
+    case "CsrOutOfRange":
+      return `${e.context} out of range [${e.lo}, ${e.hi}]: ${e.value}`;
   }
 }
 

@@ -17,22 +17,25 @@
 </script>
 
 <SettingsSection title="ISA Extensions">
-  {#each list as ext (ext.code)}
-    <div
-      class="flex items-start gap-3 border-b border-border-soft py-3 last:border-0"
-    >
-      <span
-        class={[
-          "mt-0.5 flex h-6 w-6 flex-none items-center justify-center rounded border text-[12px] font-semibold",
-          ext.enabled
-            ? "border-primary/40 bg-primary-soft text-primary"
-            : "border-border text-text-faint",
-        ]}
-      >
-        {ext.code}
-      </span>
+  <div
+    class="grid grid-cols-[auto_minmax(0,1fr)_auto] [&>*:nth-last-child(-n+3)]:border-b-0"
+  >
+    {#each list as ext (ext.code)}
+      <div class="border-b border-border-soft py-3 pr-3">
+        <span
+          class={[
+            "mt-0.5 flex h-6 min-w-6 items-center justify-center rounded border px-1 font-semibold",
+            ext.code.length > 1 ? "text-[10px]" : "text-[12px]",
+            ext.enabled
+              ? "border-primary/40 bg-primary-soft text-primary"
+              : "border-border text-text-faint",
+          ]}
+        >
+          {ext.code}
+        </span>
+      </div>
 
-      <div class="min-w-0 flex-1">
+      <div class="min-w-0 border-b border-border-soft py-3">
         <div class="flex items-center gap-1.5">
           <span class="text-[13px] font-medium text-text">{ext.name}</span>
           {#if ext.mandatory}
@@ -44,16 +47,18 @@
         </p>
       </div>
 
-      <div class="mt-0.5">
-        <Toggle
-          checked={ext.enabled}
-          disabled={ext.mandatory}
-          label={ext.name}
-          onchange={() => extensionStore.toggle(ext.code)}
-        />
+      <div class="flex justify-end border-b border-border-soft py-3 pl-3">
+        <div class="mt-0.5">
+          <Toggle
+            checked={ext.enabled}
+            disabled={ext.mandatory}
+            label={ext.name}
+            onchange={() => extensionStore.toggle(ext.code)}
+          />
+        </div>
       </div>
-    </div>
-  {/each}
+    {/each}
+  </div>
 
   {#if extensionStore.catalogue.length === 0}
     <p class="py-2 text-[11.5px] text-text-faint">

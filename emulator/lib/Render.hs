@@ -30,6 +30,8 @@ renderAssemblyError = go
       EOF -> "unexpected end of input"
       ExtensionDisabled ext mnem ->
         "`" ++ mnem ++ "` requires the " ++ ext ++ " extension, which is disabled"
+      CsrOutOfRange ctx lo hi v ->
+        ctx ++ " out of range (" ++ show lo ++ "-" ++ show hi ++ "): " ++ show v
 
 renderLinkError :: LinkError -> String
 renderLinkError = go

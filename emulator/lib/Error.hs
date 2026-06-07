@@ -32,6 +32,9 @@ data AssemblyError
   | -- | a mnemonic that belongs to a disabled extension: its ISA code and the
     -- offending mnemonic
     ExtensionDisabled String String
+  | -- | a CSR operand outside its valid range: context, lower bound, upper
+    -- bound, offending value
+    CsrOutOfRange String Int Int Int
   | Located Int AssemblyError
   deriving (Show, Eq)
 
@@ -145,6 +148,8 @@ instance ToJSON AssemblyError where
     EOF -> kind "EOF"
     ExtensionDisabled ext mnem ->
       object ["kind" .= s "ExtensionDisabled", "extension" .= ext, "mnemonic" .= mnem]
+    CsrOutOfRange ctx lo hi v ->
+      object ["kind" .= s "CsrOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
     Located ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON LinkError where

@@ -505,6 +505,7 @@ instructionCatalogue =
 
 data PseudoInfo = PseudoInfo
   { pseudoMnemonic :: String,
+    pseudoExtension :: String,
     pseudoSyntax :: String,
     pseudoExpands :: String,
     pseudoDescription :: String
@@ -513,34 +514,49 @@ data PseudoInfo = PseudoInfo
 
 pseudoCatalogue :: [PseudoInfo]
 pseudoCatalogue =
-  [ PseudoInfo "nop" "" "addi zero, zero, 0" "No operation; advances the PC and changes nothing.",
-    PseudoInfo "mv" "rd, rs" "addi rd, rs, 0" "Copies the value in rs into rd.",
-    PseudoInfo "li" "rd, imm" "lui (+ addi)" "Load Immediate: loads any 32-bit constant, emitting one or two instructions as needed.",
-    PseudoInfo "la" "rd, symbol" "auipc + addi" "Load Address: puts the (PC-relative) address of a label into rd.",
-    PseudoInfo "neg" "rd, rs" "sub rd, zero, rs" "Two's-complement negation (rd = -rs).",
-    PseudoInfo "not" "rd, rs" "xori rd, rs, -1" "Bitwise NOT (one's complement) of rs.",
-    PseudoInfo "seqz" "rd, rs" "sltiu rd, rs, 1" "Set if equal to zero: rd = 1 when rs == 0, else 0.",
-    PseudoInfo "snez" "rd, rs" "sltu rd, zero, rs" "Set if not zero: rd = 1 when rs ≠ 0, else 0.",
-    PseudoInfo "sltz" "rd, rs" "slt rd, rs, zero" "Set if less than zero: rd = 1 when rs < 0, else 0.",
-    PseudoInfo "sgtz" "rd, rs" "slt rd, zero, rs" "Set if greater than zero: rd = 1 when rs > 0, else 0.",
-    PseudoInfo "j" "label" "jal zero, label" "Unconditional jump; the return address is discarded.",
-    PseudoInfo "jr" "rs" "jalr zero, rs, 0" "Jump to the address held in a register.",
-    PseudoInfo "ret" "" "jalr zero, ra, 0" "Return from a function by jumping to the address in ra.",
-    PseudoInfo "call" "symbol" "auipc + jalr" "Call a function that may be far away, saving the return address in ra.",
-    PseudoInfo "tail" "symbol" "auipc + jalr" "Tail-call a function; jumps without saving a return address.",
-    PseudoInfo "beqz" "rs, label" "beq rs, zero, label" "Branch when rs == 0.",
-    PseudoInfo "bnez" "rs, label" "bne rs, zero, label" "Branch when rs ≠ 0.",
-    PseudoInfo "blez" "rs, label" "bge zero, rs, label" "Branch when rs ≤ 0 (signed).",
-    PseudoInfo "bgez" "rs, label" "bge rs, zero, label" "Branch when rs ≥ 0 (signed).",
-    PseudoInfo "bltz" "rs, label" "blt rs, zero, label" "Branch when rs < 0 (signed).",
-    PseudoInfo "bgtz" "rs, label" "blt zero, rs, label" "Branch when rs > 0 (signed).",
-    PseudoInfo "bgt" "rs, rt, label" "blt rt, rs, label" "Branch when rs > rt (signed); the operands are swapped to reuse blt.",
-    PseudoInfo "ble" "rs, rt, label" "bge rt, rs, label" "Branch when rs ≤ rt (signed).",
-    PseudoInfo "bgtu" "rs, rt, label" "bltu rt, rs, label" "Branch when rs > rt (unsigned).",
-    PseudoInfo "bleu" "rs, rt, label" "bgeu rt, rs, label" "Branch when rs ≤ rt (unsigned).",
-    PseudoInfo "lw" "rd, symbol" "auipc + lw" "Loads a word from a labelled global into rd.",
-    PseudoInfo "sw" "rd, symbol, rt" "auipc + sw" "Stores rd to a labelled global, using rt as a scratch register for the address."
-  ]
+  map
+    base
+    [ ("nop", "", "addi zero, zero, 0", "No operation; advances the PC and changes nothing."),
+      ("mv", "rd, rs", "addi rd, rs, 0", "Copies the value in rs into rd."),
+      ("li", "rd, imm", "lui (+ addi)", "Load Immediate: loads any 32-bit constant, emitting one or two instructions as needed."),
+      ("la", "rd, symbol", "auipc + addi", "Load Address: puts the (PC-relative) address of a label into rd."),
+      ("neg", "rd, rs", "sub rd, zero, rs", "Two's-complement negation (rd = -rs)."),
+      ("not", "rd, rs", "xori rd, rs, -1", "Bitwise NOT (one's complement) of rs."),
+      ("seqz", "rd, rs", "sltiu rd, rs, 1", "Set if equal to zero: rd = 1 when rs == 0, else 0."),
+      ("snez", "rd, rs", "sltu rd, zero, rs", "Set if not zero: rd = 1 when rs ≠ 0, else 0."),
+      ("sltz", "rd, rs", "slt rd, rs, zero", "Set if less than zero: rd = 1 when rs < 0, else 0."),
+      ("sgtz", "rd, rs", "slt rd, zero, rs", "Set if greater than zero: rd = 1 when rs > 0, else 0."),
+      ("j", "label", "jal zero, label", "Unconditional jump; the return address is discarded."),
+      ("jr", "rs", "jalr zero, rs, 0", "Jump to the address held in a register."),
+      ("ret", "", "jalr zero, ra, 0", "Return from a function by jumping to the address in ra."),
+      ("call", "symbol", "auipc + jalr", "Call a function that may be far away, saving the return address in ra."),
+      ("tail", "symbol", "auipc + jalr", "Tail-call a function; jumps without saving a return address."),
+      ("beqz", "rs, label", "beq rs, zero, label", "Branch when rs == 0."),
+      ("bnez", "rs, label", "bne rs, zero, label", "Branch when rs ≠ 0."),
+      ("blez", "rs, label", "bge zero, rs, label", "Branch when rs ≤ 0 (signed)."),
+      ("bgez", "rs, label", "bge rs, zero, label", "Branch when rs ≥ 0 (signed)."),
+      ("bltz", "rs, label", "blt rs, zero, label", "Branch when rs < 0 (signed)."),
+      ("bgtz", "rs, label", "blt zero, rs, label", "Branch when rs > 0 (signed)."),
+      ("bgt", "rs, rt, label", "blt rt, rs, label", "Branch when rs > rt (signed); the operands are swapped to reuse blt."),
+      ("ble", "rs, rt, label", "bge rt, rs, label", "Branch when rs ≤ rt (signed)."),
+      ("bgtu", "rs, rt, label", "bltu rt, rs, label", "Branch when rs > rt (unsigned)."),
+      ("bleu", "rs, rt, label", "bgeu rt, rs, label", "Branch when rs ≤ rt (unsigned)."),
+      ("lw", "rd, symbol", "auipc + lw", "Loads a word from a labelled global into rd."),
+      ("sw", "rd, symbol, rt", "auipc + sw", "Stores rd to a labelled global, using rt as a scratch register for the address.")
+    ]
+    ++ map
+      zicsr
+      [ ("csrr", "rd, csr", "csrrs rd, csr, zero", "Read a CSR into rd, without writing it back."),
+        ("csrw", "csr, rs", "csrrw zero, csr, rs", "Write rs into a CSR, discarding the old value."),
+        ("csrs", "csr, rs", "csrrs zero, csr, rs", "Set in a CSR the bits that are set in rs."),
+        ("csrc", "csr, rs", "csrrc zero, csr, rs", "Clear in a CSR the bits that are set in rs."),
+        ("csrwi", "csr, uimm", "csrrwi zero, csr, uimm", "Write a 5-bit immediate into a CSR."),
+        ("csrsi", "csr, uimm", "csrrsi zero, csr, uimm", "Set in a CSR the bits named by a 5-bit immediate."),
+        ("csrci", "csr, uimm", "csrrci zero, csr, uimm", "Clear in a CSR the bits named by a 5-bit immediate.")
+      ]
+  where
+    base (m, s, e, d) = PseudoInfo m "I" s e d
+    zicsr (m, s, e, d) = PseudoInfo m "Zicsr" s e d
 
 instance ToJSON OperandDoc where
   toJSON (OperandDoc token desc) = object ["token" .= token, "desc" .= desc]
@@ -577,9 +593,10 @@ instance ToJSON InstructionInfo where
       ]
 
 instance ToJSON PseudoInfo where
-  toJSON (PseudoInfo mnemonic syntax expands desc) =
+  toJSON (PseudoInfo mnemonic ext syntax expands desc) =
     object
       [ "mnemonic" .= mnemonic,
+        "extension" .= ext,
         "syntax" .= syntax,
         "expands" .= expands,
         "description" .= desc

@@ -3,6 +3,7 @@ import { isaStore } from "$lib/store/isaStore.svelte";
 import type { InstructionInfo } from "../../bindings/InstructionInfo";
 import type { PseudoInfo } from "../../bindings/PseudoInfo";
 import type { DirectiveInfo } from "../../bindings/DirectiveInfo";
+import type { CsrInfo } from "../../bindings/CsrInfo";
 import { REGISTERS, type RegisterInfo } from "$lib/store/helpCatalogue.svelte";
 import { editorPrefs } from "$lib/store/editorPrefs.svelte";
 
@@ -48,6 +49,13 @@ function registerMarkdown(r: RegisterInfo): string {
   return [head, r.desc].filter(Boolean).join("\n\n");
 }
 
+function csrMarkdown(c: CsrInfo): string {
+  const head = [`**${c.name}**`, "_CSR_", "`" + c.address + "`"]
+    .filter(Boolean)
+    .join(dot);
+  return [head, c.description].filter(Boolean).join("\n\n");
+}
+
 // Every register by both its ABI name(s) (e.g. s0, fp) and its x-name (x8).
 const registerByName = new Map<string, RegisterInfo>();
 for (const r of REGISTERS) {
@@ -74,6 +82,10 @@ function lookup(token: string): string | null {
   if (editorPrefs.hoverRegisters) {
     const r = registerByName.get(token);
     if (r) return registerMarkdown(r);
+  }
+  if (editorPrefs.hoverCsrs) {
+    const c = isaStore.csrs.find((x) => x.name.toLowerCase() === token);
+    if (c) return csrMarkdown(c);
   }
   return null;
 }

@@ -183,6 +183,13 @@ data PseudoOp
   | P_BLEU Register Register Operand
   | P_CALL String
   | P_TAIL String
+  | P_CSRR Register Int
+  | P_CSRW Int Register
+  | P_CSRS Int Register
+  | P_CSRC Int Register
+  | P_CSRWI Int Operand
+  | P_CSRSI Int Operand
+  | P_CSRCI Int Operand
 
 data Section = TextSection | DataSection | BssSection
   deriving (Show, Eq)

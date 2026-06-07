@@ -30,7 +30,7 @@ pub enum AssemblyError {
         text: String,
     },
     ImmediateTooLarge {
-        value: i32,
+        value: i64,
     },
     UnexpectedChar {
         char: String,
@@ -44,6 +44,12 @@ pub enum AssemblyError {
     ExtensionDisabled {
         extension: String,
         mnemonic: String,
+    },
+    CsrOutOfRange {
+        context: String,
+        lo: i32,
+        hi: i32,
+        value: i64,
     },
     Located {
         line: i32,
@@ -62,17 +68,17 @@ pub enum LinkError {
         label: String,
     },
     ShiftOutOfRange {
-        value: i32,
+        value: i64,
     },
     ImmOutOfRange {
         context: String,
         lo: i32,
         hi: i32,
-        value: i32,
+        value: i64,
     },
     MisalignedTarget {
         context: String,
-        value: i32,
+        value: i64,
     },
     Located {
         line: i32,
@@ -235,6 +241,7 @@ pub struct InstructionInfo {
 #[ts(export, export_to = "../src/bindings/")]
 pub struct PseudoInfo {
     pub mnemonic: String,
+    pub extension: String,
     pub syntax: String,
     pub expands: String,
     pub description: String,
