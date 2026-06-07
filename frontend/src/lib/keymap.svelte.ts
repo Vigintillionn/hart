@@ -74,6 +74,21 @@ export const COMMANDS: Command[] = [
     run: () => fileStore.handleOpenFile(),
   },
   {
+    id: "new",
+    label: "New file",
+    defaultKeys: "Mod+N",
+    run: () => fileStore.newFile(),
+  },
+  {
+    id: "close",
+    label: "Close file",
+    defaultKeys: "Mod+W",
+    run: () => {
+      const active = fileStore.activeFile;
+      if (active) fileStore.closeFile(active.id);
+    },
+  },
+  {
     id: "reference",
     label: "Open RISC-V reference",
     defaultKeys: "F1",
