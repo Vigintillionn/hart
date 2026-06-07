@@ -709,6 +709,12 @@ parseProgram exts = do
     isEmpty _ = False
 
 parse :: ExtensionSet -> String -> Either AssemblyError [(Int, SourceLine)]
-parse exts src = case runParser (parseProgram exts) 1 src of
+parse exts src = case runParser (parseProgram exts) 1 (normalizeNewlines src) of
   Right (instr, _, _) -> Right instr
   Left (PErr _ ln e) -> Left (Located ln e)
+
+normalizeNewlines :: String -> String
+normalizeNewlines [] = []
+normalizeNewlines ('\r' : '\n' : rest) = '\n' : normalizeNewlines rest
+normalizeNewlines ('\r' : rest) = '\n' : normalizeNewlines rest
+normalizeNewlines (c : rest) = c : normalizeNewlines rest

@@ -39,6 +39,11 @@ spec = do
       realInstrOf "   addi a0, zero, 1   # set a0\n"
         `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (ImmVal 1)))
 
+    it "accepts Windows CRLF line endings, including blank lines" $
+      case parse defaultExtensions "li t0, 1\r\n\r\nli t1, 2\r\n" of
+        Right stmts -> length stmts `shouldBe` 2
+        Left e -> expectationFailure ("expected CRLF source to parse, got: " ++ show e)
+
   describe "comments" $ do
     let addi = SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (ImmVal 1)))
 
