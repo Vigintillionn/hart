@@ -42,6 +42,7 @@ function initialSession(): Session {
 class FileStore {
   openFiles = $state<OpenFile[]>([]);
   activeFileId = $state("");
+  renamingId = $state<string | null>(null);
 
   constructor() {
     const session = initialSession();
@@ -97,6 +98,24 @@ class FileStore {
       savedContent: "",
     });
     this.activeFileId = id;
+    this.renamingId = id;
+  }
+
+  public startRename(id: string) {
+    this.renamingId = id;
+  }
+
+  public cancelRename() {
+    this.renamingId = null;
+  }
+
+  public renameFile(id: string, rawName: string) {
+    this.renamingId = null;
+    const file = this.openFiles.find((f) => f.id === id);
+    if (!file) return;
+    const name = rawName.trim();
+    if (!name || name === file.name) return;
+    file.name = name;
   }
 
   public async handleOpenFile() {
@@ -138,6 +157,7 @@ class FileStore {
       let path = file.path;
       if (!path) {
         const selected = await save({
+          defaultPath: file.name,
           filters: [{ name: "Assembly", extensions: ["s", "asm"] }],
         });
         if (!selected) return; // user cancelled
