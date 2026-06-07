@@ -39,8 +39,8 @@ jobs:
       - name: setup haskell
         uses: haskell-actions/setup@v2
         with:
-          ghc-version: 'latest'
-          cabal-version: 'latest'
+          ghc-version: "9.6"
+          cabal-version: "latest"
 
       - name: setup rust
         uses: dtolnay/rust-toolchain@stable
