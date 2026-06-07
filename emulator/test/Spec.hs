@@ -8,6 +8,7 @@ import qualified Test.ExtensionSpec
 import qualified Test.KernelSpec
 import qualified Test.LinkerSpec
 import qualified Test.ParserSpec
+import qualified Test.RpcSpec
 import qualified Test.TrapSpec
 import qualified Test.WireSpec
 
@@ -24,3 +25,4 @@ main = hspec $ do
     describe "Debugger" Test.DebuggerSpec.spec
     describe "Wire" Test.WireSpec.spec
     describe "Doc" Test.DocSpec.spec
+    describe "RPC (integration)" Test.RpcSpec.spec

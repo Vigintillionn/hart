@@ -120,6 +120,11 @@ test-suite hart-emulator-test
                       Test.DebuggerSpec
                       Test.DocSpec
                       Test.WireSpec
+                      Test.RpcSpec
     build-depends:    hart-emulator,
                       hspec,
-                      QuickCheck
+                      QuickCheck,
+                      directory,
+                      process,
+                      text,
+                      random
