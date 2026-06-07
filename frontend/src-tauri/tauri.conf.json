@@ -41,6 +41,15 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
-    "externalBin": ["binaries/hart-emulator"]
+    "externalBin": ["binaries/hart-emulator"],
+    "fileAssociations": [
+      {
+        "ext": ["s", "asm"],
+        "name": "RISC-V Assembly",
+        "description": "RISC-V assembly source file",
+        "mimeType": "text/x-asm",
+        "role": "Editor"
+      }
+    ]
   }
 }

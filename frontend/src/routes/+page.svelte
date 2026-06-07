@@ -18,6 +18,7 @@
 
   onMount(() => {
     cpuStore.initListener();
+    fileStore.initLaunchFiles();
 
     const unlistenClose = getCurrentWindow().onCloseRequested(async (event) => {
       if (!fileStore.hasUnsavedChanges) return;

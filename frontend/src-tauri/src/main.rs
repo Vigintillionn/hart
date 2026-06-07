@@ -47,6 +47,56 @@ fn write_file(path: String, contents: String) -> Result<(), String> {
     std::fs::write(&path, contents).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+}
+
+fn is_source_file(path: &str) -> bool {
+    let lower = path.to_lowercase();
+    lower.ends_with(".s") || lower.ends_with(".asm")
+}
+
+#[derive(Default)]
+struct LaunchFiles {
+    paths: Mutex<Vec<String>>,
+    ready: std::sync::atomic::AtomicBool,
+}
+
+fn queue_open(app: &tauri::AppHandle, paths: Vec<String>) {
+    use std::sync::atomic::Ordering;
+
+    let paths: Vec<String> = paths.into_iter().filter(|p| is_source_file(p)).collect();
+    if paths.is_empty() {
+        return;
+    }
+
+    let state = app.state::<LaunchFiles>();
+    if state.ready.load(Ordering::SeqCst) {
+        let _ = app.emit("open-files", &paths);
+    } else {
+        state
+            .paths
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .extend(paths);
+    }
+
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.show();
+        let _ = window.unminimize();
+        let _ = window.set_focus();
+    }
+}
+
+#[tauri::command]
+fn take_launch_files(state: tauri::State<'_, LaunchFiles>) -> Vec<String> {
+    state
+        .ready
+        .store(true, std::sync::atomic::Ordering::SeqCst);
+    std::mem::take(&mut *state.paths.lock().unwrap_or_else(|e| e.into_inner()))
+}
+
 /// Work around a Tauri AppImage packaging bug on Wayland.
 ///
 /// The AppImage bundles its own (older) `libwayland-client.so.0`, which shadows
@@ -113,13 +163,19 @@ fn main() {
     preload_system_wayland_if_appimage();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            queue_open(app, argv);
+        }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .manage(EmulatorState {
             child: Mutex::new(None),
         })
+        .manage(LaunchFiles::default())
         .setup(|app| {
+            queue_open(&app.handle(), std::env::args().skip(1).collect());
+
             println!("Spawning Haskell Emulator...");
 
             let (mut rx, child) = app
@@ -173,12 +229,14 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             send_command,
             rename_file,
-            write_file
+            write_file,
+            read_file,
+            take_launch_files
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application")
-        .run(|app_handle, event| {
-            if let RunEvent::ExitRequested { .. } = event {
+        .run(|app_handle, event| match event {
+            RunEvent::ExitRequested { .. } => {
                 let child_to_kill = app_handle
                     .state::<EmulatorState>()
                     .child
@@ -191,5 +249,15 @@ fn main() {
                     println!("Haskell sidecar safely terminated on exit.");
                 }
             }
+            #[cfg(target_os = "macos")]
+            RunEvent::Opened { urls } => {
+                let paths: Vec<String> = urls
+                    .iter()
+                    .filter_map(|u| u.to_file_path().ok())
+                    .filter_map(|p| p.to_str().map(str::to_string))
+                    .collect();
+                queue_open(app_handle, paths);
+            }
+            _ => {}
         });
 }

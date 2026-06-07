@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open, save, confirm } from "@tauri-apps/plugin-dialog";
-import { readTextFile } from "@tauri-apps/plugin-fs";
 import type { OpenFile } from "../types";
 import { logStore } from "./logStore.svelte";
 import { loadJSON, saveJSON } from "../persist";
@@ -124,33 +124,47 @@ class FileStore {
   }
 
   public async handleOpenFile() {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Assembly", extensions: ["s", "asm"] }],
+    });
+    if (!selected || typeof selected !== "string") return;
+    await this.openPath(selected);
+  }
+
+  public async openPath(path: string) {
+    const existing = this.openFiles.find((f) => f.path === path);
+    if (existing) {
+      this.activeFileId = existing.id;
+      return;
+    }
     try {
-      const selected = await open({
-        multiple: false,
-        filters: [{ name: "Assembly", extensions: ["s", "asm"] }],
-      });
-      if (!selected || typeof selected !== "string") return;
-
-      const existing = this.openFiles.find((f) => f.path === selected);
-      if (existing) {
-        this.activeFileId = existing.id;
-        return;
-      }
-
-      const content = await readTextFile(selected);
-      const name = selected.split(/[/\\]/).pop() || "untitled.s";
-      const id = Date.now().toString();
-
+      const content = await invoke<string>("read_file", { path });
+      const id = `file-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       this.openFiles.push({
         id,
-        name,
-        path: selected,
+        name: basename(path) || "untitled.s",
+        path,
         content,
         savedContent: content,
       });
       this.activeFileId = id;
     } catch (e) {
-      logStore.log("error", "FILE", `could not open file: ${e}`);
+      logStore.log("error", "FILE", `could not open ${path}: ${e}`);
+    }
+  }
+
+  private async openPaths(paths: string[]) {
+    for (const path of paths) await this.openPath(path);
+  }
+
+  public async initLaunchFiles() {
+    await listen<string[]>("open-files", (e) => void this.openPaths(e.payload));
+    try {
+      const launched = await invoke<string[]>("take_launch_files");
+      if (launched.length) await this.openPaths(launched);
+    } catch (e) {
+      logStore.log("error", "FILE", `could not open launched files: ${e}`);
     }
   }
 
