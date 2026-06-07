@@ -19,7 +19,9 @@
   onMount(async () => {
     try {
       version = await getVersion();
-    } catch {}
+    } catch {
+      // Version is not needed, so we can fail silently if it can't be retrieved
+    }
   });
 
   async function openExternal(url: string) {

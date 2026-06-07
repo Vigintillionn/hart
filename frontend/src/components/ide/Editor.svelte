@@ -20,8 +20,6 @@
 
   const running = $derived(cpuStore.status === "Running");
 
-  // Focus a freshly-rendered rename input and pre-select the base name (so the
-  // extension is kept unless the user types over it).
   const focusSelect = (node: HTMLInputElement) => {
     node.focus();
     const dot = node.value.lastIndexOf(".");
@@ -40,8 +38,6 @@
     }
   };
 
-  // Let a plain vertical mouse wheel scroll the tab strip horizontally when the
-  // tabs overflow (trackpad horizontal gestures still scroll natively).
   const tabWheel = (e: WheelEvent) => {
     const el = e.currentTarget as HTMLElement;
     if (el.scrollWidth <= el.clientWidth) return;
@@ -60,52 +56,54 @@
       class="hide-native-scroll flex h-full min-w-0 flex-1 items-center overflow-x-auto pl-1"
       onwheel={tabWheel}
     >
-    {#each fileStore.openFiles as file (file.id)}
-      {@const parts = splitName(file.name)}
-      {@const dirty = fileStore.isDirty(file)}
-      <div
-        class="group relative flex h-9 flex-none select-none items-center border-r border-border text-[12.5px] transition-colors {fileStore.activeFileId ===
-        file.id
-          ? "bg-surface-0 text-text before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary before:content-['']"
-          : 'text-text-dim hover:text-text'}"
-      >
-        {#if fileStore.renamingId === file.id}
-          <input
-            class="ml-2 mr-1 h-6 w-32 rounded border border-primary/50 bg-surface-0 px-1.5 font-mono text-[12px] text-text outline-none"
-            value={file.name}
-            spellcheck="false"
-            autocomplete="off"
-            use:focusSelect
-            onkeydown={(e) => onRenameKey(e, file.name, file.id)}
-            onblur={(e) => fileStore.renameFile(file.id, e.currentTarget.value)}
-          />
-        {:else}
-          <button
-            class="flex h-full min-w-0 items-center gap-2 pl-4 pr-1.5"
-            title="{file.name} — double-click to rename"
-            onclick={() => fileStore.setActiveFileId(file.id)}
-            ondblclick={() => fileStore.startRename(file.id)}
-          >
-            <span class="max-w-[12rem] truncate"
-              >{parts.base}<span class="text-secondary">{parts.ext}</span></span
-            >
-            {#if dirty}
-              <span
-                class="h-1.5 w-1.5 flex-none rounded-full bg-primary group-hover:hidden"
-                title="unsaved changes"
-              ></span>
-            {/if}
-          </button>
-        {/if}
-        <button
-          class="pr-3.5 pl-0.5 text-text-faint transition-colors hover:text-red {dirty
-            ? 'hidden group-hover:block'
-            : ''}"
-          title="Close"
-          onclick={(e) => fileStore.closeFile(file.id, e)}>×</button
+      {#each fileStore.openFiles as file (file.id)}
+        {@const parts = splitName(file.name)}
+        {@const dirty = fileStore.isDirty(file)}
+        <div
+          class="group relative flex h-9 flex-none select-none items-center border-r border-border text-[12.5px] transition-colors {fileStore.activeFileId ===
+          file.id
+            ? "bg-surface-0 text-text before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-primary before:content-['']"
+            : 'text-text-dim hover:text-text'}"
         >
-      </div>
-    {/each}
+          {#if fileStore.renamingId === file.id}
+            <input
+              class="ml-2 mr-1 h-6 w-32 rounded border border-primary/50 bg-surface-0 px-1.5 font-mono text-[12px] text-text outline-none"
+              value={file.name}
+              spellcheck="false"
+              autocomplete="off"
+              use:focusSelect
+              onkeydown={(e) => onRenameKey(e, file.name, file.id)}
+              onblur={(e) =>
+                fileStore.renameFile(file.id, e.currentTarget.value)}
+            />
+          {:else}
+            <button
+              class="flex h-full min-w-0 items-center gap-2 pl-4 pr-1.5"
+              title="{file.name} — double-click to rename"
+              onclick={() => fileStore.setActiveFileId(file.id)}
+              ondblclick={() => fileStore.startRename(file.id)}
+            >
+              <span class="max-w-48 truncate"
+                >{parts.base}<span class="text-secondary">{parts.ext}</span
+                ></span
+              >
+              {#if dirty}
+                <span
+                  class="h-1.5 w-1.5 flex-none rounded-full bg-primary group-hover:hidden"
+                  title="unsaved changes"
+                ></span>
+              {/if}
+            </button>
+          {/if}
+          <button
+            class="pr-3.5 pl-0.5 text-text-faint transition-colors hover:text-red {dirty
+              ? 'hidden group-hover:block'
+              : ''}"
+            title="Close"
+            onclick={(e) => fileStore.closeFile(file.id, e)}>×</button
+          >
+        </div>
+      {/each}
 
       <button
         class="flex h-9 w-8 flex-none items-center justify-center text-base text-text-faint transition-colors hover:text-text"

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Desktop IDE and time-travel debugger for RISC-V assembly."
 authors = ["Vigintillionn"]
 license = "GPL-3.0-only"
-repository = "https://github.com/Vigintillionn/riscv-assembler"
+repository = "https://github.com/Vigintillionn/hart"
 edition = "2021"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
