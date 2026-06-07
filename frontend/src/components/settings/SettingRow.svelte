@@ -1,11 +1,17 @@
 <script lang="ts">
   import type { Snippet } from "svelte";
   import { settingsStore } from "$lib/store/settingsStore.svelte";
+  import { useSection } from "./section";
 
   let { id, children }: { id: string; children: Snippet } = $props();
 
   const descriptor = $derived(settingsStore.descriptor(id));
   const visible = $derived(settingsStore.matchesId(id));
+
+  const section = useSection();
+  $effect(() => {
+    section?.report(id, visible && !!descriptor);
+  });
 </script>
 
 {#if visible && descriptor}

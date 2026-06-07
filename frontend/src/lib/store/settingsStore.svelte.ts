@@ -14,13 +14,17 @@ export type CategoryId =
   | "display"
   | "terminal"
   | "shortcuts"
-  | "extensions";
+  | "extensions"
+  | "about";
 
 export interface CategoryMeta {
   id: CategoryId;
   label: string;
   icon: IconName;
+  section: string;
 }
+
+export const SETTINGS_SECTIONS = ["Interface", "Machine", "Other"];
 
 export interface SettingDescriptor {
   id: string;
@@ -31,12 +35,23 @@ export interface SettingDescriptor {
 }
 
 export const SETTINGS_CATEGORIES: CategoryMeta[] = [
-  { id: "appearance", label: "Appearance", icon: "sun" },
-  { id: "editor", label: "Editor", icon: "pencil" },
-  { id: "display", label: "Registers & Memory", icon: "memory" },
-  { id: "terminal", label: "Terminal", icon: "term" },
-  { id: "shortcuts", label: "Keyboard", icon: "keyboard" },
-  { id: "extensions", label: "ISA Extensions", icon: "chip" },
+  { id: "appearance", label: "Appearance", icon: "sun", section: "Interface" },
+  { id: "editor", label: "Editor", icon: "pencil", section: "Interface" },
+  { id: "terminal", label: "Terminal", icon: "term", section: "Interface" },
+  {
+    id: "shortcuts",
+    label: "Keyboard",
+    icon: "keyboard",
+    section: "Interface",
+  },
+  { id: "display", label: "Registers & Memory", icon: "memory", section: "Machine" }, // prettier-ignore
+  {
+    id: "extensions",
+    label: "ISA Extensions",
+    icon: "chip",
+    section: "Machine",
+  },
+  { id: "about", label: "About", icon: "info", section: "Other" },
 ];
 
 export const SETTINGS: SettingDescriptor[] = [
@@ -298,11 +313,27 @@ class SettingsStore {
     if (id === "shortcuts")
       return COMMANDS.some((c) => c.label.toLowerCase().includes(q));
 
+    if (id === "about")
+      return "about version feedback report issue bug github source license".includes(
+        q,
+      );
+
     return false;
   }
 
   public get visibleCategories(): CategoryMeta[] {
     return SETTINGS_CATEGORIES.filter((c) => this.categoryHasMatches(c.id));
+  }
+
+  public get visibleGroups(): {
+    section: string;
+    categories: CategoryMeta[];
+  }[] {
+    const visible = this.visibleCategories;
+    return SETTINGS_SECTIONS.map((section) => ({
+      section,
+      categories: visible.filter((c) => c.section === section),
+    })).filter((g) => g.categories.length > 0);
   }
 
   public show() {

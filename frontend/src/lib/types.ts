@@ -47,4 +47,6 @@ export type IconName =
   | "min"
   | "max"
   | "restore"
-  | "close";
+  | "close"
+  | "bug"
+  | "info";

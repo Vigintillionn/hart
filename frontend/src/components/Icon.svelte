@@ -140,5 +140,17 @@
     <path d="M7.5 5.5h9a2 2 0 0 1 2 2v9" stroke-width="1.4" />
   {:else if name === "close"}
     <path d="M6 6l12 12M18 6 6 18" stroke-width="1.5" />
+  {:else if name === "info"}
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 11v5" />
+    <path d="M12 8h.01" />
+  {:else if name === "bug"}
+    <path d="M9 8V7a3 3 0 0 1 6 0v1" />
+    <path d="M9.5 5 8 3.5M14.5 5 16 3.5" />
+    <rect x="8" y="8" width="8" height="10.5" rx="4" />
+    <path d="M12 11.5v6.5" />
+    <path d="M8 10.5 4.5 8.5M16 10.5l3.5-2" />
+    <path d="M8 14H4M16 14h4" />
+    <path d="M8 16.5 5 18.5M16 16.5l3 2" />
   {/if}
 </svg>

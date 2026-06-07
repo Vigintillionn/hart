@@ -8,6 +8,7 @@
   import TerminalPanel from "./TerminalPanel.svelte";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
   import ExtensionsPanel from "./ExtensionsPanel.svelte";
+  import AboutPanel from "./AboutPanel.svelte";
   import ScrollArea from "../ui/ScrollArea.svelte";
 
   let confirmingReset = $state(false);
@@ -76,24 +77,31 @@
           viewportClass="h-full p-2"
           role="navigation"
         >
-          {#each settingsStore.visibleCategories as cat (cat.id)}
-            <button
-              onclick={() => settingsStore.select(cat.id)}
-              class={[
-                "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
-                settingsStore.active === cat.id
-                  ? "bg-control text-text"
-                  : "text-text-dim hover:bg-control/60 hover:text-text",
-              ]}
+          {#each settingsStore.visibleGroups as group (group.section)}
+            <p
+              class="px-2.5 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[1.1px] text-text-faint first:pt-1"
             >
-              <Icon
-                name={cat.icon}
-                class="h-4 w-4 flex-none {settingsStore.active === cat.id
-                  ? 'text-primary'
-                  : 'text-text-faint'}"
-              />
-              {cat.label}
-            </button>
+              {group.section}
+            </p>
+            {#each group.categories as cat (cat.id)}
+              <button
+                onclick={() => settingsStore.select(cat.id)}
+                class={[
+                  "flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-[12.5px] transition-colors",
+                  settingsStore.active === cat.id
+                    ? "bg-control text-text"
+                    : "text-text-dim hover:bg-control/60 hover:text-text",
+                ]}
+              >
+                <Icon
+                  name={cat.icon}
+                  class="h-4 w-4 flex-none {settingsStore.active === cat.id
+                    ? 'text-primary'
+                    : 'text-text-faint'}"
+                />
+                {cat.label}
+              </button>
+            {/each}
           {:else}
             <p class="px-2.5 py-2 text-[11.5px] text-text-faint">
               No settings found.
@@ -156,6 +164,8 @@
             <ShortcutsPanel />
           {:else if settingsStore.active === "extensions"}
             <ExtensionsPanel />
+          {:else if settingsStore.active === "about"}
+            <AboutPanel />
           {/if}
         </ScrollArea>
       </div>
