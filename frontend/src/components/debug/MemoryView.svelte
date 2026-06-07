@@ -214,7 +214,7 @@
       <input
         bind:value={query}
         spellcheck="false"
-        placeholder="jump to address — 0x10000000"
+        placeholder="jump to address - 0x10000000"
         class="min-w-0 flex-1 bg-transparent font-mono text-[11.5px] tracking-[0.3px] text-text outline-none placeholder:text-text-ghost"
       />
     </form>
@@ -248,7 +248,7 @@
       class="hide-native-scroll min-h-0 flex-1 overflow-x-auto overflow-y-hidden outline-none"
       tabindex="0"
       role="grid"
-      aria-label="Memory view — scroll or arrow keys to navigate"
+      aria-label="Memory view - scroll or arrow keys to navigate"
       bind:clientHeight={viewportH}
       onwheel={onWheel}
       onkeydown={onKeydown}
@@ -293,7 +293,7 @@
       bind:clientHeight={trackH}
       class="relative w-2.5 flex-none cursor-pointer touch-none border-l border-border outline-none focus-visible:bg-surface-2"
       role="scrollbar"
-      aria-label="Memory scroll position — arrow, Page, Home/End keys"
+      aria-label="Memory scroll position - arrow, Page, Home/End keys"
       aria-controls="memory-view-grid"
       aria-orientation="vertical"
       aria-valuemin={0}

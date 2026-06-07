@@ -38,7 +38,7 @@
   <button
     class="relative inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-surface-3 px-2.5 text-[12.5px] font-medium text-secondary transition-colors hover:bg-surface-4 disabled:opacity-30"
     title={(dirty
-      ? "Source changed since last compile — Run will recompile"
+      ? "Source changed since last compile - Run will recompile"
       : "Compile & load the current file") + ` (${keymap.describe("compile")})`}
     disabled={running}
     onclick={() => cpuStore.handleLoadProgram()}

@@ -19,7 +19,7 @@
   <div
     class="flex h-full items-center justify-center px-6 text-center font-mono text-[11px] text-text-ghost"
   >
-    — no CSRs written yet —
+    - no CSRs written yet -
   </div>
 {:else}
   <div class="flex flex-col gap-px bg-border-soft">

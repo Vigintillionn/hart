@@ -21,7 +21,7 @@
         </td>
         <td
           class="whitespace-nowrap py-2 pr-4 font-mono text-[11px] text-text-faint"
-          >{d.args || "—"}</td
+          >{d.args || "-"}</td
         >
         <td class="py-2 text-[11.5px] leading-snug text-text-dim"
           >{d.description}</td

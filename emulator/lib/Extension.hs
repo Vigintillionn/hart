@@ -18,11 +18,11 @@ import Data.Set (Set)
 import Data.Set qualified as Set
 
 data Extension
-  = -- | RV32I — base integer set (mandatory)
+  = -- | RV32I - base integer set (mandatory)
     IExt
-  | -- | RV32M — integer multiply / divide
+  | -- | RV32M - integer multiply / divide
     MExt
-  | -- | Zicsr — control and status register access
+  | -- | Zicsr - control and status register access
     ZicsrExt
   deriving (Show, Eq, Ord, Enum, Bounded)
 
@@ -65,7 +65,7 @@ extensionInfo IExt =
       extName = "Base Integer",
       extSummary =
         "Core integer arithmetic, control flow, loads/stores and system "
-          ++ "instructions. Mandatory — always enabled.",
+          ++ "instructions. Mandatory - always enabled.",
       extMandatory = True
     }
 extensionInfo MExt =

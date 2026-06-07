@@ -4,24 +4,24 @@ import { modeStore } from "../store/mode.svelte";
 const STORAGE_KEY = "hart:theme";
 
 export const DARK_THEME = {
-  keyword: "#c2a6e1", // Instructions (li, add) — RISC-V Lavender
-  register: "#62cbc9", // Registers (x0, a0) — RISC-V Aqua
-  csr: "#5bbf8f", // CSR names (mscratch, mtvec) — jade green
-  directive: "#999999", // Directives (.text) — RISC-V Light Gray
-  number: "#fdb515", // Integers / hex — California Gold
-  comment: "#666666", // Comments (#) — RISC-V Medium Gray
-  string: "#fe9bb1", // Strings ("...") — RISC-V Pink
+  keyword: "#c2a6e1", // Instructions (li, add) - RISC-V Lavender
+  register: "#62cbc9", // Registers (x0, a0) - RISC-V Aqua
+  csr: "#5bbf8f", // CSR names (mscratch, mtvec) - jade green
+  directive: "#999999", // Directives (.text) - RISC-V Light Gray
+  number: "#fdb515", // Integers / hex - California Gold
+  comment: "#666666", // Comments (#) - RISC-V Medium Gray
+  string: "#fe9bb1", // Strings ("...") - RISC-V Pink
   background: "#0d0d10", // Editor canvas
 };
 
 export const LIGHT_THEME = {
-  keyword: "#7e3ff2", // Instructions — deep violet
-  register: "#003262", // Registers — Berkeley Blue
-  csr: "#0f766e", // CSR names — teal
-  directive: "#6b7280", // Directives — slate gray
-  number: "#b06f00", // Integers / hex — deep gold
-  comment: "#9aa0a6", // Comments — muted gray
-  string: "#c2185b", // Strings — deep pink
+  keyword: "#7e3ff2", // Instructions - deep violet
+  register: "#003262", // Registers - Berkeley Blue
+  csr: "#0f766e", // CSR names - teal
+  directive: "#6b7280", // Directives - slate gray
+  number: "#b06f00", // Integers / hex - deep gold
+  comment: "#9aa0a6", // Comments - muted gray
+  string: "#c2185b", // Strings - deep pink
   background: "#ffffff", // Editor canvas
 };
 

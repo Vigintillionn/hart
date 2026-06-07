@@ -1,0 +1,62 @@
+[changelog]
+header = ""
+
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+    ### {{ group | striptags | trim | upper_first }}
+    {% for commit in commits %}
+        - {% if commit.scope %}**{{ commit.scope }}**: {% endif %}\
+            {% if commit.breaking %}[**breaking**] {% endif %}\
+            {{ commit.message | upper_first }} \
+            ([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/Vigintillionn/hart/commit/{{ commit.id }}))\
+    {% endfor %}
+{% endfor %}
+"""
+
+footer = """
+
+---
+
+### Downloads
+
+| Platform    | Files                       |
+| ----------- | --------------------------- |
+| **macOS**   | `.dmg` / `.app`             |
+| **Linux**   | `.AppImage`, `.deb`, `.rpm` |
+| **Windows** | `.msi`, `.exe`              |
+
+The emulator is bundled inside the app; there's nothing else to install.
+
+### Running an unsigned build
+
+HART isn't code-signed yet, so your OS will flag it as unrecognized. It's safe;
+you just need to bypass the warning:
+
+- **Windows:** SmartScreen shows a blue popup → **More info** → **Run anyway**.
+- **macOS:** if it says the app is "damaged", move `HART.app` to **Applications**
+  and run `xattr -cr /Applications/HART.app` in Terminal, then open it normally.
+"""
+
+trim = true
+
+[git]
+conventional_commits = true
+filter_unconventional = true
+split_commits = false
+
+commit_parsers = [
+    { message = "^feat", group = "Features" },
+    { message = "^fix", group = "Bug Fixes" },
+    { message = "^perf", group = "Performance" },
+    { message = "^refactor", group = "Refactoring" },
+    { message = "^docs", group = "Documentation" },
+    { message = "^revert", group = "Reverts" },
+    { message = "^(chore|ci|build|test|style)", skip = true },
+    { message = ".*", group = "Other" },
+]
+protect_breaking_commits = true
+filter_commits = false
+
+tag_pattern = "v[0-9].*"
+topo_order = false
+sort_commits = "newest"

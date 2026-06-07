@@ -56,7 +56,31 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: "HART ${{ github.ref_name }}"
-          releaseBody: "See the assets below to download and install HART."
+          releaseBody: "Generating release notes…"
           releaseDraft: true
           prerelease: false
           projectPath: ./frontend
+
+  changelog:
+    name: release notes
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes from conventional commits
+        uses: orhun/git-cliff-action@v4
+        id: cliff
+        with:
+          config: cliff.toml
+          args: --latest
+        env:
+          OUTPUT: RELEASE_NOTES.md
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Write notes into the draft release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release edit "${{ github.ref_name }}" --notes-file RELEASE_NOTES.md

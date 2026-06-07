@@ -143,7 +143,7 @@
     >
       {#if logStore.entries.length === 0}
         <div class="px-3.5 py-2 font-mono text-[11.5px] text-text-ghost">
-          — system log empty · press Compile or Step —
+          - system log empty · press Compile or Step -
         </div>
       {:else}
         {#each logStore.entries as l (l.id)}
@@ -184,7 +184,7 @@
       />
     {:else}
       <div class="px-3.5 py-2 font-mono text-[11.5px] text-text-ghost">
-        — no program loaded · press Compile —
+        - no program loaded · press Compile -
       </div>
     {/if}
   </div>

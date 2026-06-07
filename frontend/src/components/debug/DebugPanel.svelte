@@ -51,7 +51,7 @@
     <div
       class="flex flex-1 items-center justify-center px-6 text-center font-mono text-[11.5px] text-text-ghost"
     >
-      — compile a program to inspect CPU state —
+      - compile a program to inspect CPU state -
     </div>
   {/if}
 </div>

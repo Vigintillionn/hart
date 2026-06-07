@@ -37,7 +37,7 @@
               {/each}
             </div>
           {:else}
-            <span class="text-[11px] text-text-faint">—</span>
+            <span class="text-[11px] text-text-faint">-</span>
           {/if}
         </td>
         <td class="py-2 text-[11.5px] leading-snug text-text-dim"

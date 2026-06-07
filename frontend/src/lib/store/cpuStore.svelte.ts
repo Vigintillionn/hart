@@ -127,7 +127,7 @@ class CpuStore {
           "EMU",
           `emulator process exited${
             event.payload?.code != null ? ` (code ${event.payload.code})` : ""
-          } — your code is safe; save your work and restart the app`,
+          } - your code is safe; save your work and restart the app`,
         );
         terminalStore.setActiveTab("system");
       },
