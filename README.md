@@ -15,7 +15,7 @@ practical tool for learning and teaching how RISC-V actually works.
 ## Features
 
 - **RV32IM assembly**: the base integer ISA plus the M (multiply/divide)
-  extension, with the common pseudo-instructions (`li`, `la`, `ret`, …) and
+  extension, with the common pseudo-instructions (`li`, `la`, `ret`, ...) and
   directives (`.text`, `.data`, `.string`, `.word`, `.space`, `.align`).
 - **Toggleable extensions**: enable/disable extensions (e.g. M) from the
   toolbar; a disabled extension won't assemble or run. The base set is always on.
@@ -45,9 +45,17 @@ Grab the build for your platform from the [Releases][releases] page:
 
 The emulator is bundled inside the app, there's nothing else to install.
 
-> Builds aren't code-signed yet, so the OS may warn that HART is from an
-> unidentified developer. On macOS, right-click the app -> **Open**; on Windows,
-> choose **More info -> Run anyway**.
+#### ⚠️ Note on Running the App (Code Signing)
+
+Because this project is open-source and currently not code-signed with paid developer certificates, your operating system will flag it as an unrecognized app. The app is completely safe, but you will need to bypass the default security warnings:
+
+- **Windows:** Microsoft Defender SmartScreen will show a blue warning popup. Click **More info**, then click **Run anyway**.
+- **macOS:** macOS will likely say the app is "damaged and can't be opened." This is Apple's default warning for unsigned apps downloaded from the internet. To fix this, you need to remove the quarantine flag:
+  1. Drag `HART.app` into your **Applications** folder.
+  2. Open the **Terminal** app.
+  3. Paste the following command and press Enter:
+     `xattr -cr /Applications/HART.app`
+  4. You can now open the app normally from your Launchpad or Applications folder.
 
 ### Build from source
 
@@ -107,6 +115,9 @@ Each subproject has its own README:
 - [ ] edit register/memory values from the UI while running
 - [ ] LUA for custom memory mapped I/O and custom syscalls
 - [ ] assemble/link multiple files
+- [ ] more directives (`.eqv` / `.include`)
+- [ ] more syscalls
+- [ ] custom traphandlers
 
 ---
 
