@@ -694,13 +694,23 @@ directiveCatalogue =
   [ DirectiveInfo ".text" "" "Switch to the text section, where instructions are assembled (base address 0x0).",
     DirectiveInfo ".data" "" "Switch to the data section, where initialised data is placed (base address 0x10000000).",
     DirectiveInfo ".bss" "" "Switch to the bss section, for zero-initialised data.",
-    DirectiveInfo ".string" "\"…\"" "Emit the string followed by a NUL terminator. .asciz is an alias.",
+    DirectiveInfo ".string" "\"…\"" "Emit the string followed by a NUL terminator.",
+    DirectiveInfo ".asciz" "\"…\"" "Emit the string followed by a NUL terminator (alias of .string).",
     DirectiveInfo ".ascii" "\"…\"" "Emit the string bytes without a trailing NUL.",
     DirectiveInfo ".byte" "v, …" "Emit one or more 8-bit values.",
-    DirectiveInfo ".half" "v, …" "Emit one or more 16-bit values (little-endian). .short is an alias.",
+    DirectiveInfo ".half" "v, …" "Emit one or more 16-bit values (little-endian).",
+    DirectiveInfo ".short" "v, …" "Emit one or more 16-bit values (little-endian) (alias of .half).",
     DirectiveInfo ".word" "v, …" "Emit one or more 32-bit values (little-endian).",
-    DirectiveInfo ".space" "n" "Reserve n zero-filled bytes. .zero is an alias.",
-    DirectiveInfo ".align" "n" "Pad with zero bytes until the location counter is a multiple of 2^n."
+    DirectiveInfo ".space" "n" "Reserve n zero-filled bytes.",
+    DirectiveInfo ".zero" "n" "Reserve n zero-filled bytes (alias of .space).",
+    DirectiveInfo ".align" "n" "Pad with zero bytes until the location counter is a multiple of 2^n.",
+    DirectiveInfo ".equ" "name, value" "Define name as an absolute constant equal to value, usable wherever an immediate is expected. May redefine an earlier .equ/.set.",
+    DirectiveInfo ".set" "name, value" "Define name as an absolute constant equal to value (alias of .equ). May redefine an earlier .equ/.set.",
+    DirectiveInfo ".equiv" "name, value" "Like .equ, but raises an error if name is already defined.",
+    DirectiveInfo ".globl" "sym, …" "Give the named symbols global binding so they can be referenced from other files when linking.",
+    DirectiveInfo ".global" "sym, …" "Give the named symbols global binding (alias of .globl).",
+    DirectiveInfo ".local" "sym, …" "Give the named symbols local binding, visible only within this file.",
+    DirectiveInfo ".weak" "sym, …" "Give the named symbols weak binding; at link time a weak definition yields to a strong one."
   ]
 
 instance ToJSON DirectiveInfo where
