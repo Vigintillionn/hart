@@ -4,7 +4,7 @@ import Control.Applicative
 import Control.Monad (void)
 import Data.Bifunctor (second)
 import Data.Bits (bit, shiftR)
-import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit)
+import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit, ord)
 import Data.Map.Strict qualified as M
 import Data.Maybe (mapMaybe)
 import Error (AssemblyError (..))
@@ -185,13 +185,14 @@ comment =
 escapeChar :: Parser Char
 escapeChar = do
   void $ char '\\'
-  c <- satisfy (`elem` "nt0\\\"")
+  c <- satisfy (`elem` "nt0\\\"'")
   return $ case c of
     'n' -> '\n'
     't' -> '\t'
     '0' -> '\0'
     '\\' -> '\\'
     '"' -> '"'
+    '\'' -> '\''
     _ -> c
 
 stringLiteral :: Parser String
@@ -220,11 +221,65 @@ register = lexeme $ do
     xName _ = Nothing
 
 operand :: Parser Operand
-operand =
-  choice
-    [ ImmVal <$> immediate,
-      Label <$> identifier
-    ]
+operand = OpExpr <$> expr
+
+-- | Left-associative chain of @p@ separated by infix operators @op@.
+chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainl1 p op = p >>= rest
+  where
+    rest x = (do f <- op; y <- p; rest (f x y)) <|> pure x
+
+symbolOp :: String -> Parser ()
+symbolOp s = lexeme (void (string s))
+
+-- | Assembler expressions, in increasing precedence:
+-- @|@, @^@, @&@, @<< >>@, @+ -@, @* / %@, then unary @- ~@ and atoms
+expr :: Parser Expr
+expr = exprBOr
+  where
+    exprBOr = chainl1 exprBXor (EBin BOr <$ symbolOp "|")
+    exprBXor = chainl1 exprBAnd (EBin BXor <$ symbolOp "^")
+    exprBAnd = chainl1 exprShift (EBin BAnd <$ symbolOp "&")
+    exprShift = chainl1 exprAdd ((EBin Shl <$ symbolOp "<<") <|> (EBin Shr <$ symbolOp ">>"))
+    exprAdd = chainl1 exprMul ((EBin Add <$ symbolOp "+") <|> (EBin Sub <$ symbolOp "-"))
+    exprMul =
+      chainl1
+        exprUnary
+        ( (EBin Mul <$ symbolOp "*")
+            <|> (EBin Div <$ divOp)
+            <|> (EBin Mod <$ symbolOp "%")
+        )
+    divOp = lexeme (string "/" <* notFollowedBy (char '/'))
+    exprUnary =
+      (EUn Neg <$ symbolOp "-" <*> exprUnary)
+        <|> (EUn BNot <$ symbolOp "~" <*> exprUnary)
+        <|> exprAtom
+    exprAtom =
+      choice
+        [ symbolOp "(" *> expr <* symbolOp ")",
+          ECur <$ lexeme (char '.' <* notFollowedBy (satisfy isIdentChar)),
+          EInt <$> lexeme numberLit,
+          EInt <$> lexeme charLiteral,
+          ESym <$> lexeme identifier
+        ]
+
+numberLit :: Parser Int
+numberLit = do
+  hex <- optional (string "0x" <|> string "0X")
+  case hex of
+    Just _ -> do
+      digits <- some (satisfy isHexDigit)
+      case readHex digits of
+        [(x, "")] -> return x
+        _ -> fail "Invalid hex literal"
+    Nothing -> integer
+
+charLiteral :: Parser Int
+charLiteral = do
+  void $ char '\''
+  c <- escapeChar <|> satisfy (\x -> x /= '\'' && x /= '\n')
+  void $ char '\''
+  return (ord c)
 
 labelDef :: Parser String
 labelDef = identifier <* char ':'
@@ -303,7 +358,7 @@ parseIJumpTypeOperands = explicit <|> implicit
         <*> operand
     implicit = do
       rs <- register
-      return $ ITypeArgs x1 rs (ImmVal 0)
+      return $ ITypeArgs x1 rs (OpExpr (EInt 0))
 
 parseBTypeOperands :: Parser (BTypeArgs Operand)
 parseBTypeOperands =
@@ -393,7 +448,7 @@ parseSystemImm op = do
   when (uimm < 0 || uimm > 31) $
     failWith (CsrOutOfRange "CSR immediate" 0 31 uimm)
 
-  let args = SysIArgs {ci_rd = rd, ci_csr = csr, ci_uimm = ImmVal (fromIntegral uimm)}
+  let args = SysIArgs {ci_rd = rd, ci_csr = csr, ci_uimm = OpExpr (EInt (fromIntegral uimm))}
   return $ RealInstr $ SomeInstruction $ SystemI op args
 
 parseTrap :: TrapOp -> Parser (ArchInstr 'Parsed)
@@ -411,7 +466,7 @@ parseLi = do
   comma
   op <- operand
   case op of
-    ImmVal v | not (liFits v) -> failWith (ImmediateTooLarge v)
+    OpExpr e | Just v <- foldConst e, not (liFits v) -> failWith (ImmediateTooLarge v)
     _ -> return ()
   return (P_LI rd op)
   where
@@ -457,7 +512,7 @@ parseCsrImm op = op <$> csrOperand <* comma <*> csrUImm
       uimm <- immediate
       when (uimm < 0 || uimm > 31) $
         failWith (CsrOutOfRange "CSR immediate" 0 31 uimm)
-      return $ ImmVal (fromIntegral uimm)
+      return $ OpExpr (EInt (fromIntegral uimm))
 
 rOpTable :: [(String, ROp)]
 rOpTable =
@@ -638,8 +693,8 @@ parseSection =
 symbolName :: Parser String
 symbolName = lexeme identifier
 
-parseSymbolValue :: (String -> Int -> Directive) -> Parser Directive
-parseSymbolValue mk = mk <$> symbolName <* comma <*> immediate
+parseSymbolValue :: (String -> Expr -> Directive) -> Parser Directive
+parseSymbolValue mk = mk <$> symbolName <* comma <*> expr
 
 parseDirective :: Parser Directive
 parseDirective =
@@ -648,13 +703,13 @@ parseDirective =
       lexeme (string ".string") *> (DirString <$> stringLiteral),
       lexeme (string ".asciz") *> (DirString <$> stringLiteral),
       lexeme (string ".ascii") *> (DirAscii <$> stringLiteral),
-      lexeme (string ".byte") *> (DirByte <$> sepBy1 immediate comma),
-      lexeme (string ".half") *> (DirHalf <$> sepBy1 immediate comma),
-      lexeme (string ".short") *> (DirHalf <$> sepBy1 immediate comma),
-      lexeme (string ".word") *> (DirWord <$> sepBy1 immediate comma),
-      lexeme (string ".space") *> (DirSpace <$> immediate),
-      lexeme (string ".zero") *> (DirSpace <$> immediate),
-      lexeme (string ".align") *> (DirAlign <$> immediate),
+      lexeme (string ".byte") *> (DirByte <$> sepBy1 expr comma),
+      lexeme (string ".half") *> (DirHalf <$> sepBy1 expr comma),
+      lexeme (string ".short") *> (DirHalf <$> sepBy1 expr comma),
+      lexeme (string ".word") *> (DirWord <$> sepBy1 expr comma),
+      lexeme (string ".space") *> (DirSpace <$> expr),
+      lexeme (string ".zero") *> (DirSpace <$> expr),
+      lexeme (string ".align") *> (DirAlign <$> expr),
       lexeme (string ".equiv") *> parseSymbolValue DirEquiv,
       lexeme (string ".equ") *> parseSymbolValue DirEqu,
       lexeme (string ".set") *> parseSymbolValue DirEqu,

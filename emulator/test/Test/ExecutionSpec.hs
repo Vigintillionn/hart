@@ -156,6 +156,55 @@ spec = do
       cpu <- runProgram ".equ ANSWER, 42\nli a0, ANSWER\n"
       regU cpu a0 `shouldBe` 42
 
+    it "evaluates an expression with a character literal at runtime" $ do
+      cpu <- runProgram "li a0, 'A' + 1\n"
+      regU cpu a0 `shouldBe` 66
+
+    it "reads and writes a .bss slot that sits below the heap" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "la t0, slot",
+              "li t1, 0xBEEF",
+              "sw t1, 0(t0)", -- bss[slot] = 0xBEEF
+              "li a0, 0",
+              "li a7, 214",
+              "ecall", -- a0 = current heap break
+              "blt t0, a0, ok", -- slot must be below the heap
+              "li a1, 0", -- (unreached on success)
+              "j done",
+              "ok:",
+              "lw a1, 0(t0)", -- read the sentinel back
+              "done:",
+              ".bss",
+              "slot: .space 4"
+            ]
+      regU cpu a1 `shouldBe` 0xBEEF
+
+    it "computes a length with the . location counter" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "li a0, LEN",
+              ".data",
+              "arr: .word 10, 20, 30, 40",
+              ".equ LEN, . - arr" -- 16 bytes
+            ]
+      regU cpu a0 `shouldBe` 16
+
+    it "loads a symbol address written with .word" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "la a0, ptr",
+              "lw a1, 0(a0)", -- a1 = address stored at ptr (== value's address)
+              "lw a2, 0(a1)", -- a2 = the word at that address
+              ".data",
+              "ptr: .word value",
+              "value: .word 0x2A"
+            ]
+      regU cpu a2 `shouldBe` 0x2A
+
     it "jumps correctly across a .align gap in .text (layout/resolution stay in sync)" $ do
       cpu <-
         runProgram $

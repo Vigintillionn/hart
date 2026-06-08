@@ -1,5 +1,6 @@
 module Test.LinkerSpec (spec) where
 
+import Data.Bits (shiftL)
 import Data.IntMap.Strict qualified as IM
 import Error (LinkError (..))
 import Linker (Executable (..))
@@ -112,3 +113,68 @@ spec = do
       -- bss emitted nothing; the .word still lands at the data base, intact
       IM.lookup 0x10000000 dm `shouldBe` Just 0xDD
       IM.size dm `shouldBe` 4
+
+  describe "expressions" $ do
+    it "emits a symbol address with .word (a data relocation)" $ do
+      -- target sits one word into .data, i.e. at 0x10000004
+      let dm = execDataMem (assemble ".data\nfirst: .word 0\ntarget: .word target\n")
+      map (`IM.lookup` dm) [0x10000004 .. 0x10000007]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x10]
+
+    it "evaluates a difference of symbols in .word" $ do
+      let dm = execDataMem (assemble ".data\nstart: .word end - start\nend:\n")
+      -- end - start == 4 (one word)
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x00]
+
+    it "folds an arithmetic expression in an immediate operand" $
+      case execProgram (assemble "addi a0, a0, (1 + 2) * 4\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 12
+        _ -> expectationFailure "expected a single addi"
+
+    it "uses a .equ constant inside an expression" $
+      case execProgram (assemble ".equ N, 4\naddi a0, a0, N * 2 + 1\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 9
+        _ -> expectationFailure "expected a single addi"
+
+    it "evaluates a symbolic .space size at layout time" $ do
+      -- buf reserves SIZE(=3) bytes, so the trailing .word lands at 0x10000004
+      let dm = execDataMem (assemble ".equ SIZE, 3\n.data\nbuf: .space SIZE\n.align 2\n.word 0xFF\n")
+      IM.lookup 0x10000004 dm `shouldBe` Just 0xFF
+
+    it "rejects a .byte value that does not fit in 8 bits" $
+      linkErr ".data\n.byte 9999\n" `shouldBe` ImmOutOfRange ".byte value" (-128) 255 9999
+
+    it "rejects a forward symbol in a layout-affecting .space" $
+      linkErr ".data\n.space later\nlater:\n" `shouldBe` UndefinedLabel "later"
+
+    it "evaluates division and modulo" $
+      case execProgram (assemble "addi a0, a0, 17 / 4 + 17 % 4\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 5
+        _ -> expectationFailure "expected a single addi"
+
+    it "reports division by zero" $
+      linkErr "addi a0, a0, 1 / 0\n" `shouldBe` DivByZero
+
+    it "binds . to the current location in a .equ (sizeof idiom)" $
+      case execProgram (assemble ".data\narr: .word 1, 2, 3\n.equ LEN, . - arr\n.text\nli a0, LEN\n") of
+        -- LEN == 12 bytes; li of a small constant is a single addi
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 12
+        _ -> expectationFailure "expected li to lower to a single addi"
+
+    it "binds . to the instruction address in a branch target" $
+      -- `j .` is an infinite self-loop: offset 0
+      case execProgram (assemble "j .\n") of
+        [SomeInstruction (JType JAL args)] -> j_imm args `shouldBe` 0
+        _ -> expectationFailure "expected a single jal"
+
+  describe "bss layout" $ do
+    it "places .bss immediately after .data (no heap collision)" $ do
+      -- .data holds one word (4 bytes at 0x10000000..0x10000003); bss follows,
+      -- page-aligned, at 0x10001000
+      case execProgram (assemble ".data\nd: .word 1\n.bss\nb: .space 4\n.text\nla a0, b\n") of
+        [SomeInstruction (UType AUIPC hi), SomeInstruction (ArithI ADDI lo)] -> do
+          -- auipc/addi reconstruct b's address (0x10001000) PC-relative from pc 0
+          let addr = (u_imm hi `shiftL` 12) + i_imm lo
+          addr `shouldBe` 0x10001000
+        _ -> expectationFailure "expected la to lower to auipc + addi"

@@ -80,6 +80,7 @@ pub enum LinkError {
         context: String,
         value: i64,
     },
+    DivByZero {},
     Located {
         line: i32,
         error: Box<LinkError>,

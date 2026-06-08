@@ -47,6 +47,8 @@ data LinkError
     ImmOutOfRange String Int Int Int
   | -- | context, offending value
     MisalignedTarget String Int
+  | -- | division or modulo by zero in an expression
+    DivByZero
   | -- | source line + the underlying failure that occurred there
     LocatedLink Int LinkError
   deriving (Show, Eq)
@@ -161,6 +163,7 @@ instance ToJSON LinkError where
       object ["kind" .= s "ImmOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
     MisalignedTarget ctx v ->
       object ["kind" .= s "MisalignedTarget", "context" .= ctx, "value" .= v]
+    DivByZero -> kind "DivByZero"
     LocatedLink ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON EmulatorError where

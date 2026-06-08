@@ -1,6 +1,12 @@
 module Types
   ( Phase (..),
     Operand (..),
+    Expr (..),
+    UnOp (..),
+    BinOp (..),
+    applyUnOp,
+    applyBinOp,
+    foldConst,
     ImmOf,
     ROp (..),
     IArithOp (..),
@@ -40,6 +46,7 @@ module Types
   )
 where
 
+import Data.Bits (complement, shift, xor, (.&.), (.|.))
 import Data.List (find)
 import Machine (Register)
 import Numeric
@@ -47,11 +54,51 @@ import Numeric
 data Phase = Parsed | Lowered | Resolved
 
 data Operand
-  = ImmVal Int
-  | Label String
-  | LabelHi String -- %hi(symbol)
-  | LabelLo String -- %lo(symbol)
+  = OpExpr Expr
+  | OpHi Expr
+  | OpLo Expr
   deriving (Show, Eq)
+
+data Expr
+  = EInt Int
+  | ESym String
+  | ECur
+  | EUn UnOp Expr
+  | EBin BinOp Expr Expr
+  deriving (Show, Eq)
+
+data UnOp = Neg | BNot
+  deriving (Show, Eq, Enum, Bounded)
+
+data BinOp = Add | Sub | Mul | Div | Mod | Shl | Shr | BAnd | BOr | BXor
+  deriving (Show, Eq, Enum, Bounded)
+
+applyUnOp :: UnOp -> Int -> Int
+applyUnOp Neg = negate
+applyUnOp BNot = complement
+
+applyBinOp :: BinOp -> Int -> Int -> Maybe Int
+applyBinOp op x y = case op of
+  Add -> Just (x + y)
+  Sub -> Just (x - y)
+  Mul -> Just (x * y)
+  Div -> if y == 0 then Nothing else Just (x `quot` y)
+  Mod -> if y == 0 then Nothing else Just (x `rem` y)
+  Shl -> Just (x `shift` y)
+  Shr -> Just (x `shift` negate y)
+  BAnd -> Just (x .&. y)
+  BOr -> Just (x .|. y)
+  BXor -> Just (xor x y)
+
+foldConst :: Expr -> Maybe Int
+foldConst (EInt n) = Just n
+foldConst (ESym _) = Nothing
+foldConst ECur = Nothing
+foldConst (EUn op e) = applyUnOp op <$> foldConst e
+foldConst (EBin op a b) = do
+  x <- foldConst a
+  y <- foldConst b
+  applyBinOp op x y
 
 type family ImmOf (p :: Phase) where
   ImmOf 'Parsed = Operand
@@ -198,13 +245,13 @@ data Directive
   = DirSection Section
   | DirString String
   | DirAscii String
-  | DirByte [Int]
-  | DirHalf [Int]
-  | DirWord [Int]
-  | DirSpace Int
-  | DirAlign Int
-  | DirEqu String Int
-  | DirEquiv String Int
+  | DirByte [Expr]
+  | DirHalf [Expr]
+  | DirWord [Expr]
+  | DirSpace Expr
+  | DirAlign Expr
+  | DirEqu String Expr
+  | DirEquiv String Expr
   | DirGlobl [String]
   | DirLocal [String]
   | DirWeak [String]

@@ -17,11 +17,11 @@ spec = do
   describe "register naming" $ do
     it "accepts ABI register names" $
       realInstrOf "addi a0, sp, 1\n"
-        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 2) (ImmVal 1)))
+        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 2) (OpExpr (EInt 1))))
 
     it "accepts x-prefixed register numbers" $
       realInstrOf "addi x10, x2, 1\n"
-        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 2) (ImmVal 1)))
+        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 2) (OpExpr (EInt 1))))
 
     it "rejects an unknown register" $
       parseErr defaultExtensions "addi a0, x99, 1\n" `shouldBe` InvalidRegister "x99"
@@ -29,15 +29,15 @@ spec = do
   describe "operand forms" $ do
     it "parses the offset(base) memory form of a load" $
       realInstrOf "lw a0, 8(sp)\n"
-        `shouldBe` SomeInstruction (LoadI LW (ITypeArgs (reg 10) (reg 2) (ImmVal 8)))
+        `shouldBe` SomeInstruction (LoadI LW (ITypeArgs (reg 10) (reg 2) (OpExpr (EInt 8))))
 
     it "parses a negative immediate" $
       realInstrOf "addi a0, a0, -4\n"
-        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 10) (ImmVal (-4))))
+        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 10) (OpExpr (EUn Neg (EInt 4)))))
 
     it "ignores comments and surrounding whitespace" $
       realInstrOf "   addi a0, zero, 1   # set a0\n"
-        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (ImmVal 1)))
+        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (OpExpr (EInt 1))))
 
     it "accepts Windows CRLF line endings, including blank lines" $
       case parse defaultExtensions "li t0, 1\r\n\r\nli t1, 2\r\n" of
@@ -45,7 +45,7 @@ spec = do
         Left e -> expectationFailure ("expected CRLF source to parse, got: " ++ show e)
 
   describe "comments" $ do
-    let addi = SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (ImmVal 1)))
+    let addi = SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (OpExpr (EInt 1))))
 
     it "ignores a // line comment" $
       realInstrOf "addi a0, zero, 1 // set a0\n" `shouldBe` addi
@@ -70,17 +70,17 @@ spec = do
 
   describe "directives" $ do
     it "parses a .word list" $
-      directiveOf ".word 1, 2, 3\n" `shouldBe` DirWord [1, 2, 3]
+      directiveOf ".word 1, 2, 3\n" `shouldBe` DirWord [EInt 1, EInt 2, EInt 3]
 
     it "parses a .string literal with escapes" $
       directiveOf ".string \"hi\\n\"\n" `shouldBe` DirString "hi\n"
 
     it "parses .equ and .set as constant definitions" $ do
-      directiveOf ".equ SIZE, 16\n" `shouldBe` DirEqu "SIZE" 16
-      directiveOf ".set SIZE, 16\n" `shouldBe` DirEqu "SIZE" 16
+      directiveOf ".equ SIZE, 16\n" `shouldBe` DirEqu "SIZE" (EInt 16)
+      directiveOf ".set SIZE, 16\n" `shouldBe` DirEqu "SIZE" (EInt 16)
 
     it "parses .equiv as a define-once constant" $
-      directiveOf ".equiv MAGIC, 0x2a\n" `shouldBe` DirEquiv "MAGIC" 42
+      directiveOf ".equiv MAGIC, 0x2a\n" `shouldBe` DirEquiv "MAGIC" (EInt 42)
 
     it "parses .globl/.global with a symbol list" $ do
       directiveOf ".globl main\n" `shouldBe` DirGlobl ["main"]
@@ -89,6 +89,27 @@ spec = do
     it "parses .local and .weak symbol lists" $ do
       directiveOf ".local helper\n" `shouldBe` DirLocal ["helper"]
       directiveOf ".weak maybe_defined\n" `shouldBe` DirWeak ["maybe_defined"]
+
+  describe "expressions" $ do
+    it "parses a symbol in a .word" $
+      directiveOf ".word foo\n" `shouldBe` DirWord [ESym "foo"]
+
+    it "parses a difference of symbols" $
+      directiveOf ".word end - start\n"
+        `shouldBe` DirWord [EBin Sub (ESym "end") (ESym "start")]
+
+    it "honours precedence (+ binds tighter than <<)" $
+      directiveOf ".word 1 + 2 << 3\n"
+        `shouldBe` DirWord [EBin Shl (EBin Add (EInt 1) (EInt 2)) (EInt 3)]
+
+    it "parses a parenthesised expression operand" $
+      realInstrOf "addi a0, a0, (1 + 2) * 4\n"
+        `shouldBe` SomeInstruction
+          (ArithI ADDI (ITypeArgs (reg 10) (reg 10) (OpExpr (EBin Mul (EBin Add (EInt 1) (EInt 2)) (EInt 4)))))
+
+    it "parses a character literal as its code point" $
+      realInstrOf "addi a0, zero, 'A'\n"
+        `shouldBe` SomeInstruction (ArithI ADDI (ITypeArgs (reg 10) (reg 0) (OpExpr (EInt 65))))
 
   describe "diagnostics" $ do
     it "reports an unknown instruction" $
