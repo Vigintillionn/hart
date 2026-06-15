@@ -47,6 +47,8 @@ export function formatLinkError(e: LinkError): string {
       return `${e.context} target is not 2-byte aligned: ${e.value}`;
     case "DivByZero":
       return "Division by zero in an expression";
+    case "CircularConstant":
+      return `Circular constant definition: \`${e.name.trim()}\``;
   }
 }
 

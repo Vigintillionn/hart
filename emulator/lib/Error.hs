@@ -49,6 +49,9 @@ data LinkError
     MisalignedTarget String Int
   | -- | division or modulo by zero in an expression
     DivByZero
+  | -- | a constant (@.equ@/@.set@/@.equiv@) whose value refers back to itself,
+    -- directly or transitively: the offending symbol name
+    CircularConstant String
   | -- | source line + the underlying failure that occurred there
     LocatedLink Int LinkError
   deriving (Show, Eq)
@@ -164,6 +167,7 @@ instance ToJSON LinkError where
     MisalignedTarget ctx v ->
       object ["kind" .= s "MisalignedTarget", "context" .= ctx, "value" .= v]
     DivByZero -> kind "DivByZero"
+    CircularConstant n -> object ["kind" .= s "CircularConstant", "name" .= n]
     LocatedLink ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
 
 instance ToJSON EmulatorError where

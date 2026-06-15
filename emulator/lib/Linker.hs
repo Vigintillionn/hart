@@ -22,7 +22,15 @@ import Error (LinkError (..))
 import Machine
 import Types
 
-data SymType = AddrSym | ConstSym
+data SymType
+  = -- | a label: 'symValue' is its section-relative offset
+    AddrSym
+  | -- | a constant whose value is already known: 'symValue' holds it
+    ConstSym
+  | -- | a constant whose definition (with @.@ already substituted) still refers
+    -- to a symbol that was forward at definition time; it is resolved lazily,
+    -- against the complete table, the first time its value is needed
+    DeferredSym Expr
   deriving (Show, Eq)
 
 data SymBinding = Local | Global | Weak
@@ -68,23 +76,32 @@ hiOp, loOp :: String -> Operand
 hiOp = OpHi . ESym
 loOp = OpLo . ESym
 
-foldOperand :: Operand -> Maybe Int
-foldOperand (OpExpr e) = foldConst e
-foldOperand _ = Nothing
+-- | the absolute %hi / %lo of an expression
+liHi, liLo :: Expr -> Expr
+liHi e = EBin Shr (EBin Add e (EInt 0x800)) (EInt 12)
+liLo e = EBin Sub (EBin BAnd (EBin Add e (EInt 0x800)) (EInt 0xFFF)) (EInt 0x800)
 
 lower :: ArchInstr 'Parsed -> NonEmpty (SomeInstruction Operand)
 lower (RealInstr i) = i :| []
 lower (PseudoInstr op) = case op of
   P_NOP -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs x0 x0 (litOp 0))
   P_MV rd rs -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd rs (litOp 0))
-  P_LI rd imm
-    | Just v <- foldOperand imm,
-      v < -2048 || v > 2047 ->
-        let hi = (v + 0x800) `shiftR` 12
-            lo = (v .&. 0xFFF) - (if testBit v 11 then 0x1000 else 0)
-         in SomeInstruction (UType LUI (UTypeArgs rd (litOp hi)))
-              :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (litOp lo)))]
-    | otherwise -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
+  P_LI rd imm -> case imm of
+    -- a constant we can fold now: emit the size-optimal form
+    OpExpr e
+      | Just v <- foldConst e ->
+          if v < -2048 || v > 2047
+            then
+              let hi = (v + 0x800) `shiftR` 12
+                  lo = (v .&. 0xFFF) - (if testBit v 11 then 0x1000 else 0)
+               in SomeInstruction (UType LUI (UTypeArgs rd (litOp hi)))
+                    :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (litOp lo)))]
+            else pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 (litOp v))
+    -- a symbol/expression whose value is unknown at lowering: emit the worst case (lui+addi)
+    OpExpr e ->
+      SomeInstruction (UType LUI (UTypeArgs rd (OpExpr (liHi e))))
+        :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (OpExpr (liLo e))))]
+    _ -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
   P_NEG rd rs -> pure $ SomeInstruction $ RType SUB (RTypeArgs rd x0 rs)
   P_NOT rd rs -> pure $ SomeInstruction $ ArithI XORI (ITypeArgs rd rs (litOp (-1)))
   P_J off -> pure $ SomeInstruction $ JType JAL (JTypeArgs x0 off)
@@ -259,8 +276,8 @@ reserveCommon ln isLocal name size align p0 =
         p1 <- defAddrSym ln name commonSection aligned bind p
         Right p1 {pOffsets = M.insert commonSection (aligned + size) (pOffsets p1)}
 
-defConst :: Bool -> Int -> String -> Int -> Place -> Either LinkError Place
-defConst redefinable ln name val p
+defConst :: Bool -> Int -> String -> Symbol -> Place -> Either LinkError Place
+defConst redefinable ln name sym p
   | redefinable =
       if S.member name (pLocked p)
         then Left (LocatedLink ln (DuplicateLabel name))
@@ -272,8 +289,15 @@ defConst redefinable ln name val p
           { pSyms = M.insert name sym (pSyms p),
             pLocked = S.insert name (pLocked p)
           }
+
+-- | replace the location counter @.@ in an expression with a literal
+substCur :: Int -> Expr -> Expr
+substCur loc = go
   where
-    sym = Symbol Nothing val ConstSym Local
+    go ECur = EInt loc
+    go (EUn o e) = EUn o (go e)
+    go (EBin o a b) = EBin o (go a) (go b)
+    go e = e
 
 declareBinding :: SymBinding -> [String] -> Place -> Place
 declareBinding b names p = p {pBind = foldr (`M.insert` b) (pBind p) names}
@@ -310,9 +334,14 @@ placeStmt ln here p stmt = case stmt of
      in Right (advance (4 * length subs) p {pInstrs = reverse placed ++ pInstrs p})
   where
     layoutVal e = atLine ln (evalExpr (pBases p) here (pSyms p) e)
-    defineConst redefinable name e = do
-      v <- layoutVal e
-      defConst redefinable ln name v p
+    -- a constant is evaluated eagerly when every symbol it names is already defined
+    defineConst redefinable name e0 =
+      let e = substCur here e0
+       in case evalExpr (pBases p) here (pSyms p) e of
+            Right v -> defConst redefinable ln name (Symbol Nothing v ConstSym Local) p
+            Left (UndefinedLabel _) ->
+              defConst redefinable ln name (Symbol Nothing 0 (DeferredSym e) Local) p
+            Left err -> Left (LocatedLink ln err)
 
 -- | The @n@ little-endian bytes of @x@
 leBytes :: Int -> Int -> [Word8]
@@ -414,21 +443,26 @@ checkUpper orig v
     lo = negate (bit 19)
     hi = bit 20 - 1
 
-symValueOf :: SectionBases -> SymbolTable -> String -> Either LinkError Int
-symValueOf bases table l =
-  maybe (Left (UndefinedLabel l)) (Right . symAbsolute bases) (M.lookup l table)
-
 evalExpr :: SectionBases -> Int -> SymbolTable -> Expr -> Either LinkError Int
-evalExpr bases loc table = go
+evalExpr bases loc table = go S.empty
   where
-    go (EInt n) = Right n
-    go ECur = Right loc
-    go (ESym s) = symValueOf bases table s
-    go (EUn o e) = applyUnOp o <$> go e
-    go (EBin o a b) = do
-      x <- go a
-      y <- go b
+    -- @seen@ is the set of deferred constants currently being resolved, so a
+    -- constant that refers back to itself is reported rather than looping
+    go _ (EInt n) = Right n
+    go _ ECur = Right loc
+    go seen (ESym s) = resolveSym seen s
+    go seen (EUn o e) = applyUnOp o <$> go seen e
+    go seen (EBin o a b) = do
+      x <- go seen a
+      y <- go seen b
       maybe (Left DivByZero) Right (applyBinOp o x y)
+    resolveSym seen s = case M.lookup s table of
+      Nothing -> Left (UndefinedLabel s)
+      Just sym -> case symType sym of
+        DeferredSym e
+          | S.member s seen -> Left (CircularConstant s)
+          | otherwise -> go (S.insert s seen) e
+        _ -> Right (symAbsolute bases sym)
 
 pcrelHi, pcrelLo :: Int -> Int -> Int
 pcrelHi pc t = (t - pc + 0x800) `shiftR` 12

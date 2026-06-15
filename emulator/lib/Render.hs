@@ -45,6 +45,7 @@ renderLinkError = go
         ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
       MisalignedTarget ctx v -> ctx ++ " target is not 2-byte aligned: " ++ show v
       DivByZero -> "division by zero in an expression"
+      CircularConstant n -> "circular constant definition: `" ++ n ++ "`"
 
 renderEmulatorError :: EmulatorError -> String
 renderEmulatorError e = case e of

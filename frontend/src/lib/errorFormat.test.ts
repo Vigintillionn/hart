@@ -62,6 +62,9 @@ describe("formatLinkError", () => {
         value: 5000n,
       }),
     ).toBe("addi immediate out of range [-2048, 2047]: 5000");
+    expect(
+      formatLinkError({ kind: "CircularConstant", name: "A" }),
+    ).toBe("Circular constant definition: `A`");
   });
 });
 

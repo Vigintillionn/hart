@@ -81,6 +81,9 @@ pub enum LinkError {
         value: i64,
     },
     DivByZero {},
+    CircularConstant {
+        name: String,
+    },
     Located {
         line: i32,
         error: Box<LinkError>,

@@ -43,6 +43,12 @@ spec = do
           i_imm loArgs `shouldBe` -273
         _ -> expectationFailure "expected li to lower to lui + addi"
 
+    it "expands li of an address symbol into lui + addi (was a range error)" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nli a0, x\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 0x10000000
+        _ -> expectationFailure "expected li to lower to lui + addi"
+
     it "lowers nop to addi x0, x0, 0" $
       case execProgram (assemble "nop\n") of
         [SomeInstruction (ArithI ADDI args)] -> do
@@ -96,6 +102,20 @@ spec = do
 
     it "accepts .globl without affecting resolution" $
       length (execProgram (assemble ".globl main\nmain: nop\n")) `shouldBe` 1
+
+    it "lets a .equ name a forward label (resolved in the final pass)" $ do
+      -- FOO is defined before `target` exists; ptr stores FOO == &target
+      let dm = execDataMem (assemble ".data\nptr: .word FOO\n.equ FOO, target\ntarget: .byte 7\n")
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x10]
+
+    it "still snapshots a self-referential .set (last value wins)" $
+      case execProgram (assemble ".equ X, 1\n.set X, X + 1\naddi a0, a0, X\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 2
+        _ -> expectationFailure "expected a single addi"
+
+    it "reports a circular constant definition" $
+      linkErr ".equ A, B\n.equ B, A\naddi a0, a0, A\n" `shouldBe` CircularConstant "A"
 
   describe "data emission" $ do
     it "emits .half as two little-endian bytes" $ do
@@ -158,9 +178,10 @@ spec = do
 
     it "binds . to the current location in a .equ (sizeof idiom)" $
       case execProgram (assemble ".data\narr: .word 1, 2, 3\n.equ LEN, . - arr\n.text\nli a0, LEN\n") of
-        -- LEN == 12 bytes; li of a small constant is a single addi
-        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 12
-        _ -> expectationFailure "expected li to lower to a single addi"
+        -- LEN == 12 bytes; a symbolic li now expands to the worst-case lui+addi
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 12
+        _ -> expectationFailure "expected li to lower to lui + addi"
 
     it "binds . to the instruction address in a branch target" $
       -- `j .` is an infinite self-loop: offset 0
