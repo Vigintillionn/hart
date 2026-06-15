@@ -178,3 +178,36 @@ spec = do
           let addr = (u_imm hi `shiftL` 12) + i_imm lo
           addr `shouldBe` 0x10001000
         _ -> expectationFailure "expected la to lower to auipc + addi"
+
+    it "resolves a .equ that references a .bss label to its final address" $ do
+      let dm = execDataMem (assemble ".bss\nbuf: .space 4\n.equ BUFADDR, buf\n.data\nptr: .word BUFADDR\n")
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0x00, Just 0x10, Just 0x00, Just 0x10]
+
+  describe "sections" $ do
+    it "lays .rodata out ahead of .data in the data region" $ do
+      let dm = execDataMem (assemble ".rodata\nr: .word 0xAA\n.data\nd: .word 0xBB\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xAA -- rodata first
+      IM.lookup 0x10000004 dm `shouldBe` Just 0xBB -- data follows
+    it "classifies a writable .section into the data region" $ do
+      let dm = execDataMem (assemble ".section .mydata, \"aw\"\nx: .word 0xCC\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xCC
+
+    it "reserves a .comm symbol in bss after .data, emitting nothing" $ do
+      -- .data holds one word; the common symbol lands page-aligned at 0x10001000
+      case execProgram (assemble ".data\nd: .word 1\n.comm buf, 4\n.text\nla a0, buf\n") of
+        [SomeInstruction (UType AUIPC hi), SomeInstruction (ArithI ADDI lo)] -> do
+          let addr = (u_imm hi `shiftL` 12) + i_imm lo
+          addr `shouldBe` 0x10001000
+        _ -> expectationFailure "expected la to lower to auipc + addi"
+
+  describe "alignment directives" $ do
+    it "treats .balign as a literal byte count" $ do
+      -- one byte, then .balign 8 pads to the next 8-byte boundary
+      let dm = execDataMem (assemble ".data\n.byte 1\n.balign 8\n.byte 2\n")
+      IM.lookup 0x10000008 dm `shouldBe` Just 2
+
+    it "treats .p2align as a power-of-two exponent" $ do
+      -- one byte, then .p2align 3 pads to 2^3 = 8
+      let dm = execDataMem (assemble ".data\n.byte 1\n.p2align 3\n.byte 2\n")
+      IM.lookup 0x10000008 dm `shouldBe` Just 2

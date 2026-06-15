@@ -31,6 +31,13 @@ module Types
     Instruction (..),
     PseudoOp (..),
     Section (..),
+    SecClass (..),
+    AlignMode (..),
+    textSection,
+    dataSection,
+    rodataSection,
+    bssSection,
+    commonSection,
     Directive (..),
     Statement (..),
     SomeInstruction (..),
@@ -238,7 +245,32 @@ data PseudoOp
   | P_CSRSI Int Operand
   | P_CSRCI Int Operand
 
-data Section = TextSection | DataSection | BssSection
+-- | the load class of a section, which decides the memory region it occupies
+-- * @SecText@ holds executable code (region from @entryPoint@)
+-- * @SecRodata@ and @SecData@ hold read-only and writable initialised data
+-- * @SecBss@ is NOBITS
+data SecClass = SecText | SecRodata | SecData | SecBss
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+-- | same-named sections are concatenated
+data Section = Section
+  { secName :: !String,
+    secClass :: !SecClass
+  }
+  deriving (Show, Eq, Ord)
+
+textSection, dataSection, rodataSection, bssSection, commonSection :: Section
+textSection = Section "text" SecText
+dataSection = Section "data" SecData
+rodataSection = Section "rodata" SecRodata
+bssSection = Section "bss" SecBss
+
+-- | the synthetic section that @.comm@/@.lcomm@ common symbols accumulate into
+commonSection = Section "COMMON" SecBss
+
+-- | how an alignment directive reads its argument: @.align@/@.p2align@ take a
+-- power-of-two exponent, @.balign@ a literal byte count
+data AlignMode = AlignPow2 | AlignBytes
   deriving (Show, Eq)
 
 data Directive
@@ -249,7 +281,10 @@ data Directive
   | DirHalf [Expr]
   | DirWord [Expr]
   | DirSpace Expr
-  | DirAlign Expr
+  | DirAlign AlignMode Expr
+  | -- | a common symbol reserved in bss: whether it is local (@.lcomm@ vs
+    -- @.comm@), its name, byte size, and optional alignment
+    DirComm Bool String Expr (Maybe Expr)
   | DirEqu String Expr
   | DirEquiv String Expr
   | DirGlobl [String]

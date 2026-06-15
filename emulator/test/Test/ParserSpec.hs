@@ -90,6 +90,26 @@ spec = do
       directiveOf ".local helper\n" `shouldBe` DirLocal ["helper"]
       directiveOf ".weak maybe_defined\n" `shouldBe` DirWeak ["maybe_defined"]
 
+    it "parses the predefined section directives" $ do
+      directiveOf ".text\n" `shouldBe` DirSection textSection
+      directiveOf ".data\n" `shouldBe` DirSection dataSection
+      directiveOf ".rodata\n" `shouldBe` DirSection rodataSection
+      directiveOf ".bss\n" `shouldBe` DirSection bssSection
+
+    it "parses .section and infers the load class from flags" $ do
+      directiveOf ".section .mydata, \"aw\"\n" `shouldBe` DirSection (Section ".mydata" SecData)
+      directiveOf ".section .mytext, \"ax\"\n" `shouldBe` DirSection (Section ".mytext" SecText)
+      directiveOf ".section .myro, \"a\"\n" `shouldBe` DirSection (Section ".myro" SecRodata)
+
+    it "distinguishes .p2align (exponent) from .balign (byte count)" $ do
+      directiveOf ".p2align 3\n" `shouldBe` DirAlign AlignPow2 (EInt 3)
+      directiveOf ".balign 8\n" `shouldBe` DirAlign AlignBytes (EInt 8)
+      directiveOf ".align 2\n" `shouldBe` DirAlign AlignPow2 (EInt 2)
+
+    it "parses .comm and .lcomm with an optional alignment" $ do
+      directiveOf ".comm buf, 16\n" `shouldBe` DirComm False "buf" (EInt 16) Nothing
+      directiveOf ".lcomm scratch, 8, 4\n" `shouldBe` DirComm True "scratch" (EInt 8) (Just (EInt 4))
+
   describe "expressions" $ do
     it "parses a symbol in a .word" $
       directiveOf ".word foo\n" `shouldBe` DirWord [ESym "foo"]

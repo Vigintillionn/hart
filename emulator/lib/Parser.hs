@@ -685,16 +685,57 @@ parseInstruction exts =
 parseSection :: Parser Directive
 parseSection =
   choice
-    [ DirSection TextSection <$ lexeme (string ".text"),
-      DirSection DataSection <$ lexeme (string ".data"),
-      DirSection BssSection <$ lexeme (string ".bss")
+    [ DirSection textSection <$ sectionKw ".text",
+      DirSection dataSection <$ sectionKw ".data",
+      DirSection rodataSection <$ sectionKw ".rodata",
+      DirSection bssSection <$ sectionKw ".bss",
+      lexeme (string ".section") *> commit parseSectionArgs
     ]
+  where
+    -- a bare section shorthand must be a whole token (so @.text@ does not also
+    -- match the start of a hypothetical @.text2@ or @.data@/@.set@ collision)
+    sectionKw n = lexeme (string n <* notFollowedBy (satisfy isSectionChar))
+
+isSectionChar :: Char -> Bool
+isSectionChar c = isIdentChar c || c == '.' || c == '$'
+
+-- | @.section name [, "flags"]@. The load class comes from the flag string when
+-- present (@x@ -> text, @w@ -> data, nobits -> bss, otherwise rodata), else it is
+-- inferred from a leading @.text@/@.data@/@.bss@/@.rodata@ name
+parseSectionArgs :: Parser Directive
+parseSectionArgs = do
+  name <- lexeme (some (satisfy isSectionChar))
+  flags <- optional (comma *> stringLiteral)
+  pure (DirSection (Section name (classify name flags)))
+  where
+    classify name Nothing = classOfName name
+    classify _ (Just fs)
+      | 'x' `elem` fs = SecText
+      | 'b' `elem` fs = SecBss
+      | 'w' `elem` fs = SecData
+      | otherwise = SecRodata
+    classOfName name
+      | ".text" `isPrefixOf'` name = SecText
+      | ".rodata" `isPrefixOf'` name = SecRodata
+      | ".bss" `isPrefixOf'` name = SecBss
+      | otherwise = SecData
+    isPrefixOf' pre s = take (length pre) s == pre
 
 symbolName :: Parser String
 symbolName = lexeme identifier
 
 parseSymbolValue :: (String -> Expr -> Directive) -> Parser Directive
 parseSymbolValue mk = mk <$> symbolName <* comma <*> expr
+
+-- | @.align@/@.p2align@/@.balign N [, fill [, max]]@; the optional fill and max
+-- operands are accepted for GAS compatibility but ignored
+alignDir :: AlignMode -> Parser Directive
+alignDir mode = DirAlign mode <$> expr <* many (comma *> expr)
+
+-- | @.comm@/@.lcomm name, size [, align]@.
+commDir :: Bool -> Parser Directive
+commDir isLocal =
+  DirComm isLocal <$> symbolName <* comma <*> expr <*> optional (comma *> expr)
 
 parseDirective :: Parser Directive
 parseDirective =
@@ -709,7 +750,11 @@ parseDirective =
       lexeme (string ".word") *> (DirWord <$> sepBy1 expr comma),
       lexeme (string ".space") *> (DirSpace <$> expr),
       lexeme (string ".zero") *> (DirSpace <$> expr),
-      lexeme (string ".align") *> (DirAlign <$> expr),
+      lexeme (string ".p2align") *> alignDir AlignPow2,
+      lexeme (string ".balign") *> alignDir AlignBytes,
+      lexeme (string ".align") *> alignDir AlignPow2,
+      lexeme (string ".comm") *> commDir False,
+      lexeme (string ".lcomm") *> commDir True,
       lexeme (string ".equiv") *> parseSymbolValue DirEquiv,
       lexeme (string ".equ") *> parseSymbolValue DirEqu,
       lexeme (string ".set") *> parseSymbolValue DirEqu,
