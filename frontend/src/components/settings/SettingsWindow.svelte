@@ -5,6 +5,7 @@
   import AppearancePanel from "./AppearancePanel.svelte";
   import EditorPanel from "./EditorPanel.svelte";
   import DisplayPanel from "./DisplayPanel.svelte";
+  import EmulatorPanel from "./EmulatorPanel.svelte";
   import TerminalPanel from "./TerminalPanel.svelte";
   import ShortcutsPanel from "./ShortcutsPanel.svelte";
   import ExtensionsPanel from "./ExtensionsPanel.svelte";
@@ -158,6 +159,8 @@
             <EditorPanel />
           {:else if settingsStore.active === "display"}
             <DisplayPanel />
+          {:else if settingsStore.active === "emulator"}
+            <EmulatorPanel />
           {:else if settingsStore.active === "terminal"}
             <TerminalPanel />
           {:else if settingsStore.active === "shortcuts"}

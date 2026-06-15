@@ -4,7 +4,7 @@ import Parser (parse)
 import Linker (resolve)
 import Extension (defaultExtensions)
 import Machine (emptyCPU)
-import Debugger ( runInteractive, runTrace, initDebuggerAtEnd )
+import Debugger ( runInteractive, runTrace, initDebuggerAtEnd, defaultMaxHistory )
 import Render (renderAssemblyError, renderLinkError)
 import Text.Printf (printf)
 
@@ -32,7 +32,7 @@ runCLI maxCycles filepath = do
                 putStrLn "---- EXECUTING ---"
 --                start <- getCurrentTime
 
-                trace <- runTrace cycleLimit resolved emptyCPU
+                trace <- runTrace defaultMaxHistory cycleLimit resolved emptyCPU
 --                let finalState = last history
 --
 --                end <- getCurrentTime
@@ -51,5 +51,5 @@ runCLI maxCycles filepath = do
 --                printf "Emulated Speed: %s\n" (formatFreq frequency)
 
                 putStrLn "---- LAUNCHING DEBUGGER ----"
-                let debugger = initDebuggerAtEnd trace
+                let debugger = initDebuggerAtEnd defaultMaxHistory trace
                 runInteractive cycleLimit debugger

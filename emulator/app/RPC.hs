@@ -15,7 +15,7 @@ import Data.List.NonEmpty (NonEmpty (..))
 import Data.Maybe (mapMaybe)
 import Data.Sequence qualified as Seq
 import Data.Word (Word32)
-import Debugger (Debugger (..), atBreakpoint, disassemble, extendBounded, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
+import Debugger (Debugger (..), atBreakpoint, defaultMaxHistory, disassemble, extendBounded, initDebugger, initDebuggerAtEnd, resumeTrace, rewind, stepBack, stepForward)
 import Doc (csrCatalogue, directiveCatalogue, formatCatalogue, instructionCatalogue, pseudoCatalogue, syscallCatalogue)
 import Error (EmulatorError (..), Severity (..))
 import Extension
@@ -45,6 +45,8 @@ data Command
   | CmdSetBreakpoints [Word32]
   | -- | enable exactly this set of extensions (by ISA code, e.g. @["I","M"]@)
     CmdSetExtensions [String]
+  | -- | cap on the number of recorded CPU states kept for time-travel
+    CmdSetHistorySize Int
   | CmdGetExtensions
   | -- | request the static instruction-reference catalogue
     CmdGetInstructionSet
@@ -64,6 +66,7 @@ instance FromJSON Command where
       "input" -> CmdInput <$> v .: "data"
       "set_breakpoints" -> CmdSetBreakpoints <$> v .: "data"
       "set_extensions" -> CmdSetExtensions <$> v .: "data"
+      "set_history_size" -> CmdSetHistorySize <$> v .: "data"
       "get_extensions" -> return CmdGetExtensions
       "get_instruction_set" -> return CmdGetInstructionSet
       "quit" -> return CmdQuit
@@ -185,7 +188,7 @@ runRPC _ = do
   sendResponse (ResExtensions defaultExtensions)
   sendResponse ResInstructionSet
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
-  rpcLoop defaultExtensions IntSet.empty Nothing emptyDbg
+  rpcLoop defaultExtensions IntSet.empty defaultMaxHistory Nothing emptyDbg
 
 compileAndLoad :: ExtensionSet -> String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)], [(Word32, Word32)]))
 compileAndLoad exts sourceCode = do
@@ -228,8 +231,8 @@ compileAndLoad exts sourceCode = do
                       srcMap
               return $ Just (initDebugger (readyCpu :| []), srcMap, disasmMap, codeMap)
 
-rpcLoop :: ExtensionSet -> IntSet -> Maybe CPU -> Debugger -> IO ()
-rpcLoop exts bps lastSent dbg = do
+rpcLoop :: ExtensionSet -> IntSet -> Int -> Maybe CPU -> Debugger -> IO ()
+rpcLoop exts bps hist lastSent dbg = do
   eof <- isEOF
   if eof
     then return ()
@@ -243,48 +246,51 @@ rpcLoop exts bps lastSent dbg = do
           case decode (BL.pack rawInput) of
             Nothing -> do
               sendResponse $ ResError ("Invalid JSON command received: " ++ rawInput)
-              rpcLoop exts bps lastSent dbg
+              rpcLoop exts bps hist lastSent dbg
             Just CmdQuit -> return ()
             Just (CmdSetBreakpoints addrs) ->
-              rpcLoop exts (IntSet.fromList (map fromIntegral addrs)) lastSent dbg
+              rpcLoop exts (IntSet.fromList (map fromIntegral addrs)) hist lastSent dbg
             Just (CmdSetExtensions codes) -> do
               let exts' = mkExtensionSet (mapMaybe readExtensionCode codes)
               sendResponse (ResExtensions exts')
-              rpcLoop exts' bps lastSent dbg
+              rpcLoop exts' bps hist lastSent dbg
+            Just (CmdSetHistorySize n) ->
+              -- keep at least one state so the current snapshot always survives
+              rpcLoop exts bps (max 1 n) lastSent dbg
             Just CmdGetExtensions -> do
               sendResponse (ResExtensions exts)
-              rpcLoop exts bps lastSent dbg
+              rpcLoop exts bps hist lastSent dbg
             Just CmdGetInstructionSet -> do
               sendResponse ResInstructionSet
-              rpcLoop exts bps lastSent dbg
+              rpcLoop exts bps hist lastSent dbg
             Just CmdPause -> do
               if status c == Running
                 then do
                   let cPaused = c {status = Paused}
                   let newDbg = dbg {current = cPaused}
                   lastSent' <- sendState lastSent False cPaused
-                  rpcLoop exts bps lastSent' newDbg
-                else rpcLoop exts bps lastSent dbg
+                  rpcLoop exts bps hist lastSent' newDbg
+                else rpcLoop exts bps hist lastSent dbg
             Just (CmdLoad sourceCode) -> do
               mNewDbg <- compileAndLoad exts sourceCode
               case mNewDbg of
-                Nothing -> rpcLoop exts bps lastSent dbg
+                Nothing -> rpcLoop exts bps hist lastSent dbg
                 Just (newDbg, smap, dmap, cmap) -> do
                   -- a freshly loaded program is a full snapshot and the new base
                   sendResponse (ResLoaded (current newDbg) smap dmap cmap)
-                  rpcLoop exts bps (Just (current newDbg)) newDbg
-            Just CmdRun -> executeRun exts bps lastSent dbg
+                  rpcLoop exts bps hist (Just (current newDbg)) newDbg
+            Just CmdRun -> executeRun exts bps hist lastSent dbg
             Just CmdStepFwd -> do
               if not (Seq.null (future dbg))
                 then do
                   let nextDbg = stepForward dbg
                   lastSent' <- sendState lastSent False (current nextDbg)
-                  rpcLoop exts bps lastSent' nextDbg
+                  rpcLoop exts bps hist lastSent' nextDbg
                 else do
                   if status c == Halted
                     then do
                       lastSent' <- sendState lastSent False c
-                      rpcLoop exts bps lastSent' dbg
+                      rpcLoop exts bps hist lastSent' dbg
                     else
                       if stopReason c == OnEbreak
                         then do
@@ -298,7 +304,7 @@ rpcLoop exts bps lastSent dbg = do
                               c
                           let newDbg = dbg {past = past dbg Seq.|> c, current = steppedState, future = Seq.Empty}
                           lastSent' <- sendState lastSent False steppedState
-                          rpcLoop exts bps lastSent' newDbg
+                          rpcLoop exts bps hist lastSent' newDbg
                         else do
                           startState <- execStateT (runEmulator $ setStatus Running >> setStopReason NoStop) c
                           (_, nextState) <- runStateT (runEmulator step) startState
@@ -308,16 +314,16 @@ rpcLoop exts bps lastSent dbg = do
                                   else nextState
                           let newDbg = dbg {past = past dbg Seq.|> c, current = finalState, future = Seq.Empty}
                           lastSent' <- sendState lastSent False finalState
-                          rpcLoop exts bps lastSent' newDbg
+                          rpcLoop exts bps hist lastSent' newDbg
             Just CmdStepBack -> do
               let prevDbg = stepBack dbg
               -- backward move: memory may shrink, so send a full snapshot
               lastSent' <- sendState lastSent True (current prevDbg)
-              rpcLoop exts bps lastSent' prevDbg
+              rpcLoop exts bps hist lastSent' prevDbg
             Just CmdRewind -> do
               let startDbg = rewind dbg
               lastSent' <- sendState lastSent True (current startDbg)
-              rpcLoop exts bps lastSent' startDbg
+              rpcLoop exts bps hist lastSent' startDbg
             Just (CmdInput text) -> do
               if status c == WaitingForInput
                 then do
@@ -336,27 +342,27 @@ rpcLoop exts bps lastSent dbg = do
 
                   lastSent1 <- sendState lastSent False startState
 
-                  newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
+                  newTrace <- resumeTrace hist Nothing bps (atBreakpoint bps startState) startState
 
-                  let newDbg = initDebuggerAtEnd (extendBounded (past dbg) newTrace)
+                  let newDbg = initDebuggerAtEnd hist (extendBounded hist (past dbg) newTrace)
 
                   let cFinal = current newDbg
                   lastSent2 <- sendState lastSent1 False cFinal
                   logRunFinished cFinal
                   when (status cFinal == WaitingForInput) (sendResponse ResNeedInput)
-                  rpcLoop exts bps lastSent2 newDbg
+                  rpcLoop exts bps hist lastSent2 newDbg
                 else do
                   sendResponse (ResError "Emulator is not waiting for input.")
-                  rpcLoop exts bps lastSent dbg
-        else executeRun exts bps lastSent dbg
+                  rpcLoop exts bps hist lastSent dbg
+        else executeRun exts bps hist lastSent dbg
 
-executeRun :: ExtensionSet -> IntSet -> Maybe CPU -> Debugger -> IO ()
-executeRun exts bps lastSent dbg = do
+executeRun :: ExtensionSet -> IntSet -> Int -> Maybe CPU -> Debugger -> IO ()
+executeRun exts bps hist lastSent dbg = do
   let c = current dbg
   if status c == Halted
     then do
       lastSent' <- sendState lastSent False c
-      rpcLoop exts bps lastSent' dbg
+      rpcLoop exts bps hist lastSent' dbg
     else do
       startState <-
         execStateT
@@ -368,15 +374,15 @@ executeRun exts bps lastSent dbg = do
           c
 
       lastSent1 <- sendState lastSent False startState
-      newTrace <- resumeTrace Nothing bps (atBreakpoint bps startState) startState
+      newTrace <- resumeTrace hist Nothing bps (atBreakpoint bps startState) startState
 
-      let newDbg = initDebuggerAtEnd (extendBounded (past dbg) newTrace)
+      let newDbg = initDebuggerAtEnd hist (extendBounded hist (past dbg) newTrace)
 
       let cFinal = current newDbg
       lastSent2 <- sendState lastSent1 False cFinal
       logRunFinished cFinal
       when (status cFinal == WaitingForInput) (sendResponse ResNeedInput)
-      rpcLoop exts bps lastSent2 newDbg
+      rpcLoop exts bps hist lastSent2 newDbg
 
 logRunFinished :: CPU -> IO ()
 logRunFinished cFinal =

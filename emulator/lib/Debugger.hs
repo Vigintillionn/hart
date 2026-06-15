@@ -6,6 +6,7 @@ module Debugger
     initDebugger,
     initDebuggerAtEnd,
     extendBounded,
+    defaultMaxHistory,
     stepForward,
     stepBack,
     rewind,
@@ -46,8 +47,8 @@ data Debugger = Debugger
     future :: Seq CPU
   }
 
-maxHistory :: Int
-maxHistory = 10000
+defaultMaxHistory :: Int
+defaultMaxHistory = 10000
 
 initDebugger :: NonEmpty CPU -> Debugger
 initDebugger (c :| cs) =
@@ -57,28 +58,28 @@ initDebugger (c :| cs) =
       future = Seq.fromList cs
     }
 
-initDebuggerAtEnd :: NonEmpty CPU -> Debugger
-initDebuggerAtEnd t0 =
-  let bounded = boundHistory t0
+initDebuggerAtEnd :: Int -> NonEmpty CPU -> Debugger
+initDebuggerAtEnd maxHistory t0 =
+  let bounded = boundHistory maxHistory t0
    in Debugger
         { past = Seq.fromList (NE.init bounded),
           current = NE.last bounded,
           future = Empty
         }
 
-boundHistory :: NonEmpty CPU -> NonEmpty CPU
-boundHistory t
+boundHistory :: Int -> NonEmpty CPU -> NonEmpty CPU
+boundHistory maxHistory t
   | extra > 0 = fromMaybe t (NE.nonEmpty (NE.drop extra t))
   | otherwise = t
   where
     extra = length t - maxHistory
 
 -- | Append a freshly-recorded trace onto prior history, keeping only the most
--- recent 'maxHistory' states. The older prefix that would be dropped is never
+-- recent @maxHistory@ states. The older prefix that would be dropped is never
 -- materialised: only the surviving tail of @history@ is converted and prepended,
 -- so we don't build (then immediately discard) the full concatenation.
-extendBounded :: Seq CPU -> NonEmpty CPU -> NonEmpty CPU
-extendBounded history newTrace =
+extendBounded :: Int -> Seq CPU -> NonEmpty CPU -> NonEmpty CPU
+extendBounded maxHistory history newTrace =
   NE.prependList (toList (Seq.drop dropCount history)) newTrace
   where
     keep = max 0 (maxHistory - length newTrace)
@@ -108,8 +109,8 @@ rewind dbg = case past dbg of
 -- optional cycle ceiling: when the executed cycle count reaches it the run is
 -- force-halted with an 'ECycleLimit' fault, so an infinite-loop program can't
 -- spin forever. 'Nothing' means unbounded.
-loop :: Maybe Int -> IntSet -> Bool -> Seq CPU -> CPU -> IO (Seq CPU)
-loop mLimit bps skipFirst acc curr
+loop :: Int -> Maybe Int -> IntSet -> Bool -> Seq CPU -> CPU -> IO (Seq CPU)
+loop maxHistory mLimit bps skipFirst acc curr
   | not skipFirst && status curr == Running && atBreakpoint bps curr = do
       noted <- execStateT (runEmulator (logNotice BreakpointHit)) curr
       return (setLast acc (noted {status = Paused, stopReason = OnAddrBreakpoint}))
@@ -134,8 +135,8 @@ loop mLimit bps skipFirst acc curr
               ready <- hReady stdin
               if ready
                 then return newAcc
-                else newAcc `seq` loop mLimit bps False newAcc next
-            else newAcc `seq` loop mLimit bps False newAcc next
+                else newAcc `seq` loop maxHistory mLimit bps False newAcc next
+            else newAcc `seq` loop maxHistory mLimit bps False newAcc next
         else return newAcc
 
 atBreakpoint :: IntSet -> CPU -> Bool
@@ -150,14 +151,14 @@ neFromSeq fallback s = case s of
   c :<| cs -> c :| toList cs
   Empty -> fallback :| []
 
-resumeTrace :: Maybe Int -> IntSet -> Bool -> CPU -> IO (NonEmpty CPU)
-resumeTrace mLimit bps skipFirst currentCpu =
-  neFromSeq currentCpu <$> loop mLimit bps skipFirst (Seq.singleton currentCpu) currentCpu
+resumeTrace :: Int -> Maybe Int -> IntSet -> Bool -> CPU -> IO (NonEmpty CPU)
+resumeTrace maxHistory mLimit bps skipFirst currentCpu =
+  neFromSeq currentCpu <$> loop maxHistory mLimit bps skipFirst (Seq.singleton currentCpu) currentCpu
 
-runTrace :: Maybe Int -> Executable -> CPU -> IO (NonEmpty CPU)
-runTrace mLimit prog startCPU = do
+runTrace :: Int -> Maybe Int -> Executable -> CPU -> IO (NonEmpty CPU)
+runTrace maxHistory mLimit prog startCPU = do
   cpuReady <- execStateT (runEmulator $ loadProgram prog >> setStatus Running >> setStopReason NoStop) startCPU
-  neFromSeq cpuReady <$> loop mLimit IntSet.empty False (Seq.singleton cpuReady) cpuReady
+  neFromSeq cpuReady <$> loop maxHistory mLimit IntSet.empty False (Seq.singleton cpuReady) cpuReady
 
 viewRegisters :: V.Vector Word32 -> [Int32]
 viewRegisters regs = map fromIntegral (V.toList regs)
@@ -260,9 +261,9 @@ runInteractive mLimit = go
                       setStopReason NoStop
                   )
                   c
-              newTrace <- resumeTrace mLimit IntSet.empty False startState
+              newTrace <- resumeTrace defaultMaxHistory mLimit IntSet.empty False startState
 
-              let newDbg = initDebuggerAtEnd (extendBounded (past dbg) newTrace)
+              let newDbg = initDebuggerAtEnd defaultMaxHistory (extendBounded defaultMaxHistory (past dbg) newTrace)
 
               go newDbg
         ["m", addrStr] -> do

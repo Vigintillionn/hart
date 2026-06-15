@@ -2,6 +2,7 @@ import type { IconName } from "../types";
 import { extensionStore } from "./extensionStore.svelte";
 import { editorPrefs } from "./editorPrefs.svelte";
 import { displayStore } from "./displayStore.svelte";
+import { machineStore } from "./machineStore.svelte";
 import { terminalStore } from "./terminalStore.svelte";
 import { modeStore } from "./mode.svelte";
 import { resetThemes } from "../editor/theme.svelte";
@@ -12,6 +13,7 @@ export type CategoryId =
   | "appearance"
   | "editor"
   | "display"
+  | "emulator"
   | "terminal"
   | "shortcuts"
   | "extensions"
@@ -45,6 +47,7 @@ export const SETTINGS_CATEGORIES: CategoryMeta[] = [
     section: "Interface",
   },
   { id: "display", label: "Registers & Memory", icon: "memory", section: "Machine" }, // prettier-ignore
+  { id: "emulator", label: "Emulator", icon: "cpu", section: "Machine" },
   {
     id: "extensions",
     label: "ISA Extensions",
@@ -206,6 +209,27 @@ export const SETTINGS: SettingDescriptor[] = [
     description:
       "Briefly flash registers and memory that changed after a step.",
     keywords: ["highlight", "flash", "changed", "diff", "step"],
+  },
+  {
+    id: "machine.historySize",
+    category: "emulator",
+    title: "History size",
+    description:
+      "How many CPU states the emulator keeps for stepping back and rewinding. Larger uses more memory.",
+    keywords: [
+      "history",
+      "size",
+      "buffer",
+      "time",
+      "travel",
+      "rewind",
+      "step back",
+      "undo",
+      "trace",
+      "states",
+      "custom",
+      "memory",
+    ],
   },
   {
     id: "terminal.clearOnRun",
@@ -373,6 +397,7 @@ class SettingsStore {
     resetThemes();
     editorPrefs.reset();
     displayStore.reset();
+    machineStore.reset();
     terminalStore.resetPrefs();
     keymap.resetBindings();
   }

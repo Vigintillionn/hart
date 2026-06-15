@@ -5,13 +5,20 @@
     size = "md",
     accent = "primary",
     disabled = false,
+    onchange,
   }: {
     options: { value: T; label: string }[];
     value: T;
     size?: "sm" | "md";
     accent?: "primary" | "text";
     disabled?: boolean;
+    onchange?: (value: T) => void;
   } = $props();
+
+  function select(v: T) {
+    value = v;
+    onchange?.(v);
+  }
 
   const item = $derived(
     size === "sm"
@@ -95,7 +102,7 @@
         ? activeText
         : 'text-text-faint hover:text-text-dim'}"
       aria-pressed={value === opt.value}
-      onclick={() => (value = opt.value)}>{opt.label}</button
+      onclick={() => select(opt.value)}>{opt.label}</button
     >
   {/each}
 </div>
