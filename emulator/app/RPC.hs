@@ -281,7 +281,6 @@ rpcLoop exts bps lastSent dbg = do
                   lastSent' <- sendState lastSent False (current nextDbg)
                   rpcLoop exts bps lastSent' nextDbg
                 else do
-                  let c = current dbg
                   if status c == Halted
                     then do
                       lastSent' <- sendState lastSent False c
@@ -320,7 +319,6 @@ rpcLoop exts bps lastSent dbg = do
               lastSent' <- sendState lastSent True (current startDbg)
               rpcLoop exts bps lastSent' startDbg
             Just (CmdInput text) -> do
-              let c = current dbg
               if status c == WaitingForInput
                 then do
                   startState <-
