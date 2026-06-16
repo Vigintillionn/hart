@@ -40,7 +40,7 @@ const CANONICAL_NAMES: string[] = [
 export const TEXT_BASE = 0x0;
 export const DATA_BASE = 0x10000000;
 export const HEAP_BASE = 0x20000000;
-export const STACK_TOP = 0x7fffffff;
+export const STACK_TOP = 0x7ffffff0;
 
 export async function sendToHaskell(
   command: string,

@@ -330,7 +330,7 @@ entryPoint :: Word32
 entryPoint = 0x0
 
 stackTop :: Word32
-stackTop = 0x7FFFFFFF -- ~ 2GB
+stackTop = 0x7FFFFFF0
 
 heapBase :: Word32
 heapBase = 0x20000000
