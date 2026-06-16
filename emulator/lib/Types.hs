@@ -55,6 +55,7 @@ where
 
 import Data.Bits (complement, shift, xor, (.&.), (.|.))
 import Data.List (find)
+import Loc (Loc)
 import Machine (Register)
 import Numeric
 
@@ -374,7 +375,7 @@ instance Traversable SomeInstruction where
 -- Line might have a label, instruction, or both
 type SourceLine = (Maybe String, Maybe Statement)
 
-type ParsedProgram = [(Int, SourceLine)]
+type ParsedProgram = [(Loc, SourceLine)]
 
 type LoweredProgram = [SomeInstruction Operand]
 

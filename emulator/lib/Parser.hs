@@ -1,8 +1,8 @@
-module Parser (parse) where
+module Parser (parse, parseWithLocs) where
 
 import Control.Applicative
 import Control.Monad (void)
-import Data.Bifunctor (second)
+import Data.Bifunctor (first, second)
 import Data.Bits (bit, shiftR)
 import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit, ord)
 import Data.Map.Strict qualified as M
@@ -11,6 +11,7 @@ import Error (AssemblyError (..))
 import Extension (Extension (..), ExtensionSet, extensionCode, isEnabled)
 import Extension.Classify (HasExtension (..))
 import GHC.Base (when)
+import Loc (Loc, rootLoc)
 import Machine
 import Numeric (readHex)
 import Text.Read (readMaybe)
@@ -821,10 +822,16 @@ parseProgram exts = do
     isEmpty (_, (Nothing, Nothing)) = True
     isEmpty _ = False
 
-parse :: ExtensionSet -> String -> Either AssemblyError [(Int, SourceLine)]
-parse exts src = case runParser (parseProgram exts) 1 (normalizeNewlines src) of
-  Right (instr, _, _) -> Right instr
-  Left (PErr _ ln e) -> Left (Located ln e)
+-- | parse a single anonymous buffer; every line belongs to the root file
+parse :: ExtensionSet -> String -> Either AssemblyError [(Loc, SourceLine)]
+parse exts = parseWithLocs exts rootLoc
+
+parseWithLocs ::
+  ExtensionSet -> (Int -> Loc) -> String -> Either AssemblyError [(Loc, SourceLine)]
+parseWithLocs exts toLoc src =
+  case runParser (parseProgram exts) 1 (normalizeNewlines src) of
+    Right (instr, _, _) -> Right (map (first toLoc) instr)
+    Left (PErr _ ln e) -> Left (Located (toLoc ln) e)
 
 normalizeNewlines :: String -> String
 normalizeNewlines [] = []
