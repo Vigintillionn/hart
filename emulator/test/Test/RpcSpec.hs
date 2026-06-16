@@ -5,6 +5,7 @@ module Test.RpcSpec (spec) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
+import Control.Monad ((>=>))
 import Data.Aeson (Result (..), Value (..), decodeStrict, encode, fromJSON, object, (.=))
 import Data.Aeson.Key qualified as K
 import Data.Aeson.KeyMap qualified as KM
@@ -88,7 +89,7 @@ rpcSpec bin = do
     -- names a file not in that set is a clear "cannot find" error.
     resp <- runIO (runSession bin [loadCmd ".include \"x.s\"\n.text\n_start: nop\n", quitCmd])
     it "reports a missing included file (resolved against the open files)" $ do
-      let messages = mapMaybe (\v -> look "message" v >>= asString) (errorResponses resp)
+      let messages = mapMaybe (look "message" >=> asString) (errorResponses resp)
       messages `shouldSatisfy` any ("included file" `isInfixOf`)
 
   describe "multi-file load (assemble + link several files)" $ do
@@ -104,7 +105,7 @@ rpcSpec bin = do
     it "halts cleanly after the program exits" $
       finalStatus resp `shouldBe` Just "Halted"
     it "tags each source-map entry with its originating file" $ do
-      let smap = maybe [] id (lastLoaded resp >>= look "sourceMap" >>= asList)
+      let smap = fromMaybe [] (lastLoaded resp >>= look "sourceMap" >>= asList)
           fileOf e = case asList e of Just (_ : _ : f : _) -> asString f; _ -> Nothing
           fileNames = mapMaybe fileOf smap
       fileNames `shouldSatisfy` (\fs -> "main.s" `elem` fs && "helper.s" `elem` fs)
