@@ -130,7 +130,7 @@
         files={fileStore.openFiles}
         onContentChange={handleEditorChange}
         currentPc={cpuStore.cpuState?.pc ?? 0}
-        pcToLine={cpuStore.sourceLineMap}
+        pcToLine={cpuStore.activeFilePcToLine}
         breakpoints={cpuStore.breakpointLines}
         onToggleBreakpoint={(line) => cpuStore.toggleBreakpointLine(line)}
         readOnly={running}

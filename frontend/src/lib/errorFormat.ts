@@ -179,3 +179,19 @@ export function emulatorErrorLine(e: EmulatorError): number | null {
   if (e.kind === "LinkError") return linkErrorLine(e.error);
   return null;
 }
+
+/** The originating file a compile error points at, if any (via `Located`). */
+export function assemblyErrorFile(e: AssemblyError): string | null {
+  return e.kind === "Located" && e.file !== "" ? e.file : null;
+}
+
+/** The originating file a link error points at, if any (via `Located`). */
+export function linkErrorFile(e: LinkError): string | null {
+  return e.kind === "Located" && e.file !== "" ? e.file : null;
+}
+
+export function emulatorErrorFile(e: EmulatorError): string | null {
+  if (e.kind === "ParseError") return assemblyErrorFile(e.error);
+  if (e.kind === "LinkError") return linkErrorFile(e.error);
+  return null;
+}

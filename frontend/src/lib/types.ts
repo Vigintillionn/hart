@@ -6,7 +6,10 @@ export type OpenFile = {
   savedContent: string;
 };
 
-export type SourceMap = [number, number][];
+// (instruction address, source line, originating file). The file is the name
+// of the open file the instruction came from (the app always names its
+// buffers; "" only for an unnamed buffer).
+export type SourceMap = [number, number, string][];
 export type DisasmMap = [number, string][];
 export type CodeMap = [number, number][];
 

@@ -44,9 +44,11 @@ export const STACK_TOP = 0x7fffffff;
 
 export async function sendToHaskell(
   command: string,
-  data?: string | number[] | string[],
+  data?: string | number[] | string[] | Record<string, unknown>,
 ) {
-  const payload = data !== undefined ? { command, data } : { command };
+  // every command is a {command, data?} envelope; `data` is whatever that
+  // command expects (a string, an array, or an object like load's {files, entry})
+  const payload = data === undefined ? { command } : { command, data };
   try {
     await invoke("send_command", { cmd: JSON.stringify(payload) });
   } catch (e) {

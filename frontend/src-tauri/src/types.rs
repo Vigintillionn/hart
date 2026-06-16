@@ -53,6 +53,7 @@ pub enum AssemblyError {
     },
     Located {
         line: i32,
+        file: String,
         error: Box<AssemblyError>,
     },
 }
@@ -86,6 +87,7 @@ pub enum LinkError {
     },
     Located {
         line: i32,
+        file: String,
         error: Box<LinkError>,
     },
 }
@@ -312,7 +314,7 @@ pub enum EmulatorResponse {
     Loaded {
         state: CpuState,
         #[serde(rename = "sourceMap")]
-        source_map: Vec<(u32, u32)>,
+        source_map: Vec<(u32, u32, String)>,
         #[serde(rename = "disasmMap")]
         disasm_map: Vec<(u32, String)>,
         #[serde(rename = "codeMap")]
