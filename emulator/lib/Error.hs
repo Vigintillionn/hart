@@ -19,6 +19,7 @@ where
 
 import Data.Aeson (ToJSON (..), Value, object, (.=))
 import Data.Word (Word32)
+import Loc (Loc (..))
 
 -- | Parse-time failures produced by "Parser".
 data AssemblyError
@@ -35,7 +36,8 @@ data AssemblyError
   | -- | a CSR operand outside its valid range: context, lower bound, upper
     -- bound, offending value
     CsrOutOfRange String Int Int Int
-  | Located Int AssemblyError
+  | -- | source location + the underlying failure that occurred there
+    Located Loc AssemblyError
   deriving (Show, Eq)
 
 -- | Link-time failures produced by "Linker" (symbol resolution + range checks).
@@ -52,8 +54,8 @@ data LinkError
   | -- | a constant (@.equ@/@.set@/@.equiv@) whose value refers back to itself,
     -- directly or transitively: the offending symbol name
     CircularConstant String
-  | -- | source line + the underlying failure that occurred there
-    LocatedLink Int LinkError
+  | -- | source location + the underlying failure that occurred there
+    LocatedLink Loc LinkError
   deriving (Show, Eq)
 
 data EmulatorError
@@ -155,7 +157,8 @@ instance ToJSON AssemblyError where
       object ["kind" .= s "ExtensionDisabled", "extension" .= ext, "mnemonic" .= mnem]
     CsrOutOfRange ctx lo hi v ->
       object ["kind" .= s "CsrOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
-    Located ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
+    Located loc inner ->
+      object ["kind" .= s "Located", "line" .= locLine loc, "file" .= locFile loc, "error" .= inner]
 
 instance ToJSON LinkError where
   toJSON e = case e of
@@ -168,7 +171,8 @@ instance ToJSON LinkError where
       object ["kind" .= s "MisalignedTarget", "context" .= ctx, "value" .= v]
     DivByZero -> kind "DivByZero"
     CircularConstant n -> object ["kind" .= s "CircularConstant", "name" .= n]
-    LocatedLink ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
+    LocatedLink loc inner ->
+      object ["kind" .= s "Located", "line" .= locLine loc, "file" .= locFile loc, "error" .= inner]
 
 instance ToJSON EmulatorError where
   toJSON e = case e of
