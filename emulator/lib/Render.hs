@@ -47,6 +47,7 @@ renderLinkError = go
       ImmOutOfRange ctx lo hi v ->
         ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
       MisalignedTarget ctx v -> ctx ++ " target is not 2-byte aligned: " ++ show v
+      NegativeValue ctx v -> ctx ++ " must not be negative: " ++ show v
       DivByZero -> "division by zero in an expression"
       CircularConstant n -> "circular constant definition: `" ++ n ++ "`"
 

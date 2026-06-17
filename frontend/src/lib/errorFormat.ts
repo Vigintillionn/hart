@@ -45,6 +45,8 @@ export function formatLinkError(e: LinkError): string {
       return `${e.context} out of range [${e.lo}, ${e.hi}]: ${e.value}`;
     case "MisalignedTarget":
       return `${e.context} target is not 2-byte aligned: ${e.value}`;
+    case "NegativeValue":
+      return `${e.context} must not be negative: ${e.value}`;
     case "DivByZero":
       return "Division by zero in an expression";
     case "CircularConstant":

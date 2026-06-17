@@ -49,6 +49,8 @@ data LinkError
     ImmOutOfRange String Int Int Int
   | -- | context, offending value
     MisalignedTarget String Int
+  | -- | a directive value that must be non-negative was not: context, value
+    NegativeValue String Int
   | -- | division or modulo by zero in an expression
     DivByZero
   | -- | a constant (@.equ@/@.set@/@.equiv@) whose value refers back to itself,
@@ -169,6 +171,8 @@ instance ToJSON LinkError where
       object ["kind" .= s "ImmOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
     MisalignedTarget ctx v ->
       object ["kind" .= s "MisalignedTarget", "context" .= ctx, "value" .= v]
+    NegativeValue ctx v ->
+      object ["kind" .= s "NegativeValue", "context" .= ctx, "value" .= v]
     DivByZero -> kind "DivByZero"
     CircularConstant n -> object ["kind" .= s "CircularConstant", "name" .= n]
     LocatedLink loc inner ->

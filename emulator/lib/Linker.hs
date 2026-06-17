@@ -78,7 +78,10 @@ hiOp, loOp :: String -> Operand
 hiOp = OpHi . ESym
 loOp = OpLo . ESym
 
--- | the absolute %hi / %lo of an expression
+-- | split a value into the @(hi20, lo12)@ pair, with @lo@ sign-extended into [-2048, 2047]
+hiLo12 :: Int -> (Int, Int)
+hiLo12 v = ((v + 0x800) `shiftR` 12, (v .&. 0xFFF) - if testBit v 11 then 0x1000 else 0)
+
 liHi, liLo :: Expr -> Expr
 liHi e = EBin Shr (EBin Add e (EInt 0x800)) (EInt 12)
 liLo e = EBin Sub (EBin BAnd (EBin Add e (EInt 0x800)) (EInt 0xFFF)) (EInt 0x800)
@@ -94,8 +97,7 @@ lower (PseudoInstr op) = case op of
       | Just v <- foldConst e ->
           if v < -2048 || v > 2047
             then
-              let hi = (v + 0x800) `shiftR` 12
-                  lo = (v .&. 0xFFF) - (if testBit v 11 then 0x1000 else 0)
+              let (hi, lo) = hiLo12 v
                in SomeInstruction (UType LUI (UTypeArgs rd (litOp hi)))
                     :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (litOp lo)))]
             else pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 (litOp v))
@@ -181,10 +183,15 @@ padTo addr a
       0 -> 0
       r -> a - r
 
--- | the byte alignment an alignment directive's argument denotes
+-- | the byte alignment an alignment directive's argument denotes; the exponent is assumed non-negative
 alignBytes :: AlignMode -> Int -> Int
 alignBytes AlignPow2 e = 2 ^ e
 alignBytes AlignBytes n = n
+
+-- | how an alignment directive's argument is described in a diagnostic
+alignCtx :: AlignMode -> String
+alignCtx AlignPow2 = "alignment exponent"
+alignCtx AlignBytes = "alignment"
 
 -- | default alignment for a @.comm@/@.lcomm@ symbol
 defaultCommAlign :: Int -> Int
@@ -318,9 +325,12 @@ placeStmt loc here p stmt = case stmt of
   StmtDirective (DirGlobl names) -> Right (declareBinding Global names p)
   StmtDirective (DirLocal names) -> Right (declareBinding Local names p)
   StmtDirective (DirWeak names) -> Right (declareBinding Weak names p)
-  StmtDirective (DirSpace e) -> (`advance` p) <$> layoutVal e
-  StmtDirective (DirAlign mode e) ->
-    (\v -> advance (padTo here (alignBytes mode v)) p) <$> layoutVal e
+  StmtDirective (DirSpace e) -> do
+    n <- layoutVal e >>= requireNonNeg ".space size"
+    Right (advance n p)
+  StmtDirective (DirAlign mode e) -> do
+    v <- layoutVal e >>= requireNonNeg (alignCtx mode)
+    Right (advance (padTo here (alignBytes mode v)) p)
   StmtDirective (DirComm isLocal name sizeE mAlignE) -> do
     size <- layoutVal sizeE
     align <- maybe (Right (defaultCommAlign size)) layoutVal mAlignE
@@ -336,6 +346,9 @@ placeStmt loc here p stmt = case stmt of
      in Right (advance (4 * length subs) p {pInstrs = reverse placed ++ pInstrs p})
   where
     layoutVal e = atLoc loc (evalExpr (pBases p) here (pSyms p) e)
+    requireNonNeg ctx v
+      | v < 0 = Left (LocatedLink loc (NegativeValue ctx v))
+      | otherwise = Right v
     -- a constant is evaluated eagerly when every symbol it names is already defined
     defineConst redefinable name e0 =
       let e = substCur here e0
@@ -471,7 +484,7 @@ pcrelHi pc t = (t - pc + 0x800) `shiftR` 12
 pcrelLo pc t = (t - pc + 4) .&. 0xFFF
 
 absHi, absLo :: Int -> Int
-absHi t = (t + 0x800) `shiftR` 12
+absHi = fst . hiLo12
 absLo t = t .&. 0xFFF
 
 resolveRelative :: SectionBases -> Int -> SymbolTable -> Operand -> Either LinkError Int

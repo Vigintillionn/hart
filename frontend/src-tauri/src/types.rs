@@ -81,6 +81,10 @@ pub enum LinkError {
         context: String,
         value: i64,
     },
+    NegativeValue {
+        context: String,
+        value: i64,
+    },
     DivByZero {},
     CircularConstant {
         name: String,

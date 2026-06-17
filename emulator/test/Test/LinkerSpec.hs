@@ -168,6 +168,12 @@ spec = do
     it "rejects a forward symbol in a layout-affecting .space" $
       linkErr ".data\n.space later\nlater:\n" `shouldBe` UndefinedLabel "later"
 
+    it "rejects a negative .space size instead of crashing" $
+      linkErr ".data\n.space (0 - 4)\n" `shouldBe` NegativeValue ".space size" (-4)
+
+    it "rejects a negative alignment exponent instead of crashing" $
+      linkErr ".data\n.p2align (0 - 1)\n" `shouldBe` NegativeValue "alignment exponent" (-1)
+
     it "evaluates division and modulo" $
       case execProgram (assemble "addi a0, a0, 17 / 4 + 17 % 4\n") of
         [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 5
