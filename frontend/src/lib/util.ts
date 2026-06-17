@@ -44,7 +44,7 @@ export const STACK_TOP = 0x7ffffff0;
 
 export async function sendToHaskell(
   command: string,
-  data?: string | number[] | string[] | Record<string, unknown>,
+  data?: string | number | number[] | string[] | Record<string, unknown>,
 ) {
   // every command is a {command, data?} envelope; `data` is whatever that
   // command expects (a string, an array, or an object like load's {files, entry})

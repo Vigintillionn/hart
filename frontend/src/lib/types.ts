@@ -43,6 +43,7 @@ export type IconName =
   | "sliders"
   | "panels"
   | "chip"
+  | "cpu"
   | "sun"
   | "moon"
   | "keyboard"

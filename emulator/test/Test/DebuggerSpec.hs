@@ -9,6 +9,7 @@ import Data.Sequence qualified as Seq
 import Debugger
   ( Debugger (..),
     atBreakpoint,
+    defaultMaxHistory,
     extendBounded,
     initDebuggerAtEnd,
     resumeTrace,
@@ -34,8 +35,8 @@ sampleProgram =
 
 endDebugger :: IO Debugger
 endDebugger = do
-  trace <- runTrace Nothing (assemble sampleProgram) emptyCPU
-  pure (initDebuggerAtEnd trace)
+  trace <- runTrace defaultMaxHistory Nothing (assemble sampleProgram) emptyCPU
+  pure (initDebuggerAtEnd defaultMaxHistory trace)
 
 forwardToEnd :: Debugger -> Debugger
 forwardToEnd d
@@ -81,15 +82,22 @@ spec = do
     it "keeps the whole trace when under the cap" $ do
       let history = Seq.fromList [mk 1, mk 2]
           newTrace = mk 3 :| [mk 4]
-      map pc (NE.toList (extendBounded history newTrace)) `shouldBe` [1, 2, 3, 4]
+      map pc (NE.toList (extendBounded defaultMaxHistory history newTrace)) `shouldBe` [1, 2, 3, 4]
 
     it "caps at maxHistory (10000) and keeps the newest states" $ do
       let history = Seq.fromList (map mk [1 .. 10005])
           newTrace = mk 20001 :| [mk 20002, mk 20003]
-          result = extendBounded history newTrace
+          result = extendBounded defaultMaxHistory history newTrace
       NE.length result `shouldBe` 10000
       pc (NE.last result) `shouldBe` 20003 -- newest survives
       pc (NE.head result) `shouldBe` 9 -- oldest 8 dropped
+    it "honours a custom (smaller) history limit" $ do
+      let history = Seq.fromList (map mk [1 .. 10])
+          newTrace = mk 11 :| [mk 12]
+          result = extendBounded 5 history newTrace
+      NE.length result `shouldBe` 5
+      pc (NE.last result) `shouldBe` 12 -- newest survives
+      pc (NE.head result) `shouldBe` 8 -- only the 3 newest history states kept
   describe "address breakpoints" $ do
     it "detects when the pc is in the breakpoint set" $ do
       atBreakpoint (IntSet.fromList [4, 8]) emptyCPU {pc = 8} `shouldBe` True
@@ -100,7 +108,7 @@ spec = do
         execStateT
           (runEmulator (loadProgram (assemble sampleProgram) >> setStatus Running))
           emptyCPU
-      trace <- resumeTrace Nothing (IntSet.fromList [0x8]) False ready
+      trace <- resumeTrace defaultMaxHistory Nothing (IntSet.fromList [0x8]) False ready
       let stopped = NE.last trace
       pc stopped `shouldBe` 0x8
       status stopped `shouldBe` Paused

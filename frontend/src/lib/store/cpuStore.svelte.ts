@@ -15,6 +15,7 @@ import { fileStore } from "./fileStore.svelte";
 import { buildStore } from "./buildStore.svelte";
 import { extensionStore } from "./extensionStore.svelte";
 import { isaStore } from "./isaStore.svelte";
+import { machineStore } from "./machineStore.svelte";
 import { sendToHaskell } from "../util";
 import {
   emulatorErrorFile,
@@ -298,6 +299,7 @@ class CpuStore {
 
     sendToHaskell("get_extensions");
     sendToHaskell("get_instruction_set");
+    machineStore.sync();
   }
 
   /** Adopt a new CPU state and mirror its console + system log to the UI. */

@@ -103,6 +103,12 @@
     <path
       d="M10 2.5v2.5M14 2.5v2.5M10 19v2.5M14 19v2.5M2.5 10H5M2.5 14H5M19 10h2.5M19 14h2.5"
     />
+  {:else if name === "cpu"}
+    <rect x="5" y="5" width="14" height="14" rx="2" />
+    <rect x="9" y="9" width="6" height="6" rx="1" />
+    <path
+      d="M8 2.5v2.5M12 2.5v2.5M16 2.5v2.5M8 19v2.5M12 19v2.5M16 19v2.5M2.5 8H5M2.5 12H5M2.5 16H5M19 8h2.5M19 12h2.5M19 16h2.5"
+    />
   {:else if name === "sun"}
     <circle cx="12" cy="12" r="4" />
     <path

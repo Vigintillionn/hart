@@ -1,6 +1,6 @@
 module CLI (runCLI) where
 
-import Debugger (initDebuggerAtEnd, runInteractive, runTrace)
+import Debugger (defaultMaxHistory, initDebuggerAtEnd, runInteractive, runTrace)
 import Extension (defaultExtensions)
 import Linker (resolve)
 import Machine (emptyCPU)
@@ -52,8 +52,8 @@ runCLI maxCycles filepath = do
         Right resolved -> do
           putStrLn "---- EXECUTING ---"
 
-          trace <- runTrace cycleLimit resolved emptyCPU
+          trace <- runTrace defaultMaxHistory cycleLimit resolved emptyCPU
 
           putStrLn "---- LAUNCHING DEBUGGER ----"
-          let debugger = initDebuggerAtEnd trace
+          let debugger = initDebuggerAtEnd defaultMaxHistory trace
           runInteractive cycleLimit debugger
