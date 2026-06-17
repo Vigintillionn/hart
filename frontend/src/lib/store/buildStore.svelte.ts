@@ -41,17 +41,40 @@ class BuildStore {
     this.selected = next;
   }
 
-  /**
-   * The files to compile, in link order: the active file first (the entry),
-   * then the rest of the included files in their editor order.
-   */
-  public resolveBuildFiles(): OpenFile[] {
+  /** The files the user picked to build: active first, then the rest in editor order. */
+  private candidates(): OpenFile[] {
     const active = fileStore.activeFile;
     if (!active) return [];
     const rest = fileStore.openFiles.filter(
       (f) => f.id !== active.id && this.isIncluded(f.id),
     );
     return [active, ...rest];
+  }
+
+  /** Names of files that the given files pull in via `.include`. */
+  private includeTargetsOf(files: OpenFile[]): Set<string> {
+    const targets = new Set<string>();
+    const re = /^\s*\.include\s+"([^"]+)"/;
+    for (const f of files)
+      for (const line of f.content.split("\n")) {
+        const m = re.exec(line);
+        if (m) targets.add(m[1]);
+      }
+    return targets;
+  }
+
+  /** Names of build files that are reached via `.include` */
+  public includedDeps(): Set<string> {
+    return this.includeTargetsOf(this.candidates());
+  }
+
+  /** Drops the files that are included via `.include` from the build list. */
+  public resolveBuildFiles(): OpenFile[] {
+    const active = fileStore.activeFile;
+    if (!active) return [];
+    const cands = this.candidates();
+    const deps = this.includeTargetsOf(cands);
+    return cands.filter((f) => f.id === active.id || !deps.has(f.name));
   }
 }
 

@@ -32,6 +32,7 @@ type LoadSnapshot = {
   fileId: string;
   content: string;
   files: BuildFile[];
+  entry: string[];
 };
 
 function severityToLevel(sev: Severity): LogLevel {
@@ -158,11 +159,14 @@ class CpuStore {
     const f = fileStore.activeFile;
     if (!f) return false;
     if (f.id !== snap.fileId) return true; // entry changed
-    const current = buildStore.resolveBuildFiles();
-    if (current.length !== snap.files.length) return true;
-    return current.some(
-      (cf, i) =>
-        cf.name !== snap.files[i].name || cf.content !== snap.files[i].content,
+    const entry = buildStore.resolveBuildFiles().map((bf) => bf.name);
+    if (entry.length !== snap.entry.length) return true;
+    if (entry.some((n, i) => n !== snap.entry[i])) return true;
+    const pool = fileStore.openFiles;
+    if (pool.length !== snap.files.length) return true;
+    return pool.some(
+      (pf, i) =>
+        pf.name !== snap.files[i].name || pf.content !== snap.files[i].content,
     );
   }
 
@@ -345,9 +349,9 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
-    const files = buildStore.resolveBuildFiles();
-    const entry = files[0];
-    if (!entry) {
+    const buildFiles = buildStore.resolveBuildFiles();
+    const entryFile = buildFiles[0];
+    if (!entryFile) {
       logStore.log("error", "BUILD", "No file open to compile.");
       return;
     }
@@ -355,17 +359,18 @@ class CpuStore {
     // plus any faults); we just surface the system console on user action.
     terminalStore.autoSwitch("system");
     this.compileError = null;
-    const buildFiles = files.map((f) => ({ name: f.name, content: f.content }));
+    const pool = fileStore.openFiles.map((f) => ({
+      name: f.name,
+      content: f.content,
+    }));
+    const entry = buildFiles.map((f) => f.name);
     this.pendingSnapshot = {
-      fileId: entry.id,
-      content: entry.content,
-      files: buildFiles,
+      fileId: entryFile.id,
+      content: entryFile.content,
+      files: pool,
+      entry,
     };
-    // active file first; the rest link after it
-    sendToHaskell("load", {
-      files: buildFiles,
-      entry: buildFiles.map((f) => f.name),
-    });
+    sendToHaskell("load", { files: pool, entry });
   }
 
   public handleRun() {

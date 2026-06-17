@@ -12,6 +12,7 @@
   const dirty = $derived(cpuStore.isDirty);
   const buildCount = $derived(buildStore.resolveBuildFiles().length);
   const activeId = $derived(fileStore.activeFileId);
+  const includedDeps = $derived(buildStore.includedDeps());
 
   let menuOpen = $state(false);
 
@@ -90,16 +91,18 @@
         <div class="space-y-0.5">
           {#each fileStore.openFiles as file (file.id)}
             {@const isEntry = file.id === activeId}
+            {@const isDep = includedDeps.has(file.name)}
+            {@const locked = isEntry || isDep}
             <label
-              class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors hover:bg-surface-3 {isEntry
+              class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[12px] transition-colors hover:bg-surface-3 {locked
                 ? 'cursor-default'
                 : ''}"
             >
               <input
                 type="checkbox"
                 class="h-3.5 w-3.5 accent-primary disabled:opacity-60"
-                checked={buildStore.isIncluded(file.id)}
-                disabled={isEntry}
+                checked={isDep || buildStore.isIncluded(file.id)}
+                disabled={locked}
                 onchange={() => buildStore.toggle(file.id)}
               />
               <span class="flex-1 truncate font-mono text-text-dim"
@@ -109,6 +112,12 @@
                 <span
                   class="rounded-sm bg-primary-soft px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.5px] text-primary"
                   >entry</span
+                >
+              {:else if isDep}
+                <span
+                  class="rounded-sm bg-surface-1 px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.5px] text-text-dim"
+                  title="pulled in via .include by another build file"
+                  >included</span
                 >
               {/if}
             </label>
