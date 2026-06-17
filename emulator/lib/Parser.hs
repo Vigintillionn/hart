@@ -286,20 +286,10 @@ labelDef :: Parser String
 labelDef = identifier <* char ':'
 
 immediate :: Parser Int
-immediate = do
-  sign <- optional (char '-')
-  hex <- optional (string "0x")
-
-  case hex of
-    Just _ -> do
-      digits <- some (satisfy isHexDigit)
-      case readHex digits of
-        [(x, "")] -> return $ applySign sign x
-        _ -> fail "Invalid Hex string"
-    Nothing -> applySign sign <$> integer
+immediate = applySign <$> optional (char '-') <*> numberLit
   where
-    applySign (Just _) x = -x
-    applySign Nothing x = x
+    applySign (Just _) = negate
+    applySign Nothing = id
 
 memOperand :: Parser (Operand, Register)
 memOperand = do
