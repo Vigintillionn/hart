@@ -1,6 +1,13 @@
 module Types
   ( Phase (..),
     Operand (..),
+    RelocKind (..),
+    Expr (..),
+    UnOp (..),
+    BinOp (..),
+    applyUnOp,
+    applyBinOp,
+    foldConst,
     ImmOf,
     ROp (..),
     IArithOp (..),
@@ -25,6 +32,13 @@ module Types
     Instruction (..),
     PseudoOp (..),
     Section (..),
+    SecClass (..),
+    AlignMode (..),
+    textSection,
+    dataSection,
+    rodataSection,
+    bssSection,
+    commonSection,
     Directive (..),
     Statement (..),
     SomeInstruction (..),
@@ -40,18 +54,62 @@ module Types
   )
 where
 
+import Data.Bits (complement, shift, xor, (.&.), (.|.))
 import Data.List (find)
+import Loc (Loc)
 import Machine (Register)
 import Numeric
 
 data Phase = Parsed | Lowered | Resolved
 
 data Operand
-  = ImmVal Int
-  | Label String
-  | LabelHi String -- %hi(symbol)
-  | LabelLo String -- %lo(symbol)
+  = OpExpr Expr
+  | OpReloc RelocKind Expr
   deriving (Show, Eq)
+
+data RelocKind = HiAbs | LoAbs | HiPcrel | LoPcrel
+  deriving (Show, Eq, Enum, Bounded)
+
+data Expr
+  = EInt Int
+  | ESym String
+  | ECur
+  | EUn UnOp Expr
+  | EBin BinOp Expr Expr
+  deriving (Show, Eq)
+
+data UnOp = Neg | BNot
+  deriving (Show, Eq, Enum, Bounded)
+
+data BinOp = Add | Sub | Mul | Div | Mod | Shl | Shr | BAnd | BOr | BXor
+  deriving (Show, Eq, Enum, Bounded)
+
+applyUnOp :: UnOp -> Int -> Int
+applyUnOp Neg = negate
+applyUnOp BNot = complement
+
+applyBinOp :: BinOp -> Int -> Int -> Maybe Int
+applyBinOp op x y = case op of
+  Add -> Just (x + y)
+  Sub -> Just (x - y)
+  Mul -> Just (x * y)
+  Div -> if y == 0 then Nothing else Just (x `quot` y)
+  Mod -> if y == 0 then Nothing else Just (x `rem` y)
+  Shl -> Just (x `shift` y)
+  Shr -> Just (x `shift` negate y)
+  BAnd -> Just (x .&. y)
+  BOr -> Just (x .|. y)
+  BXor -> Just (xor x y)
+
+foldConst :: Expr -> Maybe Int
+foldConst (EInt n) = Just n
+foldConst (ESym _) = Nothing
+foldConst ECur = Nothing
+foldConst (EUn op e) = applyUnOp op <$> foldConst e
+foldConst (EBin op a b) = do
+  x <- foldConst a
+  y <- foldConst b
+  applyBinOp op x y
 
 type family ImmOf (p :: Phase) where
   ImmOf 'Parsed = Operand
@@ -191,18 +249,51 @@ data PseudoOp
   | P_CSRSI Int Operand
   | P_CSRCI Int Operand
 
-data Section = TextSection | DataSection | BssSection
+-- | the load class of a section, which decides the memory region it occupies
+-- * @SecText@ holds executable code (region from @entryPoint@)
+-- * @SecRodata@ and @SecData@ hold read-only and writable initialised data
+-- * @SecBss@ is NOBITS
+data SecClass = SecText | SecRodata | SecData | SecBss
+  deriving (Show, Eq, Ord, Enum, Bounded)
+
+-- | same-named sections are concatenated
+data Section = Section
+  { secName :: !String,
+    secClass :: !SecClass
+  }
+  deriving (Show, Eq, Ord)
+
+textSection, dataSection, rodataSection, bssSection, commonSection :: Section
+textSection = Section "text" SecText
+dataSection = Section "data" SecData
+rodataSection = Section "rodata" SecRodata
+bssSection = Section "bss" SecBss
+
+-- | the synthetic section that @.comm@/@.lcomm@ common symbols accumulate into
+commonSection = Section "COMMON" SecBss
+
+-- | how an alignment directive reads its argument: @.align@/@.p2align@ take a
+-- power-of-two exponent, @.balign@ a literal byte count
+data AlignMode = AlignPow2 | AlignBytes
   deriving (Show, Eq)
 
 data Directive
   = DirSection Section
   | DirString String
   | DirAscii String
-  | DirByte [Int]
-  | DirHalf [Int]
-  | DirWord [Int]
-  | DirSpace Int
-  | DirAlign Int
+  | DirByte [Expr]
+  | DirHalf [Expr]
+  | DirWord [Expr]
+  | DirSpace Expr
+  | DirAlign AlignMode Expr
+  | -- | a common symbol reserved in bss: whether it is local (@.lcomm@ vs
+    -- @.comm@), its name, byte size, and optional alignment
+    DirComm Bool String Expr (Maybe Expr)
+  | DirEqu String Expr
+  | DirEquiv String Expr
+  | DirGlobl [String]
+  | DirLocal [String]
+  | DirWeak [String]
   deriving (Show, Eq)
 
 data Statement
@@ -287,7 +378,7 @@ instance Traversable SomeInstruction where
 -- Line might have a label, instruction, or both
 type SourceLine = (Maybe String, Maybe Statement)
 
-type ParsedProgram = [(Int, SourceLine)]
+type ParsedProgram = [(Loc, SourceLine)]
 
 type LoweredProgram = [SomeInstruction Operand]
 

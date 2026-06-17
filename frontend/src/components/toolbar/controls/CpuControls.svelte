@@ -2,6 +2,7 @@
   import { cpuStore } from "$lib/store/cpuStore.svelte";
   import { keymap } from "$lib/keymap.svelte";
   import Icon from "../../Icon.svelte";
+  import CompileControl from "./CompileControl.svelte";
 
   const status = $derived(cpuStore.status);
   const loaded = $derived(cpuStore.isLoaded);
@@ -35,23 +36,7 @@
 </script>
 
 <div class="flex items-center gap-1">
-  <button
-    class="relative inline-flex h-8.5 items-center gap-1.5 rounded-md border border-transparent bg-surface-3 px-2.5 text-[12.5px] font-medium text-secondary transition-colors hover:bg-surface-4 disabled:opacity-30"
-    title={(dirty
-      ? "Source changed since last compile - Run will recompile"
-      : "Compile & load the current file") + ` (${keymap.describe("compile")})`}
-    disabled={running}
-    onclick={() => cpuStore.handleLoadProgram()}
-  >
-    <Icon name="build" class="h-4 w-4" />
-    <span>Compile</span>
-    {#if dirty}
-      <span
-        class="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-primary shadow-[0_0_0_2px_var(--color-surface-2)]"
-        aria-label="modified since last compile"
-      ></span>
-    {/if}
-  </button>
+  <CompileControl disabled={running} />
 
   <button
     class="inline-flex h-8.5 items-center gap-1.5 rounded-md px-3.5 text-[12.5px] font-semibold text-on-primary transition-colors disabled:opacity-30 {running

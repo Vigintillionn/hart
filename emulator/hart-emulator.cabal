@@ -69,6 +69,7 @@ common shared-properties
     build-depends:
         base >= 4.16 && < 5,
         mtl >= 2.3,
+        transformers >= 0.6,
         containers >= 0.6,
         vector >= 0.13,
         aeson,
@@ -78,6 +79,8 @@ common shared-properties
 library
     import:           warnings, shared-properties
     exposed-modules:  Types
+                      Loc
+                      Preprocess
                       Error
                       Render
                       Parser
@@ -99,7 +102,9 @@ executable hart-emulator
     main-is:          Main.hs
     other-modules:    CLI
                       RPC
-    build-depends:    hart-emulator
+    build-depends:    hart-emulator,
+                      directory,
+                      filepath
     hs-source-dirs:   app
 
 test-suite hart-emulator-test
@@ -111,6 +116,7 @@ test-suite hart-emulator-test
                       Test.AssemblerSpec
                       Test.Support
                       Test.ParserSpec
+                      Test.PreprocessSpec
                       Test.LinkerSpec
                       Test.ExtensionSpec
                       Test.ExecutionSpec
@@ -124,6 +130,7 @@ test-suite hart-emulator-test
     build-depends:    hart-emulator,
                       hspec,
                       QuickCheck,
+                      containers,
                       directory,
                       process,
                       text,

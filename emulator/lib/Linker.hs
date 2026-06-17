@@ -1,70 +1,126 @@
-module Linker (Executable (..), resolve) where
+module Linker
+  ( Executable (..),
+    Symbol (..),
+    SymType (..),
+    SymBinding (..),
+    resolve,
+  )
+where
 
 import Control.Monad (foldM)
-import Control.Monad.State
 import Data.Bifunctor (first)
 import Data.Bits (Bits (..))
 import Data.Char (ord)
 import Data.IntMap.Strict qualified as IM
-import Data.List (foldl', mapAccumL)
+import Data.List (foldl')
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.List.NonEmpty qualified as NE
 import Data.Map.Strict qualified as M
+import Data.Set qualified as S
 import Data.Word (Word32, Word8)
 import Error (LinkError (..))
+import Loc (Loc, locFile, locLine)
 import Machine
 import Types
 
-type SymbolTable = M.Map String Int
+data SymType
+  = -- | a label: 'symValue' is its section-relative offset
+    AddrSym
+  | -- | a constant whose value is already known: 'symValue' holds it
+    ConstSym
+  | -- | a constant whose definition (with @.@ already substituted) still refers
+    -- to a symbol that was forward at definition time; it is resolved lazily,
+    -- against the complete table, the first time its value is needed
+    DeferredSym Expr
+  deriving (Show, Eq)
+
+data SymBinding = Local | Global | Weak
+  deriving (Show, Eq)
+
+data Symbol = Symbol
+  { -- | the section the symbol is defined in, or 'Nothing' for an absolute
+    -- constant (@.equ@/@.set@/@.equiv@)
+    symSection :: !(Maybe Section),
+    -- | a section-relative offset for a label, or the absolute value for a constant
+    symValue :: !Int,
+    symType :: !SymType,
+    symBinding :: !SymBinding
+  }
+  deriving (Show, Eq)
+
+type SymbolTable = M.Map String Symbol
+
+-- | the final base address assigned to each section, produced once all section sizes are known
+-- sections absent from the map sit at base @0@
+type SectionBases = M.Map Section Int
+
+baseOf :: SectionBases -> Section -> Int
+baseOf bases sec = M.findWithDefault 0 sec bases
+
+-- | the absolute address of a symbol given the assigned section bases
+symAbsolute :: SectionBases -> Symbol -> Int
+symAbsolute bases sym = case symSection sym of
+  Just sec -> baseOf bases sec + symValue sym
+  Nothing -> symValue sym
 
 data Executable = Executable
   { execProgram :: Program,
     execDataMem :: IM.IntMap Word8,
-    execSourceMap :: [(Word32, Int)]
+    -- | per-instruction provenance: (load address, source line, source file)
+    execSourceMap :: [(Word32, Int, FilePath)]
   }
   deriving (Show)
 
-stmtSize :: Int -> Statement -> Int
-stmtSize _ (StmtInstr i) = sum (map (const 4) (NE.toList $ lower i))
-stmtSize _ (StmtDirective (DirSection _)) = 0
-stmtSize _ (StmtDirective (DirString s)) = length s + 1
-stmtSize _ (StmtDirective (DirAscii s)) = length s
-stmtSize _ (StmtDirective (DirByte l)) = length l
-stmtSize _ (StmtDirective (DirHalf l)) = length l * 2
-stmtSize _ (StmtDirective (DirWord l)) = length l * 4
-stmtSize _ (StmtDirective (DirSpace n)) = n
-stmtSize pc (StmtDirective (DirAlign n)) =
-  let alignVal = 2 ^ n
-      remAlign = pc `mod` alignVal
-   in if remAlign == 0 then 0 else alignVal - remAlign
+litOp :: Int -> Operand
+litOp = OpExpr . EInt
+
+hiOp, loOp :: String -> Operand
+hiOp = OpReloc HiPcrel . ESym
+loOp = OpReloc LoPcrel . ESym
+
+-- | split a value into the @(hi20, lo12)@ pair, with @lo@ sign-extended into [-2048, 2047]
+hiLo12 :: Int -> (Int, Int)
+hiLo12 v = ((v + 0x800) `shiftR` 12, (v .&. 0xFFF) - if testBit v 11 then 0x1000 else 0)
+
+liHi, liLo :: Expr -> Expr
+liHi e = EBin Shr (EBin Add e (EInt 0x800)) (EInt 12)
+liLo e = EBin Sub (EBin BAnd (EBin Add e (EInt 0x800)) (EInt 0xFFF)) (EInt 0x800)
 
 lower :: ArchInstr 'Parsed -> NonEmpty (SomeInstruction Operand)
 lower (RealInstr i) = i :| []
 lower (PseudoInstr op) = case op of
-  P_NOP -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs x0 x0 (ImmVal 0))
-  P_MV rd rs -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd rs (ImmVal 0))
-  P_LI rd (ImmVal v)
-    | v < -2048 || v > 2047 ->
-        let hi = (v + 0x800) `shiftR` 12
-            lo = (v .&. 0xFFF) - (if testBit v 11 then 0x1000 else 0)
-         in SomeInstruction (UType LUI (UTypeArgs rd (ImmVal hi)))
-              :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (ImmVal lo)))]
-  P_LI rd imm -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
+  P_NOP -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs x0 x0 (litOp 0))
+  P_MV rd rs -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd rs (litOp 0))
+  P_LI rd imm -> case imm of
+    -- a constant we can fold now: emit the size-optimal form
+    OpExpr e
+      | Just v <- foldConst e ->
+          if v < -2048 || v > 2047
+            then
+              let (hi, lo) = hiLo12 v
+               in SomeInstruction (UType LUI (UTypeArgs rd (litOp hi)))
+                    :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (litOp lo)))]
+            else pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 (litOp v))
+    -- a symbol/expression whose value is unknown at lowering: emit the worst case (lui+addi)
+    OpExpr e ->
+      SomeInstruction (UType LUI (UTypeArgs rd (OpExpr (liHi e))))
+        :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (OpExpr (liLo e))))]
+    _ -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
   P_NEG rd rs -> pure $ SomeInstruction $ RType SUB (RTypeArgs rd x0 rs)
-  P_NOT rd rs -> pure $ SomeInstruction $ ArithI XORI (ITypeArgs rd rs (ImmVal (-1)))
+  P_NOT rd rs -> pure $ SomeInstruction $ ArithI XORI (ITypeArgs rd rs (litOp (-1)))
   P_J off -> pure $ SomeInstruction $ JType JAL (JTypeArgs x0 off)
-  P_JR rs -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 rs (ImmVal 0))
-  P_RET -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 x1 (ImmVal 0))
+  P_JR rs -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 rs (litOp 0))
+  P_RET -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 x1 (litOp 0))
   P_LA rd lbl ->
-    SomeInstruction (UType AUIPC (UTypeArgs rd (LabelHi lbl)))
-      :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (LabelLo lbl)))]
+    SomeInstruction (UType AUIPC (UTypeArgs rd (hiOp lbl)))
+      :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (loOp lbl)))]
   P_LOAD_GL lop rd lbl ->
-    SomeInstruction (UType AUIPC (UTypeArgs rd (LabelHi lbl)))
-      :| [SomeInstruction (LoadI lop (ITypeArgs rd rd (LabelLo lbl)))]
+    SomeInstruction (UType AUIPC (UTypeArgs rd (hiOp lbl)))
+      :| [SomeInstruction (LoadI lop (ITypeArgs rd rd (loOp lbl)))]
   P_STORE_GL sop src lbl temp ->
-    SomeInstruction (UType AUIPC (UTypeArgs temp (LabelHi lbl)))
-      :| [SomeInstruction (SType sop (STypeArgs temp src (LabelLo lbl)))]
-  P_SEQZ rd rs -> pure $ SomeInstruction $ ArithI SLTIU (ITypeArgs rd rs (ImmVal 1))
+    SomeInstruction (UType AUIPC (UTypeArgs temp (hiOp lbl)))
+      :| [SomeInstruction (SType sop (STypeArgs temp src (loOp lbl)))]
+  P_SEQZ rd rs -> pure $ SomeInstruction $ ArithI SLTIU (ITypeArgs rd rs (litOp 1))
   P_SNEZ rd rs -> pure $ SomeInstruction $ RType SLTU (RTypeArgs rd x0 rs)
   P_SLTZ rd rs -> pure $ SomeInstruction $ RType SLT (RTypeArgs rd rs x0)
   P_SGTZ rd rs -> pure $ SomeInstruction $ RType SLT (RTypeArgs rd x0 rs)
@@ -79,11 +135,11 @@ lower (PseudoInstr op) = case op of
   P_BGTU rs rt off -> pure $ SomeInstruction $ BType BLTU (BTypeArgs rt rs off)
   P_BLEU rs rt off -> pure $ SomeInstruction $ BType BGEU (BTypeArgs rt rs off)
   P_CALL lbl ->
-    SomeInstruction (UType AUIPC (UTypeArgs x1 (LabelHi lbl)))
-      :| [SomeInstruction (JumpI JALR (ITypeArgs x1 x1 (LabelLo lbl)))]
+    SomeInstruction (UType AUIPC (UTypeArgs x1 (hiOp lbl)))
+      :| [SomeInstruction (JumpI JALR (ITypeArgs x1 x1 (loOp lbl)))]
   P_TAIL lbl ->
-    SomeInstruction (UType AUIPC (UTypeArgs x6 (LabelHi lbl)))
-      :| [SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (LabelLo lbl)))]
+    SomeInstruction (UType AUIPC (UTypeArgs x6 (hiOp lbl)))
+      :| [SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (loOp lbl)))]
   P_CSRR rd csr -> pure $ SomeInstruction $ System CSRRS (SysArgs rd csr x0)
   P_CSRW csr rs -> pure $ SomeInstruction $ System CSRRW (SysArgs x0 csr rs)
   P_CSRS csr rs -> pure $ SomeInstruction $ System CSRRS (SysArgs x0 csr rs)
@@ -92,102 +148,285 @@ lower (PseudoInstr op) = case op of
   P_CSRSI csr imm -> pure $ SomeInstruction $ SystemI CSRRSI (SysIArgs x0 csr imm)
   P_CSRCI csr imm -> pure $ SomeInstruction $ SystemI CSRRCI (SysIArgs x0 csr imm)
 
-expandProgram :: [(Int, ArchInstr 'Parsed)] -> [(Int, SomeInstruction Operand)]
-expandProgram = concatMap (\(ln, instr) -> map (ln,) (NE.toList . lower $ instr))
-
 dataBase :: Int
 dataBase = 0x10000000
 
-data Layout = Layout
-  { l_textPC :: !Int,
-    l_dataPC :: !Int,
-    l_section :: !Section
+-- | Round @x@ up to the next multiple of @a@
+alignUp :: Int -> Int -> Int
+alignUp a x = case x `mod` a of
+  0 -> x
+  r -> x + (a - r)
+
+bssPageAlign :: Int
+bssPageAlign = 0x1000
+
+sectionAlign :: Int
+sectionAlign = 4
+
+atLoc :: Loc -> Either LinkError a -> Either LinkError a
+atLoc loc = first (LocatedLink loc)
+
+dataSize :: Directive -> Int
+dataSize d = case d of
+  DirString s -> length s + 1
+  DirAscii s -> length s
+  DirByte es -> length es
+  DirHalf es -> length es * 2
+  DirWord es -> length es * 4
+  _ -> 0
+
+-- | the padding needed to bring @addr@ up to a multiple of @a@ bytes
+padTo :: Int -> Int -> Int
+padTo addr a
+  | a <= 1 = 0
+  | otherwise = case addr `mod` a of
+      0 -> 0
+      r -> a - r
+
+-- | the byte alignment an alignment directive's argument denotes; the exponent is assumed non-negative
+alignBytes :: AlignMode -> Int -> Int
+alignBytes AlignPow2 e = 2 ^ e
+alignBytes AlignBytes n = n
+
+-- | how an alignment directive's argument is described in a diagnostic
+alignCtx :: AlignMode -> String
+alignCtx AlignPow2 = "alignment exponent"
+alignCtx AlignBytes = "alignment"
+
+-- | default alignment for a @.comm@/@.lcomm@ symbol
+defaultCommAlign :: Int -> Int
+defaultCommAlign size
+  | size >= 4 = 4
+  | size >= 2 = 2
+  | otherwise = 1
+
+data Place = Place
+  { -- | the section bases in force for this walk (empty while sizes are being measured, so every section sits at base 0)
+    pBases :: !SectionBases,
+    -- | current byte offset within each visited section
+    pOffsets :: !(M.Map Section Int),
+    -- | sections in first-seen order, used to lay out each region
+    pOrder :: ![Section],
+    pCur :: !Section,
+    pSyms :: !SymbolTable,
+    -- | names that may not be redefined (labels and @.equiv@ constants)
+    pLocked :: !(S.Set String),
+    -- | declared bindings, applied to the symbol table once placement is done
+    pBind :: !(M.Map String SymBinding),
+    -- | expanded instructions in reverse order: (address, source loc, instr)
+    pInstrs :: ![(Int, Loc, SomeInstruction Operand)],
+    -- | emitting data directives in reverse order: (address, source loc, dir),
+    -- their bytes are produced in a second pass, once every symbol is known, so
+    -- that data may reference forward symbols (e.g. @.word later_label@)
+    pDataDirs :: ![(Int, Loc, Directive)]
   }
 
-initLayout :: Layout
-initLayout = Layout 0 dataBase TextSection
+initPlace :: SectionBases -> Place
+initPlace bases =
+  Place
+    { pBases = bases,
+      pOffsets = M.singleton textSection 0,
+      pOrder = [textSection],
+      pCur = textSection,
+      pSyms = M.empty,
+      pLocked = S.empty,
+      pBind = M.empty,
+      pInstrs = [],
+      pDataDirs = []
+    }
 
-layoutPC :: Layout -> Int
-layoutPC l = if l_section l == TextSection then l_textPC l else l_dataPC l
+curOffset :: Place -> Int
+curOffset p = M.findWithDefault 0 (pCur p) (pOffsets p)
 
-stepLayout :: Layout -> Maybe Statement -> (Int, Layout)
-stepLayout lay ms = case ms of
-  Nothing -> (here, lay)
-  Just (StmtDirective (DirSection sec)) -> (here, lay {l_section = sec})
-  Just stmt ->
-    let sz = stmtSize here stmt
-        lay'
-          | l_section lay == TextSection = lay {l_textPC = l_textPC lay + sz}
-          | otherwise = lay {l_dataPC = l_dataPC lay + sz}
-     in (here, lay')
+-- | the absolute address of the current point in the current section
+placeAddr :: Place -> Int
+placeAddr p = baseOf (pBases p) (pCur p) + curOffset p
+
+-- | advance the current section's offset by @n@ bytes
+advance :: Int -> Place -> Place
+advance n p = p {pOffsets = M.insertWith (+) (pCur p) n (pOffsets p)}
+
+-- | register a section (assigning it offset 0 and a slot in the layout order) the first time it is seen
+visitSection :: Section -> Place -> Place
+visitSection sec p
+  | M.member sec (pOffsets p) = p
+  | otherwise =
+      p
+        { pOffsets = M.insert sec 0 (pOffsets p),
+          pOrder = pOrder p ++ [sec]
+        }
+
+setSection :: Section -> Place -> Place
+setSection sec p = (visitSection sec p) {pCur = sec}
+
+-- | define an address symbol (a label or common symbol) at a section-relative offset, rejecting a redefinition
+defAddrSym :: Loc -> String -> Section -> Int -> SymBinding -> Place -> Either LinkError Place
+defAddrSym loc name sec off bind p
+  | S.member name (pLocked p) || M.member name (pSyms p) =
+      Left (LocatedLink loc (DuplicateLabel name))
+  | otherwise =
+      Right
+        p
+          { pSyms = M.insert name (Symbol (Just sec) off AddrSym bind) (pSyms p),
+            pLocked = S.insert name (pLocked p)
+          }
+
+defLabel :: Loc -> String -> Place -> Either LinkError Place
+defLabel loc name p = defAddrSym loc name (pCur p) (curOffset p) Local p
+
+-- | reserve a @.comm@/@.lcomm@ common symbol, does not change the current section
+reserveCommon :: Loc -> Bool -> String -> Int -> Int -> Place -> Either LinkError Place
+reserveCommon loc isLocal name size align p0 =
+  let p = visitSection commonSection p0
+      off0 = M.findWithDefault 0 commonSection (pOffsets p)
+      aligned = alignUp (max 1 align) off0
+      bind = if isLocal then Local else Global
+   in do
+        p1 <- defAddrSym loc name commonSection aligned bind p
+        Right p1 {pOffsets = M.insert commonSection (aligned + size) (pOffsets p1)}
+
+defConst :: Bool -> Loc -> String -> Symbol -> Place -> Either LinkError Place
+defConst redefinable loc name sym p
+  | redefinable =
+      if S.member name (pLocked p)
+        then Left (LocatedLink loc (DuplicateLabel name))
+        else Right p {pSyms = M.insert name sym (pSyms p)}
+  | M.member name (pSyms p) = Left (LocatedLink loc (DuplicateLabel name))
+  | otherwise =
+      Right
+        p
+          { pSyms = M.insert name sym (pSyms p),
+            pLocked = S.insert name (pLocked p)
+          }
+
+-- | replace the location counter @.@ in an expression with a literal
+substCur :: Int -> Expr -> Expr
+substCur loc = go
   where
-    here = layoutPC lay
+    go ECur = EInt loc
+    go (EUn o e) = EUn o (go e)
+    go (EBin o a b) = EBin o (go a) (go b)
+    go e = e
 
-layout :: ParsedProgram -> [(Int, Int, SourceLine)]
-layout = snd . mapAccumL step initLayout
+declareBinding :: SymBinding -> [String] -> Place -> Place
+declareBinding b names p = p {pBind = foldr (`M.insert` b) (pBind p) names}
+
+placeStep :: Place -> (Loc, SourceLine) -> Either LinkError Place
+placeStep p (loc, (mLabel, mStmt)) = do
+  p1 <- maybe (Right p) (\name -> defLabel loc name p) mLabel
+  let here = placeAddr p1
+  maybe (Right p1) (placeStmt loc here p1) mStmt
+
+placeStmt :: Loc -> Int -> Place -> Statement -> Either LinkError Place
+placeStmt loc here p stmt = case stmt of
+  StmtDirective (DirSection sec) -> Right (setSection sec p)
+  StmtDirective (DirEqu name e) -> defineConst True name e
+  StmtDirective (DirEquiv name e) -> defineConst False name e
+  StmtDirective (DirGlobl names) -> Right (declareBinding Global names p)
+  StmtDirective (DirLocal names) -> Right (declareBinding Local names p)
+  StmtDirective (DirWeak names) -> Right (declareBinding Weak names p)
+  StmtDirective (DirSpace e) -> do
+    n <- layoutVal e >>= requireNonNeg ".space size"
+    Right (advance n p)
+  StmtDirective (DirAlign mode e) -> do
+    v <- layoutVal e >>= requireNonNeg (alignCtx mode)
+    Right (advance (padTo here (alignBytes mode v)) p)
+  StmtDirective (DirComm isLocal name sizeE mAlignE) -> do
+    size <- layoutVal sizeE
+    align <- maybe (Right (defaultCommAlign size)) layoutVal mAlignE
+    reserveCommon loc isLocal name size align p
+  StmtDirective dir ->
+    let recorded
+          | secClass (pCur p) == SecBss = p
+          | otherwise = p {pDataDirs = (here, loc, dir) : pDataDirs p}
+     in Right (advance (dataSize dir) recorded)
+  StmtInstr i ->
+    let subs = NE.toList (lower i)
+        placed = zipWith (\k sub -> (here + 4 * k, loc, sub)) [0 ..] subs
+     in Right (advance (4 * length subs) p {pInstrs = reverse placed ++ pInstrs p})
   where
-    step lay (ln, sl@(_, ms)) =
-      let (here, lay') = stepLayout lay ms
-       in (lay', (ln, here, sl))
+    layoutVal e = atLoc loc (evalExpr (pBases p) here (pSyms p) e)
+    requireNonNeg ctx v
+      | v < 0 = Left (LocatedLink loc (NegativeValue ctx v))
+      | otherwise = Right v
+    -- a constant is evaluated eagerly when every symbol it names is already defined
+    defineConst redefinable name e0 =
+      let e = substCur here e0
+       in case evalExpr (pBases p) here (pSyms p) e of
+            Right v -> defConst redefinable loc name (Symbol Nothing v ConstSym Local) p
+            Left (UndefinedLabel _) ->
+              defConst redefinable loc name (Symbol Nothing 0 (DeferredSym e) Local) p
+            Left err -> Left (LocatedLink loc err)
 
-buildSymTable :: ParsedProgram -> Either LinkError SymbolTable
-buildSymTable = foldM step M.empty . layout
+-- | The @n@ little-endian bytes of @x@
+leBytes :: Int -> Int -> [Word8]
+leBytes n x = [fromIntegral ((x `shiftR` (8 * k)) .&. 0xFF) | k <- [0 .. n - 1]]
+
+emitDirective :: SectionBases -> SymbolTable -> Int -> Directive -> Either LinkError [(Int, Word8)]
+emitDirective bases syms base dir = case dir of
+  DirString str -> Right (zip [base ..] (map (fromIntegral . ord) (str ++ "\0")))
+  DirAscii str -> Right (zip [base ..] (map (fromIntegral . ord) str))
+  DirByte es -> emitInts 1 ".byte value" es
+  DirHalf es -> emitInts 2 ".half value" es
+  DirWord es -> emitInts 4 ".word value" es
+  _ -> Right []
   where
-    step tbl (ln, here, (ml, _)) = case ml of
-      Nothing -> Right tbl
-      Just n
-        | M.member n tbl -> Left (LocatedLink ln (DuplicateLabel n))
-        | otherwise -> Right (M.insert n here tbl)
+    emitInts width ctx es =
+      concat <$> traverse one (zip [base, base + width ..] es)
+      where
+        lo = negate (bit (8 * width - 1))
+        hi = bit (8 * width) - 1
+        one (addr, e) = do
+          v <- evalExpr bases addr syms e
+          if v < lo || v > hi
+            then Left (ImmOutOfRange ctx lo hi v)
+            else Right (zip [addr ..] (leBytes width v))
 
-emitSections :: ParsedProgram -> ([(Int, ArchInstr 'Parsed)], IM.IntMap Word8)
-emitSections prog = (reverse instrs, dataMem)
+applyBindings :: M.Map String SymBinding -> SymbolTable -> SymbolTable
+applyBindings binds syms =
+  M.foldrWithKey (\n b -> M.adjust (\sym -> sym {symBinding = b}) n) syms binds
+
+-- | assign each section a final base address from its measured size
+-- * text-class sections fill the region from @entryPoint@
+-- * rodata then data fill the region from @dataBase@
+-- * bss-class sections follow, page-aligned, as NOBITS reservations.
+assignBases :: M.Map Section Int -> [Section] -> SectionBases
+assignBases sizes order = M.unions [textB, rodB, datB, bssB]
   where
-    (instrs, dataMem) = foldl' step ([], IM.empty) (layout prog)
-    step acc@(is, dm) (ln, here, (_, ms)) = case ms of
-      Just (StmtInstr i) -> ((ln, i) : is, dm)
-      Just (StmtDirective dir) -> (is, insertDirective here dir dm)
-      _ -> acc
-
-    insertDirective :: Int -> Directive -> IM.IntMap Word8 -> IM.IntMap Word8
-    insertDirective pc dir memMap = case dir of
-      DirString s -> foldl' (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0 ..] (s ++ "\0"))
-      DirAscii s -> foldl' (\m (i, c) -> IM.insert (pc + i) (fromIntegral $ ord c) m) memMap (zip [0 ..] s)
-      DirByte xs -> foldl' (\m (i, x) -> IM.insert (pc + i) (fromIntegral x) m) memMap (zip [0 ..] xs)
-      DirWord xs ->
-        foldl'
-          ( \m (i, x) ->
-              let b0 = fromIntegral (x .&. 0xFF)
-                  b1 = fromIntegral ((x `shiftR` 8) .&. 0xFF)
-                  b2 = fromIntegral ((x `shiftR` 16) .&. 0xFF)
-                  b3 = fromIntegral ((x `shiftR` 24) .&. 0xFF)
-               in IM.insert (pc + i * 4 + 3) b3 $ IM.insert (pc + i * 4 + 2) b2 $ IM.insert (pc + i * 4 + 1) b1 $ IM.insert (pc + i * 4) b0 m
-          )
-          memMap
-          (zip [0 ..] xs)
-      _ -> memMap
+    sizeOf s = M.findWithDefault 0 s sizes
+    inClass cls = filter ((== cls) . secClass) order
+    layoutRegion start = foldl step (M.empty, start)
+      where
+        step (m, cur) s =
+          let b = alignUp sectionAlign cur
+           in (M.insert s b m, b + sizeOf s)
+    (textB, _) = layoutRegion (fromIntegral entryPoint) (inClass SecText)
+    (rodB, afterRod) = layoutRegion dataBase (inClass SecRodata)
+    (datB, afterDat) = layoutRegion afterRod (inClass SecData)
+    bssStart = alignUp bssPageAlign afterDat
+    (bssB, _) = layoutRegion bssStart (inClass SecBss)
 
 resolve :: ParsedProgram -> Either LinkError Executable
-resolve l = do
-  symTable <- buildSymTable l
-
-  let (rawInstrs, dataMem) = emitSections l
-  let expanded = expandProgram rawInstrs
-
-  programWithLines <-
-    evalStateT
-      ( mapM
-          ( \(ln, instr) -> do
-              pc <- get
-              resolved <- mapStateT (first (LocatedLink ln)) (resolveInstruction symTable instr)
-              return (resolved, (fromIntegral pc :: Word32, ln))
-          )
-          expanded
-      )
-      0
-
-  let program = map fst programWithLines
-  let sourceMap = map snd programWithLines
+resolve prog = do
+  -- walk with every section at base 0 purely to measure sizes
+  measured <- foldM placeStep (initPlace M.empty) prog
+  let bases = assignBases (pOffsets measured) (pOrder measured)
+  -- walk again with real bases, so every recorded address, and any @.equ@ referencing a label, is already absolute
+  placed <- foldM placeStep (initPlace bases) prog
+  let syms = applyBindings (pBind placed) (pSyms placed)
+  dataMem <- foldM (emitInto bases syms) IM.empty (reverse (pDataDirs placed))
+  resolvedWithLines <- mapM (resolveOne bases syms) (reverse (pInstrs placed))
+  let program = map fst resolvedWithLines
+      sourceMap = map snd resolvedWithLines
   return $ Executable program dataMem sourceMap
+  where
+    emitInto bases syms mem (addr, loc, dir) = do
+      bytes <- atLoc loc (emitDirective bases syms addr dir)
+      Right (foldl' (\m (a, b) -> IM.insert a b m) mem bytes)
+    resolveOne bases syms (addr, loc, instr) =
+      atLoc loc $ do
+        r <- resolveOperand bases addr syms instr
+        return (r, (fromIntegral addr, locLine loc, locFile loc))
 
 checkShiftBounds :: IArithOp -> Int -> Either LinkError Int
 checkShiftBounds op val
@@ -196,8 +435,7 @@ checkShiftBounds op val
   | otherwise = Right val
 
 isReloc :: Operand -> Bool
-isReloc (LabelHi _) = True
-isReloc (LabelLo _) = True
+isReloc (OpReloc _ _) = True
 isReloc _ = False
 
 checkSigned :: String -> Int -> Bool -> Operand -> Int -> Either LinkError Int
@@ -219,78 +457,89 @@ checkUpper orig v
     lo = negate (bit 19)
     hi = bit 20 - 1
 
-resolveInstruction :: SymbolTable -> SomeInstruction Operand -> StateT Int (Either LinkError) (SomeInstruction Int)
-resolveInstruction table instr = do
-  pc <- get
-  resolved <- lift $ resolveOperand pc table instr
-  modify (+ 4)
-  return resolved
+evalExpr :: SectionBases -> Int -> SymbolTable -> Expr -> Either LinkError Int
+evalExpr bases loc table = go S.empty
+  where
+    -- @seen@ is the set of deferred constants currently being resolved, so a
+    -- constant that refers back to itself is reported rather than looping
+    go _ (EInt n) = Right n
+    go _ ECur = Right loc
+    go seen (ESym s) = resolveSym seen s
+    go seen (EUn o e) = applyUnOp o <$> go seen e
+    go seen (EBin o a b) = do
+      x <- go seen a
+      y <- go seen b
+      maybe (Left DivByZero) Right (applyBinOp o x y)
+    resolveSym seen s = case M.lookup s table of
+      Nothing -> Left (UndefinedLabel s)
+      Just sym -> case symType sym of
+        DeferredSym e
+          | S.member s seen -> Left (CircularConstant s)
+          | otherwise -> go (S.insert s seen) e
+        _ -> Right (symAbsolute bases sym)
 
-resolveRelative :: Int -> SymbolTable -> Operand -> Either LinkError Int
-resolveRelative _ _ (ImmVal v) = Right v
-resolveRelative pc table (Label l) =
-  case M.lookup l table of
-    Just target -> Right $ target - pc
-    Nothing -> Left (UndefinedLabel l)
-resolveRelative pc table (LabelHi l) =
-  case M.lookup l table of
-    Just target -> Right $ (target - pc + 0x800) `shiftR` 12
-    Nothing -> Left (UndefinedLabel l)
-resolveRelative pc table (LabelLo l) =
-  case M.lookup l table of
-    Just target -> Right $ (target - pc + 4) .&. 0xFFF
-    Nothing -> Left (UndefinedLabel l)
+pcrelHi, pcrelLo :: Int -> Int -> Int
+pcrelHi pc t = (t - pc + 0x800) `shiftR` 12
+pcrelLo pc t = (t - pc + 4) .&. 0xFFF
 
-resolveAbsolute :: SymbolTable -> Operand -> Either LinkError Int
-resolveAbsolute table (Label l) =
-  case M.lookup l table of
-    Just target -> Right target
-    Nothing -> Left (UndefinedLabel l)
-resolveAbsolute table (LabelHi l) =
-  case M.lookup l table of
-    Just target -> Right $ (target + 0x800) `shiftR` 12
-    Nothing -> Left (UndefinedLabel l)
-resolveAbsolute table (LabelLo l) =
-  case M.lookup l table of
-    Just target -> Right $ target .&. 0xFFF
-    Nothing -> Left (UndefinedLabel l)
-resolveAbsolute _ (ImmVal v) = Right v
+absHi, absLo :: Int -> Int
+absHi = fst . hiLo12
+absLo t = t .&. 0xFFF
 
-resolveOperand :: Int -> SymbolTable -> SomeInstruction Operand -> Either LinkError (SomeInstruction Int)
-resolveOperand pc table (SomeInstruction (JType op args)) = do
-  v <- resolveRelative pc table (j_imm args)
+relocValue :: RelocKind -> Int -> Int -> Int
+relocValue HiAbs _ = absHi
+relocValue LoAbs _ = absLo
+relocValue HiPcrel pc = pcrelHi pc
+relocValue LoPcrel pc = pcrelLo pc
+
+-- | resolve a branch/jump/auipc operand: a bare expression is made PC-relative
+resolveRelative :: SectionBases -> Int -> SymbolTable -> Operand -> Either LinkError Int
+resolveRelative bases pc table op = case op of
+  OpExpr e -> case foldConst e of
+    Just v -> Right v
+    Nothing -> subtract pc <$> evalExpr bases pc table e
+  OpReloc k e -> relocValue k pc <$> evalExpr bases pc table e
+
+resolveImm :: SectionBases -> Int -> SymbolTable -> Operand -> Either LinkError Int
+resolveImm bases pc table op = case op of
+  OpExpr e -> evalExpr bases pc table e
+  OpReloc k e -> relocValue k pc <$> evalExpr bases pc table e
+
+resolveOperand :: SectionBases -> Int -> SymbolTable -> SomeInstruction Operand -> Either LinkError (SomeInstruction Int)
+resolveOperand bases pc table (SomeInstruction (JType op args)) = do
+  v <- resolveRelative bases pc table (j_imm args)
   v' <- checkSigned "jump" 21 True (j_imm args) v
   return $ SomeInstruction $ JType op (args {j_imm = v'})
-resolveOperand pc table (SomeInstruction (BType op args)) = do
-  v <- resolveRelative pc table (b_imm args)
+resolveOperand bases pc table (SomeInstruction (BType op args)) = do
+  v <- resolveRelative bases pc table (b_imm args)
   v' <- checkSigned "branch" 13 True (b_imm args) v
   return $ SomeInstruction $ BType op (args {b_imm = v'})
-resolveOperand pc table (SomeInstruction (UType AUIPC args)) = do
-  v <- resolveRelative pc table (u_imm args)
+resolveOperand bases pc table (SomeInstruction (UType AUIPC args)) = do
+  v <- resolveRelative bases pc table (u_imm args)
   v' <- checkUpper (u_imm args) v
   return $ SomeInstruction $ UType AUIPC (args {u_imm = v'})
-resolveOperand _ table (SomeInstruction (UType LUI args)) = do
-  v <- resolveAbsolute table (u_imm args)
+resolveOperand bases pc table (SomeInstruction (UType LUI args)) = do
+  v <- resolveImm bases pc table (u_imm args)
   v' <- checkUpper (u_imm args) v
   return $ SomeInstruction $ UType LUI (args {u_imm = v'})
-resolveOperand pc table (SomeInstruction (LoadI op args)) = do
-  v <- resolveRelative pc table (i_imm args)
+resolveOperand bases pc table (SomeInstruction (LoadI op args)) = do
+  v <- resolveImm bases pc table (i_imm args)
   v' <- checkSigned "load offset" 12 False (i_imm args) v
   return $ SomeInstruction $ LoadI op (args {i_imm = v'})
-resolveOperand pc table (SomeInstruction (JumpI op args)) = do
-  v <- resolveRelative pc table (i_imm args)
+resolveOperand bases pc table (SomeInstruction (JumpI op args)) = do
+  v <- resolveImm bases pc table (i_imm args)
   v' <- checkSigned "jalr offset" 12 False (i_imm args) v
   return $ SomeInstruction $ JumpI op (args {i_imm = v'})
-resolveOperand pc table (SomeInstruction (ArithI op args)) = do
-  val <- resolveRelative pc table (i_imm args)
+resolveOperand bases pc table (SomeInstruction (ArithI op args)) = do
+  val <- resolveImm bases pc table (i_imm args)
   validVal <-
     if op `elem` [SLLI, SRLI, SRAI]
       then checkShiftBounds op val
       else checkSigned "immediate" 12 False (i_imm args) val
   return $ SomeInstruction $ ArithI op (args {i_imm = validVal})
-resolveOperand pc table (SomeInstruction (SType op args)) = do
-  v <- resolveRelative pc table (s_imm args)
+resolveOperand bases pc table (SomeInstruction (SType op args)) = do
+  v <- resolveImm bases pc table (s_imm args)
   v' <- checkSigned "store offset" 12 False (s_imm args) v
   return $ SomeInstruction $ SType op (args {s_imm = v'})
-resolveOperand _ table (SomeInstruction instr) =
-  SomeInstruction <$> traverse (resolveAbsolute table) instr
+resolveOperand bases pc table (SomeInstruction instr) =
+  SomeInstruction <$> traverse (resolveImm bases pc table) instr

@@ -2,6 +2,7 @@ module Render
   ( renderAssemblyError,
     renderLinkError,
     renderEmulatorError,
+    renderPreprocessError,
     renderNotice,
     renderSystemEvent,
   )
@@ -9,7 +10,9 @@ where
 
 import Data.Word (Word32)
 import Error
+import Loc (renderLoc)
 import Numeric (showHex)
+import Preprocess (PreprocessError (..))
 
 hex :: Word32 -> String
 hex w = "0x" ++ showHex w ""
@@ -18,7 +21,7 @@ renderAssemblyError :: AssemblyError -> String
 renderAssemblyError = go
   where
     go e = case e of
-      Located ln inner -> "line " ++ show ln ++ ": " ++ go inner
+      Located loc inner -> renderLoc loc ++ ": " ++ go inner
       UnknownInstruction t -> "unknown instruction `" ++ t ++ "`"
       InvalidRegister t -> "invalid register `" ++ t ++ "`"
       ImmediateTooLarge v -> "immediate out of range: " ++ show v
@@ -37,13 +40,16 @@ renderLinkError :: LinkError -> String
 renderLinkError = go
   where
     go e = case e of
-      LocatedLink ln inner -> "line " ++ show ln ++ ": " ++ go inner
+      LocatedLink loc inner -> renderLoc loc ++ ": " ++ go inner
       DuplicateLabel l -> "duplicate label `" ++ l ++ "`"
       UndefinedLabel l -> "undefined label `" ++ l ++ "`"
       ShiftOutOfRange v -> "shift amount out of range (0-31): " ++ show v
       ImmOutOfRange ctx lo hi v ->
         ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
       MisalignedTarget ctx v -> ctx ++ " target is not 2-byte aligned: " ++ show v
+      NegativeValue ctx v -> ctx ++ " must not be negative: " ++ show v
+      DivByZero -> "division by zero in an expression"
+      CircularConstant n -> "circular constant definition: `" ++ n ++ "`"
 
 renderEmulatorError :: EmulatorError -> String
 renderEmulatorError e = case e of
@@ -79,6 +85,11 @@ renderEmulatorError e = case e of
       ++ ") requires the "
       ++ ext
       ++ " extension, which is disabled"
+
+renderPreprocessError :: PreprocessError -> String
+renderPreprocessError e = case e of
+  IncludeNotFound loc p -> renderLoc loc ++ ": cannot find included file `" ++ p ++ "`"
+  IncludeCycle loc p -> renderLoc loc ++ ": circular .include of `" ++ p ++ "`"
 
 renderNotice :: Notice -> String
 renderNotice n = case n of

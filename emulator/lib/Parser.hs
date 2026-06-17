@@ -1,16 +1,17 @@
-module Parser (parse) where
+module Parser (parse, parseWithLocs) where
 
 import Control.Applicative
 import Control.Monad (void)
-import Data.Bifunctor (second)
+import Data.Bifunctor (first, second)
 import Data.Bits (bit, shiftR)
-import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit)
+import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit, ord)
 import Data.Map.Strict qualified as M
 import Data.Maybe (mapMaybe)
 import Error (AssemblyError (..))
 import Extension (Extension (..), ExtensionSet, extensionCode, isEnabled)
 import Extension.Classify (HasExtension (..))
 import GHC.Base (when)
+import Loc (Loc, rootLoc)
 import Machine
 import Numeric (readHex)
 import Text.Read (readMaybe)
@@ -185,13 +186,14 @@ comment =
 escapeChar :: Parser Char
 escapeChar = do
   void $ char '\\'
-  c <- satisfy (`elem` "nt0\\\"")
+  c <- satisfy (`elem` "nt0\\\"'")
   return $ case c of
     'n' -> '\n'
     't' -> '\t'
     '0' -> '\0'
     '\\' -> '\\'
     '"' -> '"'
+    '\'' -> '\''
     _ -> c
 
 stringLiteral :: Parser String
@@ -220,30 +222,77 @@ register = lexeme $ do
     xName _ = Nothing
 
 operand :: Parser Operand
-operand =
-  choice
-    [ ImmVal <$> immediate,
-      Label <$> identifier
-    ]
+operand = reloc "%hi" HiAbs <|> reloc "%lo" LoAbs <|> (OpExpr <$> expr)
+  where
+    reloc name k =
+      OpReloc k <$> (lexeme (string name) *> symbolOp "(" *> expr <* symbolOp ")")
+
+-- | Left-associative chain of @p@ separated by infix operators @op@.
+chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a
+chainl1 p op = p >>= rest
+  where
+    rest x = (do f <- op; y <- p; rest (f x y)) <|> pure x
+
+symbolOp :: String -> Parser ()
+symbolOp s = lexeme (void (string s))
+
+-- | Assembler expressions, in increasing precedence:
+-- @|@, @^@, @&@, @<< >>@, @+ -@, @* / %@, then unary @- ~@ and atoms
+expr :: Parser Expr
+expr = exprBOr
+  where
+    exprBOr = chainl1 exprBXor (EBin BOr <$ symbolOp "|")
+    exprBXor = chainl1 exprBAnd (EBin BXor <$ symbolOp "^")
+    exprBAnd = chainl1 exprShift (EBin BAnd <$ symbolOp "&")
+    exprShift = chainl1 exprAdd ((EBin Shl <$ symbolOp "<<") <|> (EBin Shr <$ symbolOp ">>"))
+    exprAdd = chainl1 exprMul ((EBin Add <$ symbolOp "+") <|> (EBin Sub <$ symbolOp "-"))
+    exprMul =
+      chainl1
+        exprUnary
+        ( (EBin Mul <$ symbolOp "*")
+            <|> (EBin Div <$ divOp)
+            <|> (EBin Mod <$ symbolOp "%")
+        )
+    divOp = lexeme (string "/" <* notFollowedBy (char '/'))
+    exprUnary =
+      (EUn Neg <$ symbolOp "-" <*> exprUnary)
+        <|> (EUn BNot <$ symbolOp "~" <*> exprUnary)
+        <|> exprAtom
+    exprAtom =
+      choice
+        [ symbolOp "(" *> expr <* symbolOp ")",
+          ECur <$ lexeme (char '.' <* notFollowedBy (satisfy isIdentChar)),
+          EInt <$> lexeme numberLit,
+          EInt <$> lexeme charLiteral,
+          ESym <$> lexeme identifier
+        ]
+
+numberLit :: Parser Int
+numberLit = do
+  hex <- optional (string "0x" <|> string "0X")
+  case hex of
+    Just _ -> do
+      digits <- some (satisfy isHexDigit)
+      case readHex digits of
+        [(x, "")] -> return x
+        _ -> fail "Invalid hex literal"
+    Nothing -> integer
+
+charLiteral :: Parser Int
+charLiteral = do
+  void $ char '\''
+  c <- escapeChar <|> satisfy (\x -> x /= '\'' && x /= '\n')
+  void $ char '\''
+  return (ord c)
 
 labelDef :: Parser String
 labelDef = identifier <* char ':'
 
 immediate :: Parser Int
-immediate = do
-  sign <- optional (char '-')
-  hex <- optional (string "0x")
-
-  case hex of
-    Just _ -> do
-      digits <- some (satisfy isHexDigit)
-      case readHex digits of
-        [(x, "")] -> return $ applySign sign x
-        _ -> fail "Invalid Hex string"
-    Nothing -> applySign sign <$> integer
+immediate = applySign <$> optional (char '-') <*> numberLit
   where
-    applySign (Just _) x = -x
-    applySign Nothing x = x
+    applySign (Just _) = negate
+    applySign Nothing = id
 
 memOperand :: Parser (Operand, Register)
 memOperand = do
@@ -303,7 +352,7 @@ parseIJumpTypeOperands = explicit <|> implicit
         <*> operand
     implicit = do
       rs <- register
-      return $ ITypeArgs x1 rs (ImmVal 0)
+      return $ ITypeArgs x1 rs (OpExpr (EInt 0))
 
 parseBTypeOperands :: Parser (BTypeArgs Operand)
 parseBTypeOperands =
@@ -393,7 +442,7 @@ parseSystemImm op = do
   when (uimm < 0 || uimm > 31) $
     failWith (CsrOutOfRange "CSR immediate" 0 31 uimm)
 
-  let args = SysIArgs {ci_rd = rd, ci_csr = csr, ci_uimm = ImmVal (fromIntegral uimm)}
+  let args = SysIArgs {ci_rd = rd, ci_csr = csr, ci_uimm = OpExpr (EInt (fromIntegral uimm))}
   return $ RealInstr $ SomeInstruction $ SystemI op args
 
 parseTrap :: TrapOp -> Parser (ArchInstr 'Parsed)
@@ -411,7 +460,7 @@ parseLi = do
   comma
   op <- operand
   case op of
-    ImmVal v | not (liFits v) -> failWith (ImmediateTooLarge v)
+    OpExpr e | Just v <- foldConst e, not (liFits v) -> failWith (ImmediateTooLarge v)
     _ -> return ()
   return (P_LI rd op)
   where
@@ -457,7 +506,7 @@ parseCsrImm op = op <$> csrOperand <* comma <*> csrUImm
       uimm <- immediate
       when (uimm < 0 || uimm > 31) $
         failWith (CsrOutOfRange "CSR immediate" 0 31 uimm)
-      return $ ImmVal (fromIntegral uimm)
+      return $ OpExpr (EInt (fromIntegral uimm))
 
 rOpTable :: [(String, ROp)]
 rOpTable =
@@ -630,10 +679,57 @@ parseInstruction exts =
 parseSection :: Parser Directive
 parseSection =
   choice
-    [ DirSection TextSection <$ lexeme (string ".text"),
-      DirSection DataSection <$ lexeme (string ".data"),
-      DirSection BssSection <$ lexeme (string ".bss")
+    [ DirSection textSection <$ sectionKw ".text",
+      DirSection dataSection <$ sectionKw ".data",
+      DirSection rodataSection <$ sectionKw ".rodata",
+      DirSection bssSection <$ sectionKw ".bss",
+      lexeme (string ".section") *> commit parseSectionArgs
     ]
+  where
+    -- a bare section shorthand must be a whole token (so @.text@ does not also
+    -- match the start of a hypothetical @.text2@ or @.data@/@.set@ collision)
+    sectionKw n = lexeme (string n <* notFollowedBy (satisfy isSectionChar))
+
+isSectionChar :: Char -> Bool
+isSectionChar c = isIdentChar c || c == '.' || c == '$'
+
+-- | @.section name [, "flags"]@. The load class comes from the flag string when
+-- present (@x@ -> text, @w@ -> data, nobits -> bss, otherwise rodata), else it is
+-- inferred from a leading @.text@/@.data@/@.bss@/@.rodata@ name
+parseSectionArgs :: Parser Directive
+parseSectionArgs = do
+  name <- lexeme (some (satisfy isSectionChar))
+  flags <- optional (comma *> stringLiteral)
+  pure (DirSection (Section name (classify name flags)))
+  where
+    classify name Nothing = classOfName name
+    classify _ (Just fs)
+      | 'x' `elem` fs = SecText
+      | 'b' `elem` fs = SecBss
+      | 'w' `elem` fs = SecData
+      | otherwise = SecRodata
+    classOfName name
+      | ".text" `isPrefixOf'` name = SecText
+      | ".rodata" `isPrefixOf'` name = SecRodata
+      | ".bss" `isPrefixOf'` name = SecBss
+      | otherwise = SecData
+    isPrefixOf' pre s = take (length pre) s == pre
+
+symbolName :: Parser String
+symbolName = lexeme identifier
+
+parseSymbolValue :: (String -> Expr -> Directive) -> Parser Directive
+parseSymbolValue mk = mk <$> symbolName <* comma <*> expr
+
+-- | @.align@/@.p2align@/@.balign N [, fill [, max]]@; the optional fill and max
+-- operands are accepted for GAS compatibility but ignored
+alignDir :: AlignMode -> Parser Directive
+alignDir mode = DirAlign mode <$> expr <* many (comma *> expr)
+
+-- | @.comm@/@.lcomm name, size [, align]@.
+commDir :: Bool -> Parser Directive
+commDir isLocal =
+  DirComm isLocal <$> symbolName <* comma <*> expr <*> optional (comma *> expr)
 
 parseDirective :: Parser Directive
 parseDirective =
@@ -642,13 +738,24 @@ parseDirective =
       lexeme (string ".string") *> (DirString <$> stringLiteral),
       lexeme (string ".asciz") *> (DirString <$> stringLiteral),
       lexeme (string ".ascii") *> (DirAscii <$> stringLiteral),
-      lexeme (string ".byte") *> (DirByte <$> sepBy1 immediate comma),
-      lexeme (string ".half") *> (DirHalf <$> sepBy1 immediate comma),
-      lexeme (string ".short") *> (DirHalf <$> sepBy1 immediate comma),
-      lexeme (string ".word") *> (DirWord <$> sepBy1 immediate comma),
-      lexeme (string ".space") *> (DirSpace <$> immediate),
-      lexeme (string ".zero") *> (DirSpace <$> immediate),
-      lexeme (string ".align") *> (DirAlign <$> immediate)
+      lexeme (string ".byte") *> (DirByte <$> sepBy1 expr comma),
+      lexeme (string ".half") *> (DirHalf <$> sepBy1 expr comma),
+      lexeme (string ".short") *> (DirHalf <$> sepBy1 expr comma),
+      lexeme (string ".word") *> (DirWord <$> sepBy1 expr comma),
+      lexeme (string ".space") *> (DirSpace <$> expr),
+      lexeme (string ".zero") *> (DirSpace <$> expr),
+      lexeme (string ".p2align") *> alignDir AlignPow2,
+      lexeme (string ".balign") *> alignDir AlignBytes,
+      lexeme (string ".align") *> alignDir AlignPow2,
+      lexeme (string ".comm") *> commDir False,
+      lexeme (string ".lcomm") *> commDir True,
+      lexeme (string ".equiv") *> parseSymbolValue DirEquiv,
+      lexeme (string ".equ") *> parseSymbolValue DirEqu,
+      lexeme (string ".set") *> parseSymbolValue DirEqu,
+      lexeme (string ".global") *> (DirGlobl <$> sepBy1 symbolName comma),
+      lexeme (string ".globl") *> (DirGlobl <$> sepBy1 symbolName comma),
+      lexeme (string ".local") *> (DirLocal <$> sepBy1 symbolName comma),
+      lexeme (string ".weak") *> (DirWeak <$> sepBy1 symbolName comma)
     ]
 
 parseStatement :: ExtensionSet -> Parser Statement
@@ -708,10 +815,16 @@ parseProgram exts = do
     isEmpty (_, (Nothing, Nothing)) = True
     isEmpty _ = False
 
-parse :: ExtensionSet -> String -> Either AssemblyError [(Int, SourceLine)]
-parse exts src = case runParser (parseProgram exts) 1 (normalizeNewlines src) of
-  Right (instr, _, _) -> Right instr
-  Left (PErr _ ln e) -> Left (Located ln e)
+-- | parse a single anonymous buffer; every line belongs to the root file
+parse :: ExtensionSet -> String -> Either AssemblyError [(Loc, SourceLine)]
+parse exts = parseWithLocs exts rootLoc
+
+parseWithLocs ::
+  ExtensionSet -> (Int -> Loc) -> String -> Either AssemblyError [(Loc, SourceLine)]
+parseWithLocs exts toLoc src =
+  case runParser (parseProgram exts) 1 (normalizeNewlines src) of
+    Right (instr, _, _) -> Right (map (first toLoc) instr)
+    Left (PErr _ ln e) -> Left (Located (toLoc ln) e)
 
 normalizeNewlines :: String -> String
 normalizeNewlines [] = []

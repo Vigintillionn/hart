@@ -5,11 +5,14 @@ module Test.RpcSpec (spec) where
 
 import Control.Applicative ((<|>))
 import Control.Exception (SomeException, try)
+import Control.Monad ((>=>))
 import Data.Aeson (Result (..), Value (..), decodeStrict, encode, fromJSON, object, (.=))
 import Data.Aeson.Key qualified as K
 import Data.Aeson.KeyMap qualified as KM
 import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.Char (isSpace)
+import Data.Foldable (toList)
+import Data.List (isInfixOf)
 import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Encoding qualified as TE
@@ -81,6 +84,32 @@ rpcSpec bin = do
         it "reports no faults while stepping backwards" $
           errorResponses resp `shouldBe` []
 
+  describe ".include in app mode" $ do
+    -- includes resolve against the set of open files sent with `load`; one that
+    -- names a file not in that set is a clear "cannot find" error.
+    resp <- runIO (runSession bin [loadCmd ".include \"x.s\"\n.text\n_start: nop\n", quitCmd])
+    it "reports a missing included file (resolved against the open files)" $ do
+      let messages = mapMaybe (look "message" >=> asString) (errorResponses resp)
+      messages `shouldSatisfy` any ("included file" `isInfixOf`)
+
+  describe "multi-file load (assemble + link several files)" $ do
+    -- main.s calls into helper.s, which lives in a separate file; the linker's
+    -- shared symbol table resolves the cross-file `jal`.
+    let files =
+          [ ("main.s", ".text\n_start:\n  jal helper\n  li a7, 10\n  ecall\n"),
+            ("helper.s", ".text\nhelper:\n  li a0, 42\n  ret\n")
+          ]
+    resp <- runIO (runSession bin [loadFilesCmd files ["main.s", "helper.s"], runCmd, quitCmd])
+    it "links cross-file references and runs without faults" $
+      errorResponses resp `shouldBe` []
+    it "halts cleanly after the program exits" $
+      finalStatus resp `shouldBe` Just "Halted"
+    it "tags each source-map entry with its originating file" $ do
+      let smap = fromMaybe [] (lastLoaded resp >>= look "sourceMap" >>= asList)
+          fileOf e = case asList e of Just (_ : _ : f : _) -> asString f; _ -> Nothing
+          fileNames = mapMaybe fileOf smap
+      fileNames `shouldSatisfy` (\fs -> "main.s" `elem` fs && "helper.s" `elem` fs)
+
 exampleCase :: FilePath -> String -> [Value] -> (String -> Expectation) -> Spec
 exampleCase bin name extra checkOutput = do
   mSrc <- runIO (readExample name)
@@ -106,8 +135,23 @@ runSession bin cmds = do
   out <- readProcess bin ["--rpc", "unused"] input
   pure (mapMaybe (decodeStrict . TE.encodeUtf8 . T.pack) (lines out))
 
+-- | A single-buffer @load@: one anonymous file assembled on its own. A thin
+-- convenience over 'loadFilesCmd' for the common single-file test.
 loadCmd :: String -> Value
-loadCmd src = object ["command" .= ("load" :: String), "data" .= src]
+loadCmd src = loadFilesCmd [("", src)] [""]
+
+-- | A multi-file @load@: each @(name, content)@ becomes a file, and the named
+-- entry files are assembled and linked together (in order, entry first).
+loadFilesCmd :: [(String, String)] -> [String] -> Value
+loadFilesCmd files entry =
+  object
+    [ "command" .= ("load" :: String),
+      "data"
+        .= object
+          [ "files" .= [object ["name" .= n, "content" .= c] | (n, c) <- files],
+            "entry" .= entry
+          ]
+    ]
 
 runCmd, stepBackCmd, rewindCmd, quitCmd :: Value
 runCmd = object ["command" .= ("run" :: String)]
@@ -125,6 +169,10 @@ look _ _ = Nothing
 asString :: Value -> Maybe String
 asString (String t) = Just (T.unpack t)
 asString _ = Nothing
+
+asList :: Value -> Maybe [Value]
+asList (Array a) = Just (toList a)
+asList _ = Nothing
 
 asInt :: Value -> Maybe Int
 asInt v = case fromJSON v of
@@ -168,6 +216,9 @@ maxCycles = maximum . (0 :) . mapMaybe cyclesOf
 
 lastFullState :: [Value] -> Maybe Value
 lastFullState = lastMay . filter ((== Just "state") . respType)
+
+lastLoaded :: [Value] -> Maybe Value
+lastLoaded = lastMay . filter ((== Just "loaded") . respType)
 
 lastMay :: [a] -> Maybe a
 lastMay [] = Nothing

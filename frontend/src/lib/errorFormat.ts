@@ -45,6 +45,12 @@ export function formatLinkError(e: LinkError): string {
       return `${e.context} out of range [${e.lo}, ${e.hi}]: ${e.value}`;
     case "MisalignedTarget":
       return `${e.context} target is not 2-byte aligned: ${e.value}`;
+    case "NegativeValue":
+      return `${e.context} must not be negative: ${e.value}`;
+    case "DivByZero":
+      return "Division by zero in an expression";
+    case "CircularConstant":
+      return `Circular constant definition: \`${e.name.trim()}\``;
   }
 }
 
@@ -173,5 +179,21 @@ export function emulatorErrorLine(e: EmulatorError): number | null {
   if (e.kind === "Located") return e.line;
   if (e.kind === "ParseError") return assemblyErrorLine(e.error);
   if (e.kind === "LinkError") return linkErrorLine(e.error);
+  return null;
+}
+
+/** The originating file a compile error points at, if any (via `Located`). */
+export function assemblyErrorFile(e: AssemblyError): string | null {
+  return e.kind === "Located" && e.file !== "" ? e.file : null;
+}
+
+/** The originating file a link error points at, if any (via `Located`). */
+export function linkErrorFile(e: LinkError): string | null {
+  return e.kind === "Located" && e.file !== "" ? e.file : null;
+}
+
+export function emulatorErrorFile(e: EmulatorError): string | null {
+  if (e.kind === "ParseError") return assemblyErrorFile(e.error);
+  if (e.kind === "LinkError") return linkErrorFile(e.error);
   return null;
 }

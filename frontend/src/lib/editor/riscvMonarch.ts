@@ -17,6 +17,9 @@ export function buildRiscvLanguageDef(
         // Directives
         [/\.[a-zA-Z_]\w*/, "custom-directive"],
 
+        // Relocation operators (%hi / %lo)
+        [/%(hi|lo)\b/, "custom-directive"],
+
         // Identifiers (could be keywords, registers or CSR names)
         [
           /[a-zA-Z_]\w*/,

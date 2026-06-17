@@ -1,5 +1,7 @@
 module Test.LinkerSpec (spec) where
 
+import Data.Bits (shiftL)
+import Data.IntMap.Strict qualified as IM
 import Error (LinkError (..))
 import Linker (Executable (..))
 import Test.Hspec
@@ -41,6 +43,12 @@ spec = do
           i_imm loArgs `shouldBe` -273
         _ -> expectationFailure "expected li to lower to lui + addi"
 
+    it "expands li of an address symbol into lui + addi (was a range error)" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nli a0, x\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 0x10000000
+        _ -> expectationFailure "expected li to lower to lui + addi"
+
     it "lowers nop to addi x0, x0, 0" $
       case execProgram (assemble "nop\n") of
         [SomeInstruction (ArithI ADDI args)] -> do
@@ -74,3 +82,184 @@ spec = do
 
     it "rejects an out-of-range shift amount" $
       linkErr "slli a0, a0, 40\n" `shouldBe` ShiftOutOfRange 40
+
+  describe "symbols and constants (.equ/.set/.equiv/.globl)" $ do
+    it "resolves a .equ constant to its absolute value in an immediate" $
+      case execProgram (assemble ".equ FIVE, 5\naddi a0, a0, FIVE\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 5
+        _ -> expectationFailure "expected a single addi"
+
+    it "lets .equ/.set redefine an earlier constant (last wins)" $
+      case execProgram (assemble ".equ X, 1\n.set X, 7\naddi a0, a0, X\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 7
+        _ -> expectationFailure "expected a single addi"
+
+    it "rejects redefining a .equiv constant" $
+      linkErr ".equiv K, 1\n.equiv K, 2\n" `shouldBe` DuplicateLabel "K"
+
+    it "rejects a label that collides with a constant name" $
+      linkErr ".equ foo, 1\nfoo: nop\n" `shouldBe` DuplicateLabel "foo"
+
+    it "accepts .globl without affecting resolution" $
+      length (execProgram (assemble ".globl main\nmain: nop\n")) `shouldBe` 1
+
+    it "lets a .equ name a forward label (resolved in the final pass)" $ do
+      -- FOO is defined before `target` exists; ptr stores FOO == &target
+      let dm = execDataMem (assemble ".data\nptr: .word FOO\n.equ FOO, target\ntarget: .byte 7\n")
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x10]
+
+    it "still snapshots a self-referential .set (last value wins)" $
+      case execProgram (assemble ".equ X, 1\n.set X, X + 1\naddi a0, a0, X\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 2
+        _ -> expectationFailure "expected a single addi"
+
+    it "reports a circular constant definition" $
+      linkErr ".equ A, B\n.equ B, A\naddi a0, a0, A\n" `shouldBe` CircularConstant "A"
+
+  describe "data emission" $ do
+    it "emits .half as two little-endian bytes" $ do
+      let dm = execDataMem (assemble ".data\n.half 0x1234\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0x34
+      IM.lookup 0x10000001 dm `shouldBe` Just 0x12
+
+    it "emits .word as four little-endian bytes" $ do
+      let dm = execDataMem (assemble ".data\n.word 0xAABBCCDD\n")
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0xDD, Just 0xCC, Just 0xBB, Just 0xAA]
+
+    it "treats .bss as NOBITS (reserves space, emits no bytes) without consuming .data space" $ do
+      let dm = execDataMem (assemble ".bss\nbuf: .space 4\n.data\n.word 0xAABBCCDD\n")
+      -- bss emitted nothing; the .word still lands at the data base, intact
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xDD
+      IM.size dm `shouldBe` 4
+
+  describe "expressions" $ do
+    it "emits a symbol address with .word (a data relocation)" $ do
+      -- target sits one word into .data, i.e. at 0x10000004
+      let dm = execDataMem (assemble ".data\nfirst: .word 0\ntarget: .word target\n")
+      map (`IM.lookup` dm) [0x10000004 .. 0x10000007]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x10]
+
+    it "evaluates a difference of symbols in .word" $ do
+      let dm = execDataMem (assemble ".data\nstart: .word end - start\nend:\n")
+      -- end - start == 4 (one word)
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x00]
+
+    it "folds an arithmetic expression in an immediate operand" $
+      case execProgram (assemble "addi a0, a0, (1 + 2) * 4\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 12
+        _ -> expectationFailure "expected a single addi"
+
+    it "uses a .equ constant inside an expression" $
+      case execProgram (assemble ".equ N, 4\naddi a0, a0, N * 2 + 1\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 9
+        _ -> expectationFailure "expected a single addi"
+
+    it "evaluates a symbolic .space size at layout time" $ do
+      -- buf reserves SIZE(=3) bytes, so the trailing .word lands at 0x10000004
+      let dm = execDataMem (assemble ".equ SIZE, 3\n.data\nbuf: .space SIZE\n.align 2\n.word 0xFF\n")
+      IM.lookup 0x10000004 dm `shouldBe` Just 0xFF
+
+    it "rejects a .byte value that does not fit in 8 bits" $
+      linkErr ".data\n.byte 9999\n" `shouldBe` ImmOutOfRange ".byte value" (-128) 255 9999
+
+    it "rejects a forward symbol in a layout-affecting .space" $
+      linkErr ".data\n.space later\nlater:\n" `shouldBe` UndefinedLabel "later"
+
+    it "rejects a negative .space size instead of crashing" $
+      linkErr ".data\n.space (0 - 4)\n" `shouldBe` NegativeValue ".space size" (-4)
+
+    it "rejects a negative alignment exponent instead of crashing" $
+      linkErr ".data\n.p2align (0 - 1)\n" `shouldBe` NegativeValue "alignment exponent" (-1)
+
+    it "evaluates division and modulo" $
+      case execProgram (assemble "addi a0, a0, 17 / 4 + 17 % 4\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 5
+        _ -> expectationFailure "expected a single addi"
+
+    it "reports division by zero" $
+      linkErr "addi a0, a0, 1 / 0\n" `shouldBe` DivByZero
+
+    it "binds . to the current location in a .equ (sizeof idiom)" $
+      case execProgram (assemble ".data\narr: .word 1, 2, 3\n.equ LEN, . - arr\n.text\nli a0, LEN\n") of
+        -- LEN == 12 bytes; a symbolic li now expands to the worst-case lui+addi
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 12
+        _ -> expectationFailure "expected li to lower to lui + addi"
+
+    it "binds . to the instruction address in a branch target" $
+      -- `j .` is an infinite self-loop: offset 0
+      case execProgram (assemble "j .\n") of
+        [SomeInstruction (JType JAL args)] -> j_imm args `shouldBe` 0
+        _ -> expectationFailure "expected a single jal"
+
+  describe "bss layout" $ do
+    it "places .bss immediately after .data (no heap collision)" $ do
+      -- .data holds one word (4 bytes at 0x10000000..0x10000003); bss follows,
+      -- page-aligned, at 0x10001000
+      case execProgram (assemble ".data\nd: .word 1\n.bss\nb: .space 4\n.text\nla a0, b\n") of
+        [SomeInstruction (UType AUIPC hi), SomeInstruction (ArithI ADDI lo)] -> do
+          -- auipc/addi reconstruct b's address (0x10001000) PC-relative from pc 0
+          let addr = (u_imm hi `shiftL` 12) + i_imm lo
+          addr `shouldBe` 0x10001000
+        _ -> expectationFailure "expected la to lower to auipc + addi"
+
+    it "resolves a .equ that references a .bss label to its final address" $ do
+      let dm = execDataMem (assemble ".bss\nbuf: .space 4\n.equ BUFADDR, buf\n.data\nptr: .word BUFADDR\n")
+      map (`IM.lookup` dm) [0x10000000 .. 0x10000003]
+        `shouldBe` [Just 0x00, Just 0x10, Just 0x00, Just 0x10]
+
+  describe "sections" $ do
+    it "lays .rodata out ahead of .data in the data region" $ do
+      let dm = execDataMem (assemble ".rodata\nr: .word 0xAA\n.data\nd: .word 0xBB\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xAA -- rodata first
+      IM.lookup 0x10000004 dm `shouldBe` Just 0xBB -- data follows
+    it "classifies a writable .section into the data region" $ do
+      let dm = execDataMem (assemble ".section .mydata, \"aw\"\nx: .word 0xCC\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xCC
+
+    it "reserves a .comm symbol in bss after .data, emitting nothing" $ do
+      -- .data holds one word; the common symbol lands page-aligned at 0x10001000
+      case execProgram (assemble ".data\nd: .word 1\n.comm buf, 4\n.text\nla a0, buf\n") of
+        [SomeInstruction (UType AUIPC hi), SomeInstruction (ArithI ADDI lo)] -> do
+          let addr = (u_imm hi `shiftL` 12) + i_imm lo
+          addr `shouldBe` 0x10001000
+        _ -> expectationFailure "expected la to lower to auipc + addi"
+
+  describe "%hi / %lo relocations" $ do
+    it "splits an absolute literal across %hi and %lo" $
+      case execProgram (assemble "lui a0, %hi(0x12345678)\naddi a0, a0, %lo(0x12345678)\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] -> do
+          u_imm hi `shouldBe` 0x12345
+          i_imm lo `shouldBe` 0x678
+        _ -> expectationFailure "expected lui + addi"
+
+    it "reconstructs a symbol address via lui %hi + addi %lo" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nlui a0, %hi(x)\naddi a0, a0, %lo(x)\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 0x10000000
+        _ -> expectationFailure "expected lui + addi"
+
+    it "accepts %lo in a load offset" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nlui a0, %hi(x)\nlw a1, %lo(x)(a0)\n") of
+        [SomeInstruction (UType LUI _), SomeInstruction (LoadI LW args)] ->
+          i_imm args `shouldBe` 0 -- x at 0x10000000, low 12 bits are 0
+        _ -> expectationFailure "expected lui + lw"
+
+    it "evaluates an expression inside %lo" $
+      case execProgram (assemble "addi a0, a0, %lo(0x100 + 4)\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 0x104
+        _ -> expectationFailure "expected a single addi"
+
+  describe "alignment directives" $ do
+    it "treats .balign as a literal byte count" $ do
+      -- one byte, then .balign 8 pads to the next 8-byte boundary
+      let dm = execDataMem (assemble ".data\n.byte 1\n.balign 8\n.byte 2\n")
+      IM.lookup 0x10000008 dm `shouldBe` Just 2
+
+    it "treats .p2align as a power-of-two exponent" $ do
+      -- one byte, then .p2align 3 pads to 2^3 = 8
+      let dm = execDataMem (assemble ".data\n.byte 1\n.p2align 3\n.byte 2\n")
+      IM.lookup 0x10000008 dm `shouldBe` Just 2
