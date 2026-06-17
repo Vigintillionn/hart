@@ -75,8 +75,8 @@ litOp :: Int -> Operand
 litOp = OpExpr . EInt
 
 hiOp, loOp :: String -> Operand
-hiOp = OpHi . ESym
-loOp = OpLo . ESym
+hiOp = OpReloc HiPcrel . ESym
+loOp = OpReloc LoPcrel . ESym
 
 -- | split a value into the @(hi20, lo12)@ pair, with @lo@ sign-extended into [-2048, 2047]
 hiLo12 :: Int -> (Int, Int)
@@ -435,8 +435,7 @@ checkShiftBounds op val
   | otherwise = Right val
 
 isReloc :: Operand -> Bool
-isReloc (OpHi _) = True
-isReloc (OpLo _) = True
+isReloc (OpReloc _ _) = True
 isReloc _ = False
 
 checkSigned :: String -> Int -> Bool -> Operand -> Int -> Either LinkError Int
@@ -487,25 +486,24 @@ absHi, absLo :: Int -> Int
 absHi = fst . hiLo12
 absLo t = t .&. 0xFFF
 
+relocValue :: RelocKind -> Int -> Int -> Int
+relocValue HiAbs _ = absHi
+relocValue LoAbs _ = absLo
+relocValue HiPcrel pc = pcrelHi pc
+relocValue LoPcrel pc = pcrelLo pc
+
+-- | resolve a branch/jump/auipc operand: a bare expression is made PC-relative
 resolveRelative :: SectionBases -> Int -> SymbolTable -> Operand -> Either LinkError Int
 resolveRelative bases pc table op = case op of
   OpExpr e -> case foldConst e of
     Just v -> Right v
     Nothing -> subtract pc <$> evalExpr bases pc table e
-  OpHi e -> pcrelHi pc <$> evalExpr bases pc table e
-  OpLo e -> pcrelLo pc <$> evalExpr bases pc table e
+  OpReloc k e -> relocValue k pc <$> evalExpr bases pc table e
 
 resolveImm :: SectionBases -> Int -> SymbolTable -> Operand -> Either LinkError Int
 resolveImm bases pc table op = case op of
   OpExpr e -> evalExpr bases pc table e
-  OpHi e -> pcrelHi pc <$> evalExpr bases pc table e
-  OpLo e -> pcrelLo pc <$> evalExpr bases pc table e
-
-resolveAbsolute :: SectionBases -> Int -> SymbolTable -> Operand -> Either LinkError Int
-resolveAbsolute bases pc table op = case op of
-  OpExpr e -> evalExpr bases pc table e
-  OpHi e -> absHi <$> evalExpr bases pc table e
-  OpLo e -> absLo <$> evalExpr bases pc table e
+  OpReloc k e -> relocValue k pc <$> evalExpr bases pc table e
 
 resolveOperand :: SectionBases -> Int -> SymbolTable -> SomeInstruction Operand -> Either LinkError (SomeInstruction Int)
 resolveOperand bases pc table (SomeInstruction (JType op args)) = do
@@ -521,7 +519,7 @@ resolveOperand bases pc table (SomeInstruction (UType AUIPC args)) = do
   v' <- checkUpper (u_imm args) v
   return $ SomeInstruction $ UType AUIPC (args {u_imm = v'})
 resolveOperand bases pc table (SomeInstruction (UType LUI args)) = do
-  v <- resolveAbsolute bases pc table (u_imm args)
+  v <- resolveImm bases pc table (u_imm args)
   v' <- checkUpper (u_imm args) v
   return $ SomeInstruction $ UType LUI (args {u_imm = v'})
 resolveOperand bases pc table (SomeInstruction (LoadI op args)) = do
@@ -544,4 +542,4 @@ resolveOperand bases pc table (SomeInstruction (SType op args)) = do
   v' <- checkSigned "store offset" 12 False (s_imm args) v
   return $ SomeInstruction $ SType op (args {s_imm = v'})
 resolveOperand bases pc table (SomeInstruction instr) =
-  SomeInstruction <$> traverse (resolveAbsolute bases pc table) instr
+  SomeInstruction <$> traverse (resolveImm bases pc table) instr

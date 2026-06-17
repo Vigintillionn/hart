@@ -228,6 +228,31 @@ spec = do
           addr `shouldBe` 0x10001000
         _ -> expectationFailure "expected la to lower to auipc + addi"
 
+  describe "%hi / %lo relocations" $ do
+    it "splits an absolute literal across %hi and %lo" $
+      case execProgram (assemble "lui a0, %hi(0x12345678)\naddi a0, a0, %lo(0x12345678)\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] -> do
+          u_imm hi `shouldBe` 0x12345
+          i_imm lo `shouldBe` 0x678
+        _ -> expectationFailure "expected lui + addi"
+
+    it "reconstructs a symbol address via lui %hi + addi %lo" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nlui a0, %hi(x)\naddi a0, a0, %lo(x)\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 0x10000000
+        _ -> expectationFailure "expected lui + addi"
+
+    it "accepts %lo in a load offset" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nlui a0, %hi(x)\nlw a1, %lo(x)(a0)\n") of
+        [SomeInstruction (UType LUI _), SomeInstruction (LoadI LW args)] ->
+          i_imm args `shouldBe` 0 -- x at 0x10000000, low 12 bits are 0
+        _ -> expectationFailure "expected lui + lw"
+
+    it "evaluates an expression inside %lo" $
+      case execProgram (assemble "addi a0, a0, %lo(0x100 + 4)\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 0x104
+        _ -> expectationFailure "expected a single addi"
+
   describe "alignment directives" $ do
     it "treats .balign as a literal byte count" $ do
       -- one byte, then .balign 8 pads to the next 8-byte boundary

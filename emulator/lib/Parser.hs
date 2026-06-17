@@ -222,7 +222,10 @@ register = lexeme $ do
     xName _ = Nothing
 
 operand :: Parser Operand
-operand = OpExpr <$> expr
+operand = reloc "%hi" HiAbs <|> reloc "%lo" LoAbs <|> (OpExpr <$> expr)
+  where
+    reloc name k =
+      OpReloc k <$> (lexeme (string name) *> symbolOp "(" *> expr <* symbolOp ")")
 
 -- | Left-associative chain of @p@ separated by infix operators @op@.
 chainl1 :: Parser a -> Parser (a -> a -> a) -> Parser a

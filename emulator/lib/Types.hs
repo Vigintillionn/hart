@@ -1,6 +1,7 @@
 module Types
   ( Phase (..),
     Operand (..),
+    RelocKind (..),
     Expr (..),
     UnOp (..),
     BinOp (..),
@@ -63,9 +64,11 @@ data Phase = Parsed | Lowered | Resolved
 
 data Operand
   = OpExpr Expr
-  | OpHi Expr
-  | OpLo Expr
+  | OpReloc RelocKind Expr
   deriving (Show, Eq)
+
+data RelocKind = HiAbs | LoAbs | HiPcrel | LoPcrel
+  deriving (Show, Eq, Enum, Bounded)
 
 data Expr
   = EInt Int
