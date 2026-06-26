@@ -173,7 +173,15 @@ dataSize d = case d of
   DirByte es -> length es
   DirHalf es -> length es * 2
   DirWord es -> length es * 4
-  _ -> 0
+  DirSection {} -> 0
+  DirSpace {} -> 0
+  DirAlign {} -> 0
+  DirComm {} -> 0
+  DirEqu {} -> 0
+  DirEquiv {} -> 0
+  DirGlobl {} -> 0
+  DirLocal {} -> 0
+  DirWeak {} -> 0
 
 -- | the padding needed to bring @addr@ up to a multiple of @a@ bytes
 padTo :: Int -> Int -> Int
@@ -207,7 +215,7 @@ data Place = Place
     pOffsets :: !(M.Map Section Int),
     -- | the strongest alignment (in bytes) requested within each section
     pAligns :: !(M.Map Section Int),
-    -- | sections in first-seen order, used to lay out each region
+    -- | visited sections in reverse first-seen order (reversed when read), used to lay out each region
     pOrder :: ![Section],
     pCur :: !Section,
     pSyms :: !SymbolTable,
@@ -238,8 +246,12 @@ initPlace bases =
       pDataDirs = []
     }
 
+-- | the current byte offset within @sec@ (0 if it has not been visited yet)
+offsetOf :: Section -> Place -> Int
+offsetOf sec p = M.findWithDefault 0 sec (pOffsets p)
+
 curOffset :: Place -> Int
-curOffset p = M.findWithDefault 0 (pCur p) (pOffsets p)
+curOffset p = offsetOf (pCur p) p
 
 -- | the absolute address of the current point in the current section
 placeAddr :: Place -> Int
@@ -260,7 +272,7 @@ visitSection sec p
   | otherwise =
       p
         { pOffsets = M.insert sec 0 (pOffsets p),
-          pOrder = pOrder p ++ [sec]
+          pOrder = sec : pOrder p
         }
 
 setSection :: Section -> Place -> Place
@@ -286,7 +298,7 @@ reserveCommon :: Loc -> Bool -> String -> Int -> Int -> Place -> Either LinkErro
 reserveCommon loc isLocal name size align p0 =
   let a = max 1 align
       p = noteAlign commonSection a (visitSection commonSection p0)
-      off0 = M.findWithDefault 0 commonSection (pOffsets p)
+      off0 = offsetOf commonSection p
       aligned = alignUp a off0
       bind = if isLocal then Local else Global
    in do
@@ -378,7 +390,15 @@ emitDirective bases syms base dir = case dir of
   DirByte es -> emitInts 1 ".byte value" es
   DirHalf es -> emitInts 2 ".half value" es
   DirWord es -> emitInts 4 ".word value" es
-  _ -> Right []
+  DirSection {} -> Right []
+  DirSpace {} -> Right []
+  DirAlign {} -> Right []
+  DirComm {} -> Right []
+  DirEqu {} -> Right []
+  DirEquiv {} -> Right []
+  DirGlobl {} -> Right []
+  DirLocal {} -> Right []
+  DirWeak {} -> Right []
   where
     emitInts width ctx es =
       concat <$> traverse one (zip [base, base + width ..] es)
@@ -422,7 +442,7 @@ resolve :: ParsedProgram -> Either LinkError Executable
 resolve prog = do
   -- walk with every section at base 0 purely to measure sizes
   measured <- foldM placeStep (initPlace M.empty) prog
-  let bases = assignBases (pOffsets measured) (pAligns measured) (pOrder measured)
+  let bases = assignBases (pOffsets measured) (pAligns measured) (reverse (pOrder measured))
   -- walk again with real bases, so every recorded address, and any @.equ@ referencing a label, is already absolute
   placed <- foldM placeStep (initPlace bases) prog
   let syms = applyBindings (pBind placed) (pSyms placed)
