@@ -8,6 +8,7 @@ module Linker
 where
 
 import Control.Monad (foldM)
+import Control.Monad.State.Strict (StateT, execStateT, get, gets, lift, modify')
 import Data.Bifunctor (first)
 import Data.Bits (Bits (..))
 import Data.Char (ord)
@@ -246,6 +247,11 @@ initPlace bases =
       pDataDirs = []
     }
 
+type PlaceM = StateT Place (Either LinkError)
+
+throw :: LinkError -> PlaceM a
+throw = lift . Left
+
 -- | the current byte offset within @sec@ (0 if it has not been visited yet)
 offsetOf :: Section -> Place -> Int
 offsetOf sec p = M.findWithDefault 0 sec (pOffsets p)
@@ -258,8 +264,8 @@ placeAddr :: Place -> Int
 placeAddr p = baseOf (pBases p) (pCur p) + curOffset p
 
 -- | advance the current section's offset by @n@ bytes
-advance :: Int -> Place -> Place
-advance n p = p {pOffsets = M.insertWith (+) (pCur p) n (pOffsets p)}
+advance :: Int -> PlaceM ()
+advance n = modify' $ \p -> p {pOffsets = M.insertWith (+) (pCur p) n (pOffsets p)}
 
 -- | record that @sec@ needs at least @a@-byte alignment
 noteAlign :: Section -> Int -> Place -> Place
@@ -279,45 +285,48 @@ setSection :: Section -> Place -> Place
 setSection sec p = (visitSection sec p) {pCur = sec}
 
 -- | define an address symbol (a label or common symbol) at a section-relative offset, rejecting a redefinition
-defAddrSym :: Loc -> String -> Section -> Int -> SymBinding -> Place -> Either LinkError Place
-defAddrSym loc name sec off bind p
-  | S.member name (pLocked p) || M.member name (pSyms p) =
-      Left (LocatedLink loc (DuplicateLabel name))
-  | otherwise =
-      Right
-        p
-          { pSyms = M.insert name (Symbol (Just sec) off AddrSym bind) (pSyms p),
-            pLocked = S.insert name (pLocked p)
-          }
+defAddrSym :: Loc -> String -> Section -> Int -> SymBinding -> PlaceM ()
+defAddrSym loc name sec off bind = do
+  taken <- gets (\p -> S.member name (pLocked p) || M.member name (pSyms p))
+  if taken
+    then throw (LocatedLink loc (DuplicateLabel name))
+    else modify' $ \p ->
+      p
+        { pSyms = M.insert name (Symbol (Just sec) off AddrSym bind) (pSyms p),
+          pLocked = S.insert name (pLocked p)
+        }
 
-defLabel :: Loc -> String -> Place -> Either LinkError Place
-defLabel loc name p = defAddrSym loc name (pCur p) (curOffset p) Local p
+defLabel :: Loc -> String -> PlaceM ()
+defLabel loc name = do
+  p <- get
+  defAddrSym loc name (pCur p) (curOffset p) Local
 
 -- | reserve a @.comm@/@.lcomm@ common symbol, does not change the current section
-reserveCommon :: Loc -> Bool -> String -> Int -> Int -> Place -> Either LinkError Place
-reserveCommon loc isLocal name size align p0 =
+reserveCommon :: Loc -> Bool -> String -> Int -> Int -> PlaceM ()
+reserveCommon loc isLocal name size align = do
   let a = max 1 align
-      p = noteAlign commonSection a (visitSection commonSection p0)
-      off0 = offsetOf commonSection p
-      aligned = alignUp a off0
       bind = if isLocal then Local else Global
-   in do
-        p1 <- defAddrSym loc name commonSection aligned bind p
-        Right p1 {pOffsets = M.insert commonSection (aligned + size) (pOffsets p1)}
+  modify' (noteAlign commonSection a . visitSection commonSection)
+  aligned <- gets (alignUp a . offsetOf commonSection)
+  defAddrSym loc name commonSection aligned bind
+  modify' $ \p -> p {pOffsets = M.insert commonSection (aligned + size) (pOffsets p)}
 
-defConst :: Bool -> Loc -> String -> Symbol -> Place -> Either LinkError Place
-defConst redefinable loc name sym p
-  | redefinable =
-      if S.member name (pLocked p)
-        then Left (LocatedLink loc (DuplicateLabel name))
-        else Right p {pSyms = M.insert name sym (pSyms p)}
-  | M.member name (pSyms p) = Left (LocatedLink loc (DuplicateLabel name))
-  | otherwise =
-      Right
-        p
-          { pSyms = M.insert name sym (pSyms p),
-            pLocked = S.insert name (pLocked p)
-          }
+defConst :: Bool -> Loc -> String -> Symbol -> PlaceM ()
+defConst redefinable loc name sym
+  | redefinable = do
+      locked <- gets (S.member name . pLocked)
+      if locked
+        then throw (LocatedLink loc (DuplicateLabel name))
+        else modify' $ \p -> p {pSyms = M.insert name sym (pSyms p)}
+  | otherwise = do
+      defined <- gets (M.member name . pSyms)
+      if defined
+        then throw (LocatedLink loc (DuplicateLabel name))
+        else modify' $ \p ->
+          p
+            { pSyms = M.insert name sym (pSyms p),
+              pLocked = S.insert name (pLocked p)
+            }
 
 -- | replace the location counter @.@ in an expression with a literal
 substCur :: Int -> Expr -> Expr
@@ -331,53 +340,60 @@ substCur loc = go
 declareBinding :: SymBinding -> [String] -> Place -> Place
 declareBinding b names p = p {pBind = foldr (`M.insert` b) (pBind p) names}
 
-placeStep :: Place -> (Loc, SourceLine) -> Either LinkError Place
-placeStep p (loc, (mLabel, mStmt)) = do
-  p1 <- maybe (Right p) (\name -> defLabel loc name p) mLabel
-  let here = placeAddr p1
-  maybe (Right p1) (placeStmt loc here p1) mStmt
+placeStep :: (Loc, SourceLine) -> PlaceM ()
+placeStep (loc, (mLabel, mStmt)) = do
+  mapM_ (defLabel loc) mLabel
+  here <- gets placeAddr
+  mapM_ (placeStmt loc here) mStmt
 
-placeStmt :: Loc -> Int -> Place -> Statement -> Either LinkError Place
-placeStmt loc here p stmt = case stmt of
-  StmtDirective (DirSection sec) -> Right (setSection sec p)
+placeStmt :: Loc -> Int -> Statement -> PlaceM ()
+placeStmt loc here stmt = case stmt of
+  StmtDirective (DirSection sec) -> modify' (setSection sec)
   StmtDirective (DirEqu name e) -> defineConst True name e
   StmtDirective (DirEquiv name e) -> defineConst False name e
-  StmtDirective (DirGlobl names) -> Right (declareBinding Global names p)
-  StmtDirective (DirLocal names) -> Right (declareBinding Local names p)
-  StmtDirective (DirWeak names) -> Right (declareBinding Weak names p)
+  StmtDirective (DirGlobl names) -> modify' (declareBinding Global names)
+  StmtDirective (DirLocal names) -> modify' (declareBinding Local names)
+  StmtDirective (DirWeak names) -> modify' (declareBinding Weak names)
   StmtDirective (DirSpace e) -> do
     n <- layoutVal e >>= requireNonNeg ".space size"
-    Right (advance n p)
+    advance n
   StmtDirective (DirAlign mode e) -> do
     v <- layoutVal e >>= requireNonNeg (alignCtx mode)
     let a = alignBytes mode v
-    Right (advance (padTo a here) (noteAlign (pCur p) a p))
+    cur <- gets pCur
+    modify' (noteAlign cur a)
+    advance (padTo a here)
   StmtDirective (DirComm isLocal name sizeE mAlignE) -> do
     size <- layoutVal sizeE
-    align <- maybe (Right (defaultCommAlign size)) layoutVal mAlignE
-    reserveCommon loc isLocal name size align p
-  StmtDirective dir ->
-    let recorded
-          | secClass (pCur p) == SecBss = p
-          | otherwise = p {pDataDirs = (here, loc, dir) : pDataDirs p}
-     in Right (advance (dataSize dir) recorded)
-  StmtInstr i ->
+    align <- maybe (pure (defaultCommAlign size)) layoutVal mAlignE
+    reserveCommon loc isLocal name size align
+  StmtDirective dir -> do
+    inBss <- gets ((== SecBss) . secClass . pCur)
+    -- bss is NOBITS: record the directive for emission only when it carries bytes
+    modify' $ \p ->
+      if inBss then p else p {pDataDirs = (here, loc, dir) : pDataDirs p}
+    advance (dataSize dir)
+  StmtInstr i -> do
     let subs = NE.toList (lower i)
         placed = zipWith (\k sub -> (here + 4 * k, loc, sub)) [0 ..] subs
-     in Right (advance (4 * length subs) p {pInstrs = reverse placed ++ pInstrs p})
+    modify' $ \p -> p {pInstrs = reverse placed ++ pInstrs p}
+    advance (4 * length subs)
   where
-    layoutVal e = atLoc loc (evalExpr (pBases p) here (pSyms p) e)
+    layoutVal e = do
+      p <- get
+      lift (atLoc loc (evalExpr (pBases p) here (pSyms p) e))
     requireNonNeg ctx v
-      | v < 0 = Left (LocatedLink loc (NegativeValue ctx v))
-      | otherwise = Right v
+      | v < 0 = throw (LocatedLink loc (NegativeValue ctx v))
+      | otherwise = pure v
     -- a constant is evaluated eagerly when every symbol it names is already defined
-    defineConst redefinable name e0 =
+    defineConst redefinable name e0 = do
+      p <- get
       let e = substCur here e0
-       in case evalExpr (pBases p) here (pSyms p) e of
-            Right v -> defConst redefinable loc name (Symbol Nothing v ConstSym Local) p
-            Left (UndefinedLabel _) ->
-              defConst redefinable loc name (Symbol Nothing 0 (DeferredSym e) Local) p
-            Left err -> Left (LocatedLink loc err)
+      case evalExpr (pBases p) here (pSyms p) e of
+        Right v -> defConst redefinable loc name (Symbol Nothing v ConstSym Local)
+        Left (UndefinedLabel _) ->
+          defConst redefinable loc name (Symbol Nothing 0 (DeferredSym e) Local)
+        Left err -> throw (LocatedLink loc err)
 
 -- | The @n@ little-endian bytes of @x@
 leBytes :: Int -> Int -> [Word8]
@@ -441,10 +457,10 @@ assignBases sizes aligns order = M.unions [textB, rodB, datB, bssB]
 resolve :: ParsedProgram -> Either LinkError Executable
 resolve prog = do
   -- walk with every section at base 0 purely to measure sizes
-  measured <- foldM placeStep (initPlace M.empty) prog
+  measured <- execStateT walk (initPlace M.empty)
   let bases = assignBases (pOffsets measured) (pAligns measured) (reverse (pOrder measured))
   -- walk again with real bases, so every recorded address, and any @.equ@ referencing a label, is already absolute
-  placed <- foldM placeStep (initPlace bases) prog
+  placed <- execStateT walk (initPlace bases)
   let syms = applyBindings (pBind placed) (pSyms placed)
   dataMem <- foldM (emitInto bases syms) IM.empty (reverse (pDataDirs placed))
   resolvedWithLines <- mapM (resolveOne bases syms) (reverse (pInstrs placed))
@@ -452,6 +468,7 @@ resolve prog = do
       sourceMap = map snd resolvedWithLines
   return $ Executable program dataMem sourceMap
   where
+    walk = mapM_ placeStep prog
     emitInto bases syms mem (addr, loc, dir) = do
       bytes <- atLoc loc (emitDirective bases syms addr dir)
       Right (foldl' (\m (a, b) -> IM.insert a b m) mem bytes)
