@@ -220,6 +220,16 @@ spec = do
       let dm = execDataMem (assemble ".section .mydata, \"aw\"\nx: .word 0xCC\n")
       IM.lookup 0x10000000 dm `shouldBe` Just 0xCC
 
+    it "aligns a section base to a coarse .align inside it (no overlap with the next section)" $ do
+      -- .a (1 byte) would put .b's base at dataBase+4; a .balign 8 inside .b must
+      -- bump .b's base to dataBase+8 so its byte clears .c's word rather than
+      -- being silently clobbered.
+      let dm = execDataMem (assemble ".section .a,\"a\"\n.byte 0xAA\n.section .b,\"a\"\n.balign 8\n.byte 0xBB\n.section .c,\"a\"\n.word 0xCCCCCCCC\n")
+      IM.lookup 0x10000000 dm `shouldBe` Just 0xAA -- .a
+      IM.lookup 0x10000008 dm `shouldBe` Just 0xBB -- .b, base now 8-aligned
+      map (`IM.lookup` dm) [0x1000000c .. 0x1000000f]
+        `shouldBe` [Just 0xCC, Just 0xCC, Just 0xCC, Just 0xCC] -- .c, clear of .b
+
     it "reserves a .comm symbol in bss after .data, emitting nothing" $ do
       -- .data holds one word; the common symbol lands page-aligned at 0x10001000
       case execProgram (assemble ".data\nd: .word 1\n.comm buf, 4\n.text\nla a0, buf\n") of

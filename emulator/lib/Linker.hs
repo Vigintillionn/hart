@@ -177,7 +177,7 @@ dataSize d = case d of
 
 -- | the padding needed to bring @addr@ up to a multiple of @a@ bytes
 padTo :: Int -> Int -> Int
-padTo addr a
+padTo a addr
   | a <= 1 = 0
   | otherwise = case addr `mod` a of
       0 -> 0
@@ -205,6 +205,8 @@ data Place = Place
     pBases :: !SectionBases,
     -- | current byte offset within each visited section
     pOffsets :: !(M.Map Section Int),
+    -- | the strongest alignment (in bytes) requested within each section
+    pAligns :: !(M.Map Section Int),
     -- | sections in first-seen order, used to lay out each region
     pOrder :: ![Section],
     pCur :: !Section,
@@ -226,6 +228,7 @@ initPlace bases =
   Place
     { pBases = bases,
       pOffsets = M.singleton textSection 0,
+      pAligns = M.empty,
       pOrder = [textSection],
       pCur = textSection,
       pSyms = M.empty,
@@ -245,6 +248,10 @@ placeAddr p = baseOf (pBases p) (pCur p) + curOffset p
 -- | advance the current section's offset by @n@ bytes
 advance :: Int -> Place -> Place
 advance n p = p {pOffsets = M.insertWith (+) (pCur p) n (pOffsets p)}
+
+-- | record that @sec@ needs at least @a@-byte alignment
+noteAlign :: Section -> Int -> Place -> Place
+noteAlign sec a p = p {pAligns = M.insertWith max sec a (pAligns p)}
 
 -- | register a section (assigning it offset 0 and a slot in the layout order) the first time it is seen
 visitSection :: Section -> Place -> Place
@@ -277,9 +284,10 @@ defLabel loc name p = defAddrSym loc name (pCur p) (curOffset p) Local p
 -- | reserve a @.comm@/@.lcomm@ common symbol, does not change the current section
 reserveCommon :: Loc -> Bool -> String -> Int -> Int -> Place -> Either LinkError Place
 reserveCommon loc isLocal name size align p0 =
-  let p = visitSection commonSection p0
+  let a = max 1 align
+      p = noteAlign commonSection a (visitSection commonSection p0)
       off0 = M.findWithDefault 0 commonSection (pOffsets p)
-      aligned = alignUp (max 1 align) off0
+      aligned = alignUp a off0
       bind = if isLocal then Local else Global
    in do
         p1 <- defAddrSym loc name commonSection aligned bind p
@@ -330,7 +338,8 @@ placeStmt loc here p stmt = case stmt of
     Right (advance n p)
   StmtDirective (DirAlign mode e) -> do
     v <- layoutVal e >>= requireNonNeg (alignCtx mode)
-    Right (advance (padTo here (alignBytes mode v)) p)
+    let a = alignBytes mode v
+    Right (advance (padTo a here) (noteAlign (pCur p) a p))
   StmtDirective (DirComm isLocal name sizeE mAlignE) -> do
     size <- layoutVal sizeE
     align <- maybe (Right (defaultCommAlign size)) layoutVal mAlignE
@@ -390,15 +399,18 @@ applyBindings binds syms =
 -- * text-class sections fill the region from @entryPoint@
 -- * rodata then data fill the region from @dataBase@
 -- * bss-class sections follow, page-aligned, as NOBITS reservations.
-assignBases :: M.Map Section Int -> [Section] -> SectionBases
-assignBases sizes order = M.unions [textB, rodB, datB, bssB]
+assignBases :: M.Map Section Int -> M.Map Section Int -> [Section] -> SectionBases
+assignBases sizes aligns order = M.unions [textB, rodB, datB, bssB]
   where
     sizeOf s = M.findWithDefault 0 s sizes
+    -- a base must honour both the region's word alignment and any coarser
+    -- alignment requested inside the section, else intra-section offsets shift
+    alignOf s = max sectionAlign (M.findWithDefault 1 s aligns)
     inClass cls = filter ((== cls) . secClass) order
-    layoutRegion start = foldl step (M.empty, start)
+    layoutRegion start = foldl' step (M.empty, start)
       where
         step (m, cur) s =
-          let b = alignUp sectionAlign cur
+          let b = alignUp (alignOf s) cur
            in (M.insert s b m, b + sizeOf s)
     (textB, _) = layoutRegion (fromIntegral entryPoint) (inClass SecText)
     (rodB, afterRod) = layoutRegion dataBase (inClass SecRodata)
@@ -410,7 +422,7 @@ resolve :: ParsedProgram -> Either LinkError Executable
 resolve prog = do
   -- walk with every section at base 0 purely to measure sizes
   measured <- foldM placeStep (initPlace M.empty) prog
-  let bases = assignBases (pOffsets measured) (pOrder measured)
+  let bases = assignBases (pOffsets measured) (pAligns measured) (pOrder measured)
   -- walk again with real bases, so every recorded address, and any @.equ@ referencing a label, is already absolute
   placed <- foldM placeStep (initPlace bases) prog
   let syms = applyBindings (pBind placed) (pSyms placed)
@@ -428,10 +440,9 @@ resolve prog = do
         r <- resolveOperand bases addr syms instr
         return (r, (fromIntegral addr, locLine loc, locFile loc))
 
-checkShiftBounds :: IArithOp -> Int -> Either LinkError Int
-checkShiftBounds op val
-  | op `elem` [SLLI, SRLI, SRAI] && (val < 0 || val > 31) =
-      Left (ShiftOutOfRange val)
+checkShiftBounds :: Int -> Either LinkError Int
+checkShiftBounds val
+  | val < 0 || val > 31 = Left (ShiftOutOfRange val)
   | otherwise = Right val
 
 isReloc :: Operand -> Bool
@@ -534,7 +545,7 @@ resolveOperand bases pc table (SomeInstruction (ArithI op args)) = do
   val <- resolveImm bases pc table (i_imm args)
   validVal <-
     if op `elem` [SLLI, SRLI, SRAI]
-      then checkShiftBounds op val
+      then checkShiftBounds val
       else checkSigned "immediate" 12 False (i_imm args) val
   return $ SomeInstruction $ ArithI op (args {i_imm = validVal})
 resolveOperand bases pc table (SomeInstruction (SType op args)) = do
