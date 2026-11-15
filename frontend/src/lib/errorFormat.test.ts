@@ -95,6 +95,7 @@ describe("error line extraction", () => {
       emulatorErrorLine({
         kind: "Located",
         line: 12,
+        file: "",
         error: { kind: "IllegalInstruction", pc: 0, raw: 0 },
       }),
     ).toBe(12);
@@ -140,6 +141,7 @@ describe("error file extraction", () => {
       emulatorErrorFile({
         kind: "Located",
         line: 2,
+        file: "",
         error: { kind: "IllegalInstruction", pc: 0, raw: 0 },
       }),
     ).toBeNull();
@@ -155,6 +157,7 @@ describe("tags", () => {
       emulatorErrorTag({
         kind: "Located",
         line: 1,
+        file: "",
         error: { kind: "DecodeError", pc: 0, raw: 0 },
       }),
     ).toBe("DECODE");
@@ -193,9 +196,28 @@ describe("notices & system events", () => {
         fault: {
           kind: "Located",
           line: 4,
+          file: "",
           error: { kind: "IllegalInstruction", pc: 0x4, raw: 0 },
         },
       }),
     ).toMatch(/^At line 4: Illegal instruction/);
+  });
+
+  it("shows a located fault's file by name, not by the id on the wire", () => {
+    expect(
+      formatSystemEvent(
+        {
+          severity: "error",
+          notice: null,
+          fault: {
+            kind: "Located",
+            line: 2,
+            file: "file-1",
+            error: { kind: "IncludeCycle", path: "file-2" },
+          },
+        },
+        (id) => ({ "file-1": "main.s", "file-2": "util.s" })[id] ?? id,
+      ),
+    ).toBe("At main.s:2: Circular .include of `util.s`");
   });
 });

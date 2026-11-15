@@ -27,13 +27,14 @@ import {
 } from "../errorFormat";
 
 /** A file as compiled, in link order. */
-type BuildFile = { name: string; content: string };
+type BuildFile = { id: string; name: string; content: string };
 
 type LoadSnapshot = {
   fileId: string;
   content: string;
   files: BuildFile[];
   entry: string[];
+  fallbackToZero: boolean;
 };
 
 function severityToLevel(sev: Severity): LogLevel {
@@ -57,27 +58,28 @@ class CpuStore {
   sourceFileMap = $derived(new Map(this.sourceMap.map(([a, , f]) => [a, f])));
   disasmTextMap = $derived(new Map(this.disasmMap));
   breakpoints = $state(new Set<number>());
-  /** Name of the file shown in the editor; highlighting/breakpoints scope to it */
-  private get activeFileName(): string {
-    return fileStore.activeFile?.name ?? "";
-  }
+  // the source map names files by id, so highlighting/breakpoints scope to
+  // the editor's file even when another open file has the same name
   activeFilePcToLine = $derived.by(() => {
-    const name = this.activeFileName;
+    const id = fileStore.activeFileId;
     const m = new Map<number, number>();
     for (const [addr, line, file] of this.sourceMap)
-      if (file === name) m.set(addr, line);
+      if (file === id) m.set(addr, line);
     return m;
   });
   textRows = $derived.by<TextRow[]>(() => {
     const byFile = new Map(
       (this.loadedSnapshot?.files ?? []).map(
-        (f) => [f.name, f.content.split("\n")] as const,
+        (f) => [f.id, f.content.split("\n")] as const,
       ),
     );
     const codeByAddr = new Map(this.codeMap);
     let prevLine = -1;
     let prevFile = "";
-    return this.disasmMap.map(([addr, basic]) => {
+    // the emulator lists instructions in source order, which is not address
+    // order once a program switches between several text sections
+    const byAddress = [...this.disasmMap].sort(([a], [b]) => a - b);
+    return byAddress.map(([addr, basic]) => {
       const line = this.sourceLineMap.get(addr) ?? 0;
       const file = this.sourceFileMap.get(addr) ?? "";
       const fresh = line !== prevLine || file !== prevFile;
@@ -160,14 +162,17 @@ class CpuStore {
     const f = fileStore.activeFile;
     if (!f) return false;
     if (f.id !== snap.fileId) return true; // entry changed
-    const entry = buildStore.resolveBuildFiles().map((bf) => bf.name);
+    if (buildStore.fallbackToZero !== snap.fallbackToZero) return true;
+    const entry = buildStore.resolveBuildFiles().map((bf) => bf.id);
     if (entry.length !== snap.entry.length) return true;
     if (entry.some((n, i) => n !== snap.entry[i])) return true;
     const pool = fileStore.openFiles;
     if (pool.length !== snap.files.length) return true;
     return pool.some(
       (pf, i) =>
-        pf.name !== snap.files[i].name || pf.content !== snap.files[i].content,
+        pf.id !== snap.files[i].id ||
+        pf.name !== snap.files[i].name ||
+        pf.content !== snap.files[i].content,
     );
   }
 
@@ -250,7 +255,10 @@ class CpuStore {
         } else if (response.type === "error") {
           this.runAfterLoad = false;
           if (response.error) {
-            const message = formatEmulatorError(response.error);
+            const message = formatEmulatorError(
+              response.error,
+              this.fileNameOf,
+            );
             const line = emulatorErrorLine(response.error);
             logStore.log(
               "error",
@@ -261,7 +269,7 @@ class CpuStore {
             // falling back to the entry file when it carries no provenance
             const errFile = emulatorErrorFile(response.error);
             const named = errFile
-              ? fileStore.openFiles.find((f) => f.name === errFile)?.id
+              ? fileStore.openFiles.find((f) => f.id === errFile)?.id
               : undefined;
             const fileId =
               named ??
@@ -311,6 +319,12 @@ class CpuStore {
     this.mirrorSystemLog();
   }
 
+  /** The display name of a file the emulator refers to by id. */
+  private fileNameOf = (id: string): string =>
+    fileStore.openFiles.find((f) => f.id === id)?.name ??
+    this.loadedSnapshot?.files.find((f) => f.id === id)?.name ??
+    id;
+
   private mirrorSystemLog() {
     const log = this.cpuState?.systemLog ?? [];
 
@@ -318,7 +332,7 @@ class CpuStore {
     for (let i = this.systemLogShown; i < log.length; i++) {
       const ev = log[i];
       const level = severityToLevel(ev.severity);
-      const msg = formatSystemEvent(ev);
+      const msg = formatSystemEvent(ev, this.fileNameOf);
       const id = logStore.log(level, systemEventTag(ev), msg);
       if (ev.notice?.kind === "Syscall")
         this.syscallEntries.set(i, { id, msg });
@@ -329,7 +343,7 @@ class CpuStore {
     for (const [i, entry] of this.syscallEntries) {
       const ev = log[i];
       if (ev?.notice?.kind !== "Syscall") continue;
-      const msg = formatSystemEvent(ev);
+      const msg = formatSystemEvent(ev, this.fileNameOf);
       if (msg !== entry.msg) {
         logStore.update(entry.id, msg);
         entry.msg = msg;
@@ -362,17 +376,20 @@ class CpuStore {
     terminalStore.autoSwitch("system");
     this.compileError = null;
     const pool = fileStore.openFiles.map((f) => ({
+      id: f.id,
       name: f.name,
       content: f.content,
     }));
-    const entry = buildFiles.map((f) => f.name);
+    const entry = buildFiles.map((f) => f.id);
+    const fallbackToZero = buildStore.fallbackToZero;
     this.pendingSnapshot = {
       fileId: entryFile.id,
       content: entryFile.content,
       files: pool,
       entry,
+      fallbackToZero,
     };
-    sendToHaskell("load", { files: pool, entry });
+    sendToHaskell("load", { files: pool, entry, fallbackToZero });
   }
 
   public handleRun() {

@@ -65,6 +65,9 @@ pub enum LinkError {
     DuplicateLabel {
         label: String,
     },
+    MultipleDefinition {
+        label: String,
+    },
     UndefinedLabel {
         label: String,
     },
@@ -85,10 +88,23 @@ pub enum LinkError {
         context: String,
         value: i64,
     },
+    AlignNotPowerOfTwo {
+        value: i64,
+    },
+    AddressDependentLayout {},
     DivByZero {},
     CircularConstant {
         name: String,
     },
+    RegionOverflow {
+        region: String,
+        end: i64,
+        limit: i64,
+    },
+    MissingPcrelHi {
+        address: i64,
+    },
+    NoEntrySymbol {},
     Located {
         line: i32,
         file: String,
@@ -145,8 +161,15 @@ pub enum EmulatorError {
         raw: u32,
         extension: String,
     },
+    IncludeNotFound {
+        path: String,
+    },
+    IncludeCycle {
+        path: String,
+    },
     Located {
         line: i32,
+        file: String,
         error: Box<EmulatorError>,
     },
 }

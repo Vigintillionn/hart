@@ -6,6 +6,7 @@
   import Icon from "../../Icon.svelte";
   import Popover from "../../ui/Popover.svelte";
   import SegmentedControl from "../../ui/SegmentedControl.svelte";
+  import Toggle from "../../ui/Toggle.svelte";
 
   let { disabled = false }: { disabled?: boolean } = $props();
 
@@ -125,8 +126,32 @@
         </div>
       {/if}
 
+      <div class="space-y-1.5">
+        <div
+          class="text-[10.5px] font-semibold uppercase tracking-[1px] text-text-faint"
+        >
+          Entry point
+        </div>
+        <label
+          class="flex cursor-pointer items-center justify-between gap-2 rounded-md px-2 py-1.5 text-[12px] text-text-dim transition-colors hover:bg-surface-3"
+        >
+          <span title="With this off, a build without a global _start/main is a compile error">
+            Fall back to 0x0 without <span class="font-mono">_start</span>/<span
+              class="font-mono">main</span
+            >
+          </span>
+          <Toggle
+            bind:checked={buildStore.fallbackToZero}
+            label="Fall back to address 0x0 when no entry symbol is exported"
+          />
+        </label>
+      </div>
+
       <p class="text-[11px] leading-relaxed text-text-faint">
-        The active file is the entry point (address 0); the rest link after it.
+        Execution starts at a global <span class="font-mono">_start</span> or
+        <span class="font-mono">main</span> (export it with
+        <span class="font-mono">.globl</span>); files link in the order shown,
+        active file first.
       </p>
     </div>
   </Popover>

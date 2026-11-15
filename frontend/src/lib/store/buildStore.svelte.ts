@@ -12,15 +12,23 @@ export type BuildMode = "single" | "all" | "select";
 
 const MODE_KEY = "hart:buildMode";
 const SELECTED_KEY = "hart:buildSelected";
+const FALLBACK_KEY = "hart:entryFallback";
 
 class BuildStore {
   mode = $state<BuildMode>(loadJSON<BuildMode>(MODE_KEY, "single"));
   selected = $state<Set<string>>(new Set(loadJSON<string[]>(SELECTED_KEY, [])));
+  /**
+   * Execution starts at a global `_start`/`main` when one is exported. When
+   * neither exists: with the fallback on (the default), start at address 0x0;
+   * with it off, compiling errors instead.
+   */
+  fallbackToZero = $state<boolean>(loadJSON<boolean>(FALLBACK_KEY, true));
 
   constructor() {
     $effect.root(() => {
       $effect(() => saveJSON(MODE_KEY, this.mode));
       $effect(() => saveJSON(SELECTED_KEY, [...this.selected]));
+      $effect(() => saveJSON(FALLBACK_KEY, this.fallbackToZero));
     });
   }
 
@@ -51,14 +59,22 @@ class BuildStore {
     return [active, ...rest];
   }
 
-  /** Names of files that the given files pull in via `.include`. */
+  /**
+   * Names of files that the given files pull in via `.include`, directly or
+   * through a chain of includes. The chain is followed through every open
+   * file, as the emulator does, not just the ones in the build.
+   */
   private includeTargetsOf(files: OpenFile[]): Set<string> {
     const targets = new Set<string>();
     const re = /^\s*\.include\s+"([^"]+)"/;
-    for (const f of files)
+    const pending = [...files];
+    for (let f = pending.pop(); f; f = pending.pop())
       for (const line of f.content.split("\n")) {
-        const m = re.exec(line);
-        if (m) targets.add(m[1]);
+        const name = re.exec(line)?.[1];
+        if (name === undefined || targets.has(name)) continue;
+        targets.add(name);
+        const included = fileStore.openFiles.find((o) => o.name === name);
+        if (included) pending.push(included);
       }
     return targets;
   }
