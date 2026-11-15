@@ -2,21 +2,41 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { CpuState } from "../../bindings/CpuState";
 import type { EmulatorResponse } from "../../bindings/EmulatorResponse";
 import type { Severity } from "../../bindings/Severity";
-import type { SourceMap, DisasmMap, CodeMap, TextRow } from "../types";
+import type {
+  SourceMap,
+  DisasmMap,
+  CodeMap,
+  TextRow,
+  DisplayRow,
+} from "../types";
 import { terminalStore } from "./terminalStore.svelte";
 import { logStore, type LogLevel } from "./logStore.svelte";
+import { editorPrefs } from "./editorPrefs.svelte";
 import { fileStore } from "./fileStore.svelte";
+import { buildStore } from "./buildStore.svelte";
 import { extensionStore } from "./extensionStore.svelte";
 import { isaStore } from "./isaStore.svelte";
 import { machineStore } from "./machineStore.svelte";
 import { sendToHaskell } from "../util";
 import {
+  emulatorErrorFile,
   emulatorErrorLine,
   emulatorErrorTag,
   formatEmulatorError,
   formatSystemEvent,
   systemEventTag,
 } from "../errorFormat";
+
+/** A file as compiled, in link order. */
+type BuildFile = { id: string; name: string; content: string };
+
+type LoadSnapshot = {
+  fileId: string;
+  content: string;
+  files: BuildFile[];
+  entry: string[];
+  fallbackToZero: boolean;
+};
 
 function severityToLevel(sev: Severity): LogLevel {
   switch (sev) {
@@ -34,23 +54,61 @@ class CpuStore {
   sourceMap = $state<SourceMap>([]);
   disasmMap = $state<DisasmMap>([]);
   codeMap = $state<CodeMap>([]);
-  sourceLineMap = $derived(new Map(this.sourceMap));
+  // global instruction-address -> source line / file (every file in the build)
+  sourceLineMap = $derived(new Map(this.sourceMap.map(([a, l]) => [a, l])));
+  sourceFileMap = $derived(new Map(this.sourceMap.map(([a, , f]) => [a, f])));
   disasmTextMap = $derived(new Map(this.disasmMap));
+  /** Every file with code in the loaded program, `.include`d ones too. */
+  private loadedFileIds = $derived(new Set(this.sourceFileMap.values()));
   breakpoints = $state(new Set<number>());
+  // the source map names files by id, so highlighting/breakpoints scope to
+  // the editor's file even when another open file has the same name
+  activeFilePcToLine = $derived.by(() => {
+    const id = fileStore.activeFileId;
+    const m = new Map<number, number>();
+    for (const [addr, line, file] of this.sourceMap)
+      if (file === id) m.set(addr, line);
+    return m;
+  });
   textRows = $derived.by<TextRow[]>(() => {
-    const lines = (this.loadedSnapshot?.content ?? "").split("\n");
+    const byFile = new Map(
+      (this.loadedSnapshot?.files ?? []).map(
+        (f) => [f.id, f.content.split("\n")] as const,
+      ),
+    );
     const codeByAddr = new Map(this.codeMap);
     let prevLine = -1;
-    return this.disasmMap.map(([addr, basic]) => {
+    let prevFile = "";
+    // the emulator lists instructions in source order, which is not address
+    // order once a program switches between several text sections
+    const byAddress = [...this.disasmMap].sort(([a], [b]) => a - b);
+    return byAddress.map(([addr, basic]) => {
       const line = this.sourceLineMap.get(addr) ?? 0;
-      const source = line !== prevLine ? (lines[line - 1] ?? "").trim() : null;
+      const file = this.sourceFileMap.get(addr) ?? "";
+      const fresh = line !== prevLine || file !== prevFile;
+      const source = fresh ? (byFile.get(file)?.[line - 1] ?? "").trim() : null;
       prevLine = line;
+      prevFile = file;
       return { addr, code: codeByAddr.get(addr) ?? 0, basic, line, source };
     });
   });
+  textRowsDisplay = $derived.by<DisplayRow[]>(() => {
+    const out: DisplayRow[] = [];
+    let prevEnd: number | null = null;
+    for (const row of this.textRows) {
+      if (prevEnd !== null && row.addr > prevEnd) {
+        out.push({ kind: "pad", addr: prevEnd, bytes: row.addr - prevEnd });
+      }
+      out.push({ kind: "instr", ...row });
+      prevEnd = row.addr + 4;
+    }
+    return out;
+  });
+  // line -> addresses, for the active file only (line numbers collide across
+  // files, so a breakpoint toggled in the editor must resolve within its file)
   lineToAddrs = $derived.by(() => {
     const m = new Map<number, number[]>();
-    for (const [addr, line] of this.sourceMap) {
+    for (const [addr, line] of this.activeFilePcToLine) {
       const arr = m.get(line);
       if (arr) arr.push(addr);
       else m.set(line, [addr]);
@@ -61,7 +119,7 @@ class CpuStore {
   breakpointLines = $derived.by(() => {
     const s = new Set<number>();
     for (const addr of this.breakpoints) {
-      const line = this.sourceLineMap.get(addr);
+      const line = this.activeFilePcToLine.get(addr);
       if (line !== undefined) s.add(line);
     }
     return s;
@@ -75,10 +133,10 @@ class CpuStore {
   unlisten: UnlistenFn | null = null;
   unlistenSidecar: UnlistenFn | null = null;
 
-  /** snapshot of the file (id + content) that the emulator currently holds */
-  loadedSnapshot = $state<{ fileId: string; content: string } | null>(null);
+  /** snapshot of the build the emulator currently holds (entry + linked files) */
+  loadedSnapshot = $state<LoadSnapshot | null>(null);
   /** snapshot of the in-flight `load` command, promoted on the `loaded` event */
-  private pendingSnapshot: { fileId: string; content: string } | null = null;
+  private pendingSnapshot: LoadSnapshot | null = null;
   /** set when a `run` should fire automatically after a recompile succeeds */
   private runAfterLoad = false;
   private systemLogShown = 0;
@@ -102,12 +160,27 @@ class CpuStore {
    * Used to recompile before running so we never execute stale machine code.
    */
   get isDirty() {
-    if (!this.loadedSnapshot) return false;
+    const snap = this.loadedSnapshot;
+    if (!snap) return false;
     const f = fileStore.activeFile;
     if (!f) return false;
-    return (
-      f.id !== this.loadedSnapshot.fileId ||
-      f.content !== this.loadedSnapshot.content
+    if (buildStore.fallbackToZero !== snap.fallbackToZero) return true;
+    // looking at another file of the loaded program (the debugger follows
+    // execution there) is not a request to build that file instead
+    if (f.id !== snap.fileId) {
+      if (!this.loadedFileIds.has(f.id)) return true;
+    } else {
+      const entry = buildStore.buildFiles().map((bf) => bf.id);
+      if (entry.length !== snap.entry.length) return true;
+      if (entry.some((n, i) => n !== snap.entry[i])) return true;
+    }
+    const pool = fileStore.openFiles;
+    if (pool.length !== snap.files.length) return true;
+    return pool.some(
+      (pf, i) =>
+        pf.id !== snap.files[i].id ||
+        pf.name !== snap.files[i].name ||
+        pf.content !== snap.files[i].content,
     );
   }
 
@@ -190,15 +263,27 @@ class CpuStore {
         } else if (response.type === "error") {
           this.runAfterLoad = false;
           if (response.error) {
-            const message = formatEmulatorError(response.error);
+            const message = formatEmulatorError(
+              response.error,
+              this.fileNameOf,
+            );
             const line = emulatorErrorLine(response.error);
             logStore.log(
               "error",
               emulatorErrorTag(response.error),
               line !== null ? `At line ${line}: ${message}` : message,
             );
+            // route the marker to the file the error names (multi-file builds),
+            // falling back to the entry file when it carries no provenance
+            const errFile = emulatorErrorFile(response.error);
+            const named = errFile
+              ? fileStore.openFiles.find((f) => f.id === errFile)?.id
+              : undefined;
             const fileId =
-              this.pendingSnapshot?.fileId ?? fileStore.activeFile?.id ?? "";
+              named ??
+              this.pendingSnapshot?.fileId ??
+              fileStore.activeFile?.id ??
+              "";
             this.compileError = { fileId, line, message };
           } else {
             logStore.log("error", "EMU", response.message ?? "Unknown error");
@@ -240,7 +325,23 @@ class CpuStore {
     if (out) terminalStore.program.set(out);
     else terminalStore.program.clear();
     this.mirrorSystemLog();
+    if (state.status === "Paused") this.followExecution(state.pc);
   }
+
+  /** Show the file that owns the instruction execution stopped at. */
+  private followExecution(pc: number) {
+    if (!editorPrefs.followExecution) return;
+    const fileId = this.sourceFileMap.get(pc);
+    if (fileId === undefined || fileId === fileStore.activeFileId) return;
+    if (fileStore.openFiles.some((f) => f.id === fileId))
+      fileStore.setActiveFileId(fileId);
+  }
+
+  /** The display name of a file the emulator refers to by id. */
+  private fileNameOf = (id: string): string =>
+    fileStore.openFiles.find((f) => f.id === id)?.name ??
+    this.loadedSnapshot?.files.find((f) => f.id === id)?.name ??
+    id;
 
   private mirrorSystemLog() {
     const log = this.cpuState?.systemLog ?? [];
@@ -249,7 +350,7 @@ class CpuStore {
     for (let i = this.systemLogShown; i < log.length; i++) {
       const ev = log[i];
       const level = severityToLevel(ev.severity);
-      const msg = formatSystemEvent(ev);
+      const msg = formatSystemEvent(ev, this.fileNameOf);
       const id = logStore.log(level, systemEventTag(ev), msg);
       if (ev.notice?.kind === "Syscall")
         this.syscallEntries.set(i, { id, msg });
@@ -260,7 +361,7 @@ class CpuStore {
     for (const [i, entry] of this.syscallEntries) {
       const ev = log[i];
       if (ev?.notice?.kind !== "Syscall") continue;
-      const msg = formatSystemEvent(ev);
+      const msg = formatSystemEvent(ev, this.fileNameOf);
       if (msg !== entry.msg) {
         logStore.update(entry.id, msg);
         entry.msg = msg;
@@ -282,8 +383,9 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
-    const f = fileStore.activeFile;
-    if (!f) {
+    const buildFiles = buildStore.buildFiles();
+    const entryFile = buildFiles[0];
+    if (!entryFile) {
       logStore.log("error", "BUILD", "No file open to compile.");
       return;
     }
@@ -291,8 +393,21 @@ class CpuStore {
     // plus any faults); we just surface the system console on user action.
     terminalStore.autoSwitch("system");
     this.compileError = null;
-    this.pendingSnapshot = { fileId: f.id, content: f.content };
-    sendToHaskell("load", f.content);
+    const pool = fileStore.openFiles.map((f) => ({
+      id: f.id,
+      name: f.name,
+      content: f.content,
+    }));
+    const entry = buildFiles.map((f) => f.id);
+    const fallbackToZero = buildStore.fallbackToZero;
+    this.pendingSnapshot = {
+      fileId: entryFile.id,
+      content: entryFile.content,
+      files: pool,
+      entry,
+      fallbackToZero,
+    };
+    sendToHaskell("load", { files: pool, entry, fallbackToZero });
   }
 
   public handleRun() {

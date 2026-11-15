@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assemblyErrorLine,
+  emulatorErrorFile,
   emulatorErrorLine,
   emulatorErrorTag,
   formatAssemblyError,
@@ -41,6 +42,7 @@ describe("formatAssemblyError", () => {
     const e: AssemblyError = {
       kind: "Located",
       line: 7,
+      file: "",
       error: { kind: "InvalidRegister", text: "x99" },
     };
     expect(formatAssemblyError(e)).toBe("invalid register `x99`");
@@ -57,11 +59,14 @@ describe("formatLinkError", () => {
       formatLinkError({
         kind: "ImmOutOfRange",
         context: "addi immediate",
-        lo: -2048,
-        hi: 2047,
+        lo: -2048n,
+        hi: 2047n,
         value: 5000n,
       }),
     ).toBe("addi immediate out of range [-2048, 2047]: 5000");
+    expect(
+      formatLinkError({ kind: "CircularConstant", name: "A" }),
+    ).toBe("Circular constant definition: `A`");
   });
 });
 
@@ -90,6 +95,7 @@ describe("error line extraction", () => {
       emulatorErrorLine({
         kind: "Located",
         line: 12,
+        file: "",
         error: { kind: "IllegalInstruction", pc: 0, raw: 0 },
       }),
     ).toBe(12);
@@ -97,6 +103,7 @@ describe("error line extraction", () => {
     const link: LinkError = {
       kind: "Located",
       line: 3,
+      file: "",
       error: { kind: "DuplicateLabel", label: "main" },
     };
     expect(emulatorErrorLine({ kind: "LinkError", error: link })).toBe(3);
@@ -105,6 +112,38 @@ describe("error line extraction", () => {
   it("returns null when there is no line", () => {
     expect(
       emulatorErrorLine({ kind: "UnknownSyscall", pc: 0, syscall: 99 }),
+    ).toBeNull();
+  });
+});
+
+describe("error file extraction", () => {
+  it("reads the originating file through compile errors", () => {
+    const link: LinkError = {
+      kind: "Located",
+      line: 5,
+      file: "helper.s",
+      error: { kind: "UndefinedLabel", label: "main" },
+    };
+    expect(emulatorErrorFile({ kind: "LinkError", error: link })).toBe(
+      "helper.s",
+    );
+  });
+
+  it("treats the empty file (single buffer) and runtime faults as no file", () => {
+    const parse: AssemblyError = {
+      kind: "Located",
+      line: 1,
+      file: "",
+      error: { kind: "EOF" },
+    };
+    expect(emulatorErrorFile({ kind: "ParseError", error: parse })).toBeNull();
+    expect(
+      emulatorErrorFile({
+        kind: "Located",
+        line: 2,
+        file: "",
+        error: { kind: "IllegalInstruction", pc: 0, raw: 0 },
+      }),
     ).toBeNull();
   });
 });
@@ -118,6 +157,7 @@ describe("tags", () => {
       emulatorErrorTag({
         kind: "Located",
         line: 1,
+        file: "",
         error: { kind: "DecodeError", pc: 0, raw: 0 },
       }),
     ).toBe("DECODE");
@@ -156,9 +196,28 @@ describe("notices & system events", () => {
         fault: {
           kind: "Located",
           line: 4,
+          file: "",
           error: { kind: "IllegalInstruction", pc: 0x4, raw: 0 },
         },
       }),
     ).toMatch(/^At line 4: Illegal instruction/);
+  });
+
+  it("shows a located fault's file by name, not by the id on the wire", () => {
+    expect(
+      formatSystemEvent(
+        {
+          severity: "error",
+          notice: null,
+          fault: {
+            kind: "Located",
+            line: 2,
+            file: "file-1",
+            error: { kind: "IncludeCycle", path: "file-2" },
+          },
+        },
+        (id) => ({ "file-1": "main.s", "file-2": "util.s" })[id] ?? id,
+      ),
+    ).toBe("At main.s:2: Circular .include of `util.s`");
   });
 });

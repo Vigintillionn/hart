@@ -130,6 +130,14 @@ export const SETTINGS: SettingDescriptor[] = [
     keywords: ["minimap", "overview", "preview"],
   },
   {
+    id: "editor.followExecution",
+    category: "editor",
+    title: "Follow execution across files",
+    description:
+      "Switch to the file being executed when a step or breakpoint stops in another one.",
+    keywords: ["follow", "step", "breakpoint", "switch", "file", "tab", "debug"],
+  },
+  {
     id: "editor.hover",
     category: "editor",
     title: "Hover documentation",

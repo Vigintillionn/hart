@@ -37,6 +37,8 @@ export function formatLinkError(e: LinkError): string {
       return formatLinkError(e.error);
     case "DuplicateLabel":
       return `Duplicate label: \`${e.label.trim()}\``;
+    case "MultipleDefinition":
+      return `\`${e.label.trim()}\` is defined globally in more than one file`;
     case "UndefinedLabel":
       return `Undefined label: \`${e.label.trim()}\``;
     case "ShiftOutOfRange":
@@ -45,13 +47,37 @@ export function formatLinkError(e: LinkError): string {
       return `${e.context} out of range [${e.lo}, ${e.hi}]: ${e.value}`;
     case "MisalignedTarget":
       return `${e.context} target is not 2-byte aligned: ${e.value}`;
+    case "NegativeValue":
+      return `${e.context} must not be negative: ${e.value}`;
+    case "AlignNotPowerOfTwo":
+      return `Alignment must be a power of two: ${e.value}`;
+    case "AddressDependentLayout":
+      return "A size or alignment must not depend on a symbol's address (only constants and differences of labels in one section)";
+    case "DivByZero":
+      return "Division by zero in an expression";
+    case "CircularConstant":
+      return `Circular constant definition: \`${e.name.trim()}\``;
+    case "RegionOverflow":
+      return `The ${e.region} region ends at ${hex(Number(e.end))}, past its limit ${hex(Number(e.limit))}`;
+    case "MissingPcrelHi":
+      return `%pcrel_lo refers to ${hex(Number(e.address))}, but no %pcrel_hi is placed there`;
+    case "NoEntrySymbol":
+      return "No entry symbol: define a global `_start` or `main` (mark it with .globl)";
   }
 }
 
-export function formatEmulatorError(e: EmulatorError): string {
+/** Maps the file id the emulator reports to the name shown to the user. */
+export type FileNamer = (id: string) => string;
+
+const rawFileId: FileNamer = (id) => id;
+
+export function formatEmulatorError(
+  e: EmulatorError,
+  fileName: FileNamer = rawFileId,
+): string {
   switch (e.kind) {
     case "Located":
-      return formatEmulatorError(e.error);
+      return formatEmulatorError(e.error, fileName);
     case "ParseError":
       return formatAssemblyError(e.error);
     case "LinkError":
@@ -76,6 +102,10 @@ export function formatEmulatorError(e: EmulatorError): string {
       return `Cycle limit exceeded (${e.limit} cycles); execution halted (possible infinite loop)`;
     case "DisabledExtension":
       return `Instruction at ${hex(e.pc)} (raw: ${hex(e.raw)}) requires the ${e.extension} extension, which is disabled`;
+    case "IncludeNotFound":
+      return `Cannot find included file \`${e.path}\` (it must be open in the editor)`;
+    case "IncludeCycle":
+      return `Circular .include of \`${fileName(e.path)}\``;
   }
 }
 
@@ -95,11 +125,18 @@ export function formatNotice(n: Notice): string {
   }
 }
 
-export function formatSystemEvent(ev: SystemEvent): string {
+export function formatSystemEvent(
+  ev: SystemEvent,
+  fileName: FileNamer = rawFileId,
+): string {
   if (ev.fault) {
     const line = emulatorErrorLine(ev.fault);
-    const msg = formatEmulatorError(ev.fault);
-    return line !== null ? `At line ${line}: ${msg}` : msg;
+    const file = emulatorErrorFile(ev.fault);
+    const msg = formatEmulatorError(ev.fault, fileName);
+    if (line === null) return msg;
+    return file !== null
+      ? `At ${fileName(file)}:${line}: ${msg}`
+      : `At line ${line}: ${msg}`;
   }
   if (ev.notice) return formatNotice(ev.notice);
   return "";
@@ -132,6 +169,9 @@ export function emulatorErrorTag(e: EmulatorError): string {
       return "CYCLES";
     case "DisabledExtension":
       return "EXT";
+    case "IncludeNotFound":
+    case "IncludeCycle":
+      return "INCLUDE";
   }
 }
 
@@ -173,5 +213,22 @@ export function emulatorErrorLine(e: EmulatorError): number | null {
   if (e.kind === "Located") return e.line;
   if (e.kind === "ParseError") return assemblyErrorLine(e.error);
   if (e.kind === "LinkError") return linkErrorLine(e.error);
+  return null;
+}
+
+/** The originating file a compile error points at, if any (via `Located`). */
+export function assemblyErrorFile(e: AssemblyError): string | null {
+  return e.kind === "Located" && e.file !== "" ? e.file : null;
+}
+
+/** The originating file a link error points at, if any (via `Located`). */
+export function linkErrorFile(e: LinkError): string | null {
+  return e.kind === "Located" && e.file !== "" ? e.file : null;
+}
+
+export function emulatorErrorFile(e: EmulatorError): string | null {
+  if (e.kind === "Located") return e.file !== "" ? e.file : null;
+  if (e.kind === "ParseError") return assemblyErrorFile(e.error);
+  if (e.kind === "LinkError") return linkErrorFile(e.error);
   return null;
 }

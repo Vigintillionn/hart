@@ -13,6 +13,7 @@ export interface EditorPrefs {
   wordWrap: boolean;
   renderWhitespace: boolean;
   minimap: boolean;
+  followExecution: boolean;
   hoverInstructions: boolean;
   hoverDirectives: boolean;
   hoverRegisters: boolean;
@@ -28,6 +29,7 @@ export const DEFAULT_PREFS: EditorPrefs = {
   wordWrap: false,
   renderWhitespace: false,
   minimap: false,
+  followExecution: true,
   hoverInstructions: true,
   hoverDirectives: true,
   hoverRegisters: true,
@@ -60,6 +62,7 @@ class EditorPrefsStore {
   wordWrap = $state(DEFAULT_PREFS.wordWrap);
   renderWhitespace = $state(DEFAULT_PREFS.renderWhitespace);
   minimap = $state(DEFAULT_PREFS.minimap);
+  followExecution = $state(DEFAULT_PREFS.followExecution);
   hoverInstructions = $state(DEFAULT_PREFS.hoverInstructions);
   hoverDirectives = $state(DEFAULT_PREFS.hoverDirectives);
   hoverRegisters = $state(DEFAULT_PREFS.hoverRegisters);
@@ -84,6 +87,7 @@ class EditorPrefsStore {
       wordWrap: this.wordWrap,
       renderWhitespace: this.renderWhitespace,
       minimap: this.minimap,
+      followExecution: this.followExecution,
       hoverInstructions: this.hoverInstructions,
       hoverDirectives: this.hoverDirectives,
       hoverRegisters: this.hoverRegisters,

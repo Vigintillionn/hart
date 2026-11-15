@@ -19,6 +19,15 @@ spec = do
       cpu <- runProgram "li a0, 3\nli a1, 7\nsub a2, a0, a1\n"
       regS cpu a2 `shouldBe` (-4)
 
+  describe "entry symbol" $ do
+    it "starts execution at a global main, skipping earlier code" $ do
+      cpu <- runProgram ".globl main\nhelper: li a0, 1\nli a7, 10\necall\nmain: li a0, 5\nli a7, 10\necall\n"
+      regU cpu a0 `shouldBe` 5
+
+    it "starts at 0x0 when no entry symbol is exported" $ do
+      cpu <- runProgram "li a0, 1\nli a7, 10\necall\nmain: li a0, 5\nli a7, 10\necall\n"
+      regU cpu a0 `shouldBe` 1
+
   describe "x0 is hardwired to zero" $ do
     it "discards writes to x0 but still reads as 0" $ do
       cpu <- runProgram "addi zero, zero, 42\nadd a0, zero, zero\n"
@@ -150,3 +159,91 @@ spec = do
               "end:"
             ]
       regU cpu a0 `shouldBe` 15
+
+  describe "symbol constants and text-section layout" $ do
+    it "uses a .equ constant as an immediate at runtime" $ do
+      cpu <- runProgram ".equ ANSWER, 42\nli a0, ANSWER\n"
+      regU cpu a0 `shouldBe` 42
+
+    it "evaluates an expression with a character literal at runtime" $ do
+      cpu <- runProgram "li a0, 'A' + 1\n"
+      regU cpu a0 `shouldBe` 66
+
+    it "reads and writes a .bss slot that sits below the heap" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "la t0, slot",
+              "li t1, 0xBEEF",
+              "sw t1, 0(t0)", -- bss[slot] = 0xBEEF
+              "li a0, 0",
+              "li a7, 214",
+              "ecall", -- a0 = current heap break
+              "blt t0, a0, ok", -- slot must be below the heap
+              "li a1, 0", -- (unreached on success)
+              "j done",
+              "ok:",
+              "lw a1, 0(t0)", -- read the sentinel back
+              "done:",
+              ".bss",
+              "slot: .space 4"
+            ]
+      regU cpu a1 `shouldBe` 0xBEEF
+
+    it "computes a length with the . location counter" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "li a0, LEN",
+              ".data",
+              "arr: .word 10, 20, 30, 40",
+              ".equ LEN, . - arr" -- 16 bytes
+            ]
+      regU cpu a0 `shouldBe` 16
+
+    it "loads a symbol address written with .word" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "la a0, ptr",
+              "lw a1, 0(a0)", -- a1 = address stored at ptr (== value's address)
+              "lw a2, 0(a1)", -- a2 = the word at that address
+              ".data",
+              "ptr: .word value",
+              "value: .word 0x2A"
+            ]
+      regU cpu a2 `shouldBe` 0x2A
+
+    it "jumps correctly across a .align gap in .text (layout/resolution stay in sync)" $ do
+      cpu <-
+        runProgram $
+          unlines
+            [ "j done",
+              "li a0, 99", -- skipped
+              ".align 4", -- pad to a 16-byte boundary
+              "done:",
+              "li a0, 7"
+            ]
+      regU cpu a0 `shouldBe` 7
+
+    it "loads full 32-bit values with li, literal or named" $ do
+      cpu <- runProgram ".equ K, 0xFFFFFFFE\nli a0, 0xFFFFFFFF\nli a1, K\nli a2, 0x80000000\n"
+      map (regU cpu) [a0, a1, a2] `shouldBe` [0xFFFFFFFF, 0xFFFFFFFE, 0x80000000]
+
+  describe "feature programs (test/programs)" $ do
+    let names = ["expr-features.s", "linker-features.s", "section-features.s", "include-demo.s", "io-consts.s"]
+    pool <- runIO (traverse (\n -> (,) n <$> readFile ("test/programs/" ++ n)) names)
+    let prints name expected =
+          it (name ++ " prints its expected output") $ do
+            cpu <- runFiles pool [name]
+            lines (output cpu) `shouldBe` expected
+    prints
+      "expr-features.s"
+      ["HART", "div/mod: 4 1", "bits: 511", "len: 20", "sum: 150", "bss: 20", "ptr: 10", "diff: 20", "done"]
+    prints
+      "linker-features.s"
+      ["Answer: 42", "Sum 1..10: 55", "word=305419896 4660 171", "bss=777", "Done!"]
+    prints
+      "section-features.s"
+      ["sections!", "comm: 1234", "lcomm: 5678", "counter: 99", "done"]
+    prints "include-demo.s" ["included: 7"]

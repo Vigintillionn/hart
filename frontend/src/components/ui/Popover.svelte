@@ -5,11 +5,13 @@
     open = $bindable(),
     title = "",
     width = "w-56",
+    align = "right",
     children,
   }: {
     open: boolean;
     title?: string;
     width?: string;
+    align?: "left" | "right";
     children: Snippet;
   } = $props();
 
@@ -31,7 +33,9 @@
   ></button>
 
   <div
-    class="absolute right-0 top-full z-50 mt-1.5 {width} overflow-hidden rounded-lg border border-border-strong bg-surface-2 shadow-2xl"
+    class="absolute {align === 'left'
+      ? 'left-0'
+      : 'right-0'} top-full z-50 mt-1.5 {width} max-w-[calc(100vw-1rem)] overflow-hidden rounded-lg border border-border-strong bg-surface-2 shadow-2xl"
   >
     {#if title}
       <div

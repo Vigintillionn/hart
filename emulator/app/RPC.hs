@@ -11,6 +11,7 @@ import Data.ByteString.Lazy.Char8 qualified as BL
 import Data.IntMap.Strict qualified as M
 import Data.IntSet (IntSet)
 import Data.IntSet qualified as IntSet
+import Data.List (find)
 import Data.List.NonEmpty (NonEmpty (..))
 import Data.Maybe (mapMaybe)
 import Data.Sequence qualified as Seq
@@ -28,14 +29,27 @@ import Extension
     mkExtensionSet,
     readExtensionCode,
   )
-import Linker (Executable (..), resolve)
+import Linker (EntryPolicy (..), Executable (..), resolveWith)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), RunStatus (..), StopReason (..), appendOutput, emptyCPU, entryPoint, incPC, outputDelta, signedRegs)
 import Numeric (showHex)
-import Parser (parse)
+import Parser (parseWithLocs)
+import Preprocess (Expanded (..), IncludeFailure (..), Resolver, expandMany, includeFault, locAt)
 import System.IO (hFlush, hReady, isEOF, stdin, stdout)
 
+-- | a file the app sent with @load@. The id is what the build keys on, so two
+-- files that share a name stay distinct; the name is what @.include@ refers to.
+data SourceFile = SourceFile
+  { sfId :: FilePath,
+    sfName :: FilePath,
+    sfContent :: String
+  }
+  deriving (Show, Eq)
+
 data Command
-  = CmdLoad String
+  = -- | the files available to the build, the ids of the ones to assemble
+    -- and link as translation units (in order, the active file first), and
+    -- what to do when the build exports no @_start@/@main@
+    CmdLoad [SourceFile] [FilePath] EntryPolicy
   | CmdRun
   | CmdPause
   | CmdStepFwd
@@ -57,7 +71,7 @@ instance FromJSON Command where
   parseJSON = withObject "Command" $ \v -> do
     cmd <- v .: "command"
     case cmd :: String of
-      "load" -> CmdLoad <$> v .: "data"
+      "load" -> v .: "data" >>= parseLoad
       "run" -> return CmdRun
       "pause" -> return CmdPause
       "step_forward" -> return CmdStepFwd
@@ -71,11 +85,25 @@ instance FromJSON Command where
       "get_instruction_set" -> return CmdGetInstructionSet
       "quit" -> return CmdQuit
       _ -> fail "Unknown command"
+    where
+      -- data: {files: [{id, name, content}, ...], entry: [id, ...], fallbackToZero: bool}
+      -- a file's @id@ is optional and defaults to its name; @entry@ is optional
+      -- and defaults to every file, in the order given; @fallbackToZero@ is
+      -- optional and defaults to true.
+      parseLoad d = do
+        objs <- d .: "files"
+        files <- mapM parseFile objs
+        entry <- d .:? "entry" .!= map sfId files
+        fallback <- d .:? "fallbackToZero" .!= True
+        pure (CmdLoad files entry (if fallback then FallBackToZero else RequireEntry))
+      parseFile o = do
+        name <- o .: "name"
+        SourceFile <$> o .:? "id" .!= name <*> pure name <*> o .: "content"
 
 data Response
   = ResState CPU
   | ResStateDelta CPU CPU
-  | ResLoaded CPU [(Word32, Int)] [(Word32, String)] [(Word32, Word32)]
+  | ResLoaded CPU [(Word32, Int, FilePath)] [(Word32, String)] [(Word32, Word32)]
   | -- | RPC/protocol-level message (not an emulated-program fault)
     ResError String
   | -- | a typed emulator fault (parse/link/decode/runtime)
@@ -190,14 +218,34 @@ runRPC _ = do
   let emptyDbg = Debugger Seq.empty emptyCPU Seq.empty
   rpcLoop defaultExtensions IntSet.empty defaultMaxHistory Nothing emptyDbg
 
-compileAndLoad :: ExtensionSet -> String -> IO (Maybe (Debugger, [(Word32, Int)], [(Word32, String)], [(Word32, Word32)]))
-compileAndLoad exts sourceCode = do
-  case parse exts sourceCode of
-    Left err -> do
-      sendResponse $ ResFault (EParse err)
+-- | resolve @.include@ against the files the app provided (open editor
+-- buffers), by exact name. Of several files with that name the first wins.
+mapResolver :: (Applicative m) => [SourceFile] -> Resolver m
+mapResolver files _dir req =
+  pure $ case find ((== req) . sfName) files of
+    Just file -> Right (sfId file, sfContent file)
+    Nothing -> Left NotFound
+
+compileAndLoad ::
+  ExtensionSet ->
+  [SourceFile] ->
+  [FilePath] ->
+  EntryPolicy ->
+  IO (Maybe (Debugger, [(Word32, Int, FilePath)], [(Word32, String)], [(Word32, Word32)]))
+compileAndLoad exts files entry entryPolicy = do
+  -- concatenate the entry files into one unit, resolving any @.include@ against
+  -- the full set of open files; provenance keeps each line tied to its file
+  let entryFiles = [(sfId f, sfContent f) | i <- entry, Just f <- [find ((== i) . sfId) files]]
+  expanded <- expandMany (mapResolver files) entryFiles
+  case expanded of
+    Left perr -> do
+      sendResponse $ ResFault (includeFault perr)
       return Nothing
-    Right parsed -> do
-      case resolve parsed of
+    Right ex -> case parseWithLocs exts (locAt ex) (expSource ex) of
+      Left err -> do
+        sendResponse $ ResFault (EParse err)
+        return Nothing
+      Right parsed -> case resolveWith entryPolicy parsed of
         Left err -> do
           sendResponse $ ResFault (ELink err)
           return Nothing
@@ -218,15 +266,20 @@ compileAndLoad exts sourceCode = do
               return Nothing
             else do
               readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU {enabledExts = exts}
-              sendLog Info "BUILD" ("assembled " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ " · entry 0x" ++ showHex entryPoint "")
+              let nFiles = length (expUnits ex)
+                  filesNote = if nFiles > 1 then " from " ++ show nFiles ++ " files" else ""
+                  entryNote = case execEntry executable of
+                    Just (name, addr) -> " · entry " ++ name ++ " @ 0x" ++ showHex addr ""
+                    Nothing -> " · entry 0x" ++ showHex entryPoint ""
+              sendLog Info "BUILD" ("assembled " ++ show n ++ " instruction" ++ (if n == 1 then "" else "s") ++ filesNote ++ entryNote)
               let disasmMap =
                     zipWith
-                      (\instr (addr, _) -> (addr, disassemble instr))
+                      (\instr (addr, _, _) -> (addr, disassemble instr))
                       prog
                       srcMap
               let codeMap =
                     zipWith
-                      (\instr (addr, _) -> (addr, assembleSome instr))
+                      (\instr (addr, _, _) -> (addr, assembleSome instr))
                       prog
                       srcMap
               return $ Just (initDebugger (readyCpu :| []), srcMap, disasmMap, codeMap)
@@ -271,8 +324,8 @@ rpcLoop exts bps hist lastSent dbg = do
                   lastSent' <- sendState lastSent False cPaused
                   rpcLoop exts bps hist lastSent' newDbg
                 else rpcLoop exts bps hist lastSent dbg
-            Just (CmdLoad sourceCode) -> do
-              mNewDbg <- compileAndLoad exts sourceCode
+            Just (CmdLoad files entry useEntry) -> do
+              mNewDbg <- compileAndLoad exts files entry useEntry
               case mNewDbg of
                 Nothing -> rpcLoop exts bps hist lastSent dbg
                 Just (newDbg, smap, dmap, cmap) -> do

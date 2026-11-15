@@ -19,6 +19,7 @@ where
 
 import Data.Aeson (ToJSON (..), Value, object, (.=))
 import Data.Word (Word32)
+import Loc (Loc (..))
 
 -- | Parse-time failures produced by "Parser".
 data AssemblyError
@@ -35,20 +36,43 @@ data AssemblyError
   | -- | a CSR operand outside its valid range: context, lower bound, upper
     -- bound, offending value
     CsrOutOfRange String Int Int Int
-  | Located Int AssemblyError
+  | -- | source location + the underlying failure that occurred there
+    Located Loc AssemblyError
   deriving (Show, Eq)
 
 -- | Link-time failures produced by "Linker" (symbol resolution + range checks).
 data LinkError
   = DuplicateLabel String
+  | -- | a symbol exported (@.globl@) as a strong definition by more than one
+    -- translation unit
+    MultipleDefinition String
   | UndefinedLabel String
   | ShiftOutOfRange Int
   | -- | context, lower bound, upper bound, offending value
     ImmOutOfRange String Int Int Int
   | -- | context, offending value
     MisalignedTarget String Int
-  | -- | source line + the underlying failure that occurred there
-    LocatedLink Int LinkError
+  | -- | a directive value that must be non-negative was not: context, value
+    NegativeValue String Int
+  | -- | a @.balign@ byte count that is not a power of two
+    AlignNotPowerOfTwo Int
+  | -- | a size or alignment whose value depends on where a section is loaded,
+    -- so the layout it produces is not well defined
+    AddressDependentLayout
+  | -- | division or modulo by zero in an expression
+    DivByZero
+  | -- | a constant (@.equ@/@.set@/@.equiv@) whose value refers back to itself,
+    -- directly or transitively: the offending symbol name
+    CircularConstant String
+  | -- | a memory region grew past its limit: region name, its end address,
+    -- the limit it crossed
+    RegionOverflow String Int Int
+  | -- | a @%pcrel_lo@ whose operand address holds no @%pcrel_hi@ @auipc@
+    MissingPcrelHi Int
+  | -- | no exported @_start@/@main@ entry symbol, and the build required one
+    NoEntrySymbol
+  | -- | source location + the underlying failure that occurred there
+    LocatedLink Loc LinkError
   deriving (Show, Eq)
 
 data EmulatorError
@@ -74,8 +98,12 @@ data EmulatorError
     ECycleLimit Int
   | -- | pc, raw instruction word, ISA code of the disabled extension it needs
     EDisabledExtension Word32 Word32 String
-  | -- | source line + the underlying runtime fault that occurred there
-    ELocated Int EmulatorError
+  | -- | an @.include@ naming a file that could not be found: the requested path
+    EIncludeNotFound FilePath
+  | -- | an @.include@ that re-enters a file already being included: that file
+    EIncludeCycle FilePath
+  | -- | source line and file + the underlying fault that occurred there
+    ELocated Int FilePath EmulatorError
   deriving (Show, Eq)
 
 data Severity = Info | Warning | SevError
@@ -124,7 +152,7 @@ eventSeverity (SysFault e) = faultSeverity e
   where
     -- look through the 'ELocated' wrapper so a fault keeps its severity once a
     -- source line is attached
-    faultSeverity (ELocated _ inner) = faultSeverity inner
+    faultSeverity (ELocated _ _ inner) = faultSeverity inner
     faultSeverity (EUnknownSyscall _ _) = Warning
     faultSeverity (EOutOfMemory _) = Warning
     faultSeverity _ = SevError
@@ -150,18 +178,31 @@ instance ToJSON AssemblyError where
       object ["kind" .= s "ExtensionDisabled", "extension" .= ext, "mnemonic" .= mnem]
     CsrOutOfRange ctx lo hi v ->
       object ["kind" .= s "CsrOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
-    Located ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
+    Located loc inner ->
+      object ["kind" .= s "Located", "line" .= locLine loc, "file" .= locFile loc, "error" .= inner]
 
 instance ToJSON LinkError where
   toJSON e = case e of
     DuplicateLabel l -> object ["kind" .= s "DuplicateLabel", "label" .= l]
+    MultipleDefinition l -> object ["kind" .= s "MultipleDefinition", "label" .= l]
     UndefinedLabel l -> object ["kind" .= s "UndefinedLabel", "label" .= l]
     ShiftOutOfRange v -> object ["kind" .= s "ShiftOutOfRange", "value" .= v]
     ImmOutOfRange ctx lo hi v ->
       object ["kind" .= s "ImmOutOfRange", "context" .= ctx, "lo" .= lo, "hi" .= hi, "value" .= v]
     MisalignedTarget ctx v ->
       object ["kind" .= s "MisalignedTarget", "context" .= ctx, "value" .= v]
-    LocatedLink ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
+    NegativeValue ctx v ->
+      object ["kind" .= s "NegativeValue", "context" .= ctx, "value" .= v]
+    AlignNotPowerOfTwo v -> object ["kind" .= s "AlignNotPowerOfTwo", "value" .= v]
+    AddressDependentLayout -> kind "AddressDependentLayout"
+    DivByZero -> kind "DivByZero"
+    CircularConstant n -> object ["kind" .= s "CircularConstant", "name" .= n]
+    RegionOverflow region end limit ->
+      object ["kind" .= s "RegionOverflow", "region" .= region, "end" .= end, "limit" .= limit]
+    MissingPcrelHi addr -> object ["kind" .= s "MissingPcrelHi", "address" .= addr]
+    NoEntrySymbol -> kind "NoEntrySymbol"
+    LocatedLink loc inner ->
+      object ["kind" .= s "Located", "line" .= locLine loc, "file" .= locFile loc, "error" .= inner]
 
 instance ToJSON EmulatorError where
   toJSON e = case e of
@@ -178,7 +219,9 @@ instance ToJSON EmulatorError where
     ECycleLimit lim -> object ["kind" .= s "CycleLimit", "limit" .= lim]
     EDisabledExtension pc raw ext ->
       object ["kind" .= s "DisabledExtension", "pc" .= pc, "raw" .= raw, "extension" .= ext]
-    ELocated ln inner -> object ["kind" .= s "Located", "line" .= ln, "error" .= inner]
+    EIncludeNotFound p -> object ["kind" .= s "IncludeNotFound", "path" .= p]
+    EIncludeCycle p -> object ["kind" .= s "IncludeCycle", "path" .= p]
+    ELocated ln f inner -> object ["kind" .= s "Located", "line" .= ln, "file" .= f, "error" .= inner]
 
 instance ToJSON Notice where
   toJSON n = case n of

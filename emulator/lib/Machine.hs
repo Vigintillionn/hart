@@ -36,6 +36,7 @@ module Machine
     mtval,
     mtvec,
     entryPoint,
+    dataBase,
     stackTop,
     heapBase,
     extractByte,
@@ -79,8 +80,8 @@ class (Monad m) => MonadCPU m where
   fetchInstr :: Word32 -> m (Maybe Word32)
   setInstrMem :: M.IntMap Word32 -> m ()
 
-  setSourceMap :: M.IntMap Int -> m ()
-  lookupSourceLine :: Word32 -> m (Maybe Int)
+  setSourceMap :: M.IntMap (Int, FilePath) -> m ()
+  lookupSourceLoc :: Word32 -> m (Maybe (Int, FilePath))
 
   getPC :: m Word32
   setPC :: Word32 -> m ()
@@ -152,7 +153,7 @@ data CPU = CPU
     csrs :: !(M.IntMap Word32),
     mem :: !(M.IntMap Word8),
     imem :: !(M.IntMap Word32),
-    sourceMap :: !(M.IntMap Int),
+    sourceMap :: !(M.IntMap (Int, FilePath)),
     cycles :: !Int,
     status :: !RunStatus,
     stopReason :: !StopReason,
@@ -198,7 +199,7 @@ instance MonadCPU Emulator where
   fetchInstr a = gets $ M.lookup (fromIntegral a) . imem
   setInstrMem m = modify' $ \cpu -> cpu {imem = m}
   setSourceMap m = modify' $ \cpu -> cpu {sourceMap = m}
-  lookupSourceLine a = gets $ M.lookup (fromIntegral a) . sourceMap
+  lookupSourceLoc a = gets $ M.lookup (fromIntegral a) . sourceMap
 
   -- TOOD: make others shared as well so we can have RPCEmulator easily reuse
   getPC = gets pc
@@ -330,7 +331,10 @@ entryPoint :: Word32
 entryPoint = 0x0
 
 stackTop :: Word32
-stackTop = 0x7FFFFFFF -- ~ 2GB
+stackTop = 0x7FFFFFF0
+
+dataBase :: Word32
+dataBase = 0x10000000
 
 heapBase :: Word32
 heapBase = 0x20000000
@@ -418,5 +422,5 @@ takeTrap causeCode currentPC tval = do
 
 logFaultAt :: (MonadCPU m) => Word32 -> EmulatorError -> m ()
 logFaultAt pc e = do
-  mline <- lookupSourceLine pc
-  logFault (maybe e (`ELocated` e) mline)
+  mloc <- lookupSourceLoc pc
+  logFault (maybe e (\(ln, f) -> ELocated ln f e) mloc)

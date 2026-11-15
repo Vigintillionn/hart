@@ -174,7 +174,7 @@ fn main() {
         })
         .manage(LaunchFiles::default())
         .setup(|app| {
-            queue_open(&app.handle(), std::env::args().skip(1).collect());
+            queue_open(app.handle(), std::env::args().skip(1).collect());
 
             println!("Spawning Haskell Emulator...");
 

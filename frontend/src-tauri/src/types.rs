@@ -53,6 +53,7 @@ pub enum AssemblyError {
     },
     Located {
         line: i32,
+        file: String,
         error: Box<AssemblyError>,
     },
 }
@@ -64,6 +65,9 @@ pub enum LinkError {
     DuplicateLabel {
         label: String,
     },
+    MultipleDefinition {
+        label: String,
+    },
     UndefinedLabel {
         label: String,
     },
@@ -72,16 +76,38 @@ pub enum LinkError {
     },
     ImmOutOfRange {
         context: String,
-        lo: i32,
-        hi: i32,
+        lo: i64,
+        hi: i64,
         value: i64,
     },
     MisalignedTarget {
         context: String,
         value: i64,
     },
+    NegativeValue {
+        context: String,
+        value: i64,
+    },
+    AlignNotPowerOfTwo {
+        value: i64,
+    },
+    AddressDependentLayout {},
+    DivByZero {},
+    CircularConstant {
+        name: String,
+    },
+    RegionOverflow {
+        region: String,
+        end: i64,
+        limit: i64,
+    },
+    MissingPcrelHi {
+        address: i64,
+    },
+    NoEntrySymbol {},
     Located {
         line: i32,
+        file: String,
         error: Box<LinkError>,
     },
 }
@@ -135,8 +161,15 @@ pub enum EmulatorError {
         raw: u32,
         extension: String,
     },
+    IncludeNotFound {
+        path: String,
+    },
+    IncludeCycle {
+        path: String,
+    },
     Located {
         line: i32,
+        file: String,
         error: Box<EmulatorError>,
     },
 }
@@ -308,7 +341,7 @@ pub enum EmulatorResponse {
     Loaded {
         state: CpuState,
         #[serde(rename = "sourceMap")]
-        source_map: Vec<(u32, u32)>,
+        source_map: Vec<(u32, u32, String)>,
         #[serde(rename = "disasmMap")]
         disasm_map: Vec<(u32, String)>,
         #[serde(rename = "codeMap")]

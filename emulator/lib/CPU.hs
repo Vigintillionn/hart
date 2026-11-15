@@ -99,13 +99,14 @@ illegalInstruction currentPC raw = do
   setStatus Halted
 
 loadProgram :: (MonadCPU m) => Executable -> m ()
-loadProgram (Executable instr dataMem srcMap) = do
-  setPC entryPoint
+loadProgram (Executable instr dataMem srcMap entry) = do
+  -- text loads at entryPoint; execution starts at the entry symbol, if any
+  setPC (maybe entryPoint snd entry)
 
-  let assembled = zip [entryPoint, entryPoint + 4 ..] $ map assembleSome instr
+  let assembled = zip [addr | (addr, _, _) <- srcMap] (map assembleSome instr)
   traverse_ (uncurry storeWord) assembled
   setInstrMem (M.fromList [(fromIntegral addr, w) | (addr, w) <- assembled])
-  setSourceMap (M.fromList [(fromIntegral addr, ln) | (addr, ln) <- srcMap])
+  setSourceMap (M.fromList [(fromIntegral addr, (ln, f)) | (addr, ln, f) <- srcMap])
 
   traverse_ (\(addr, val) -> storeByte (fromIntegral addr) (fromIntegral val)) (M.toList dataMem)
 
