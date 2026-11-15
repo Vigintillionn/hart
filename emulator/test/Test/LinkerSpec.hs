@@ -451,6 +451,10 @@ spec = do
           i_imm lo `shouldBe` 0
         _ -> expectationFailure "expected lui + addi"
 
+    it "rejects a named constant wider than 32 bits instead of truncating it" $
+      linkErr ".equ BIG, 0x100000000\nli a0, BIG\n"
+        `shouldBe` ImmOutOfRange "32-bit value" (-0x80000000) 0xFFFFFFFF 0x100000000
+
   describe "point-of-use constants" $ do
     it "uses the .set value in force at each instruction" $
       case execProgram (assemble ".set X, 1\naddi a0, x0, X\n.set X, 2\naddi a1, x0, X\n") of

@@ -168,11 +168,6 @@ hiLo12 v = ((v + 0x800) `shiftR` 12, (v .&. 0xFFF) - if testBit v 11 then 0x1000
 toSigned32 :: Int -> Int
 toSigned32 v = ((v + bit 31) .&. 0xFFFFFFFF) - bit 31
 
--- the hi part is masked to its 20-bit field so an unsigned 32-bit value fits
-liHi, liLo :: Expr -> Expr
-liHi e = EBin BAnd (EBin Shr (EBin Add e (EInt 0x800)) (EInt 12)) (EInt 0xFFFFF)
-liLo e = EBin Sub (EBin BAnd (EBin Add e (EInt 0x800)) (EInt 0xFFF)) (EInt 0x800)
-
 lower :: ArchInstr 'Parsed -> NonEmpty (SomeInstruction Operand)
 lower (RealInstr i) = i :| []
 lower (PseudoInstr op) = case op of
@@ -190,8 +185,8 @@ lower (PseudoInstr op) = case op of
             else pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 (litOp v))
     -- a symbol/expression whose value is unknown at lowering: emit the worst case (lui+addi)
     OpExpr e ->
-      SomeInstruction (UType LUI (UTypeArgs rd (OpExpr (liHi e))))
-        :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (OpExpr (liLo e))))]
+      SomeInstruction (UType LUI (UTypeArgs rd (OpReloc HiAbs e)))
+        :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (OpReloc LoAbs e)))]
     _ -> pure $ SomeInstruction $ ArithI ADDI (ITypeArgs rd x0 imm)
   P_NEG rd rs -> pure $ SomeInstruction $ RType SUB (RTypeArgs rd x0 rs)
   P_NOT rd rs -> pure $ SomeInstruction $ ArithI XORI (ITypeArgs rd rs (litOp (-1)))
@@ -759,14 +754,25 @@ pcrelHi, pcrelLo :: Int -> Int -> Int
 pcrelHi pc t = fst (hiLo12 (t - pc))
 pcrelLo pc t = snd (hiLo12 (t - pc + 4))
 
+-- the hi part is masked to its 20-bit field, so an unsigned value with the
+-- top bit set reads as that field rather than as bit 20 spilling over
 absHi, absLo :: Int -> Int
-absHi = fst . hiLo12
+absHi v = fst (hiLo12 v) .&. 0xFFFFF
 absLo = snd . hiLo12
+
+-- | an absolute relocation splits a 32-bit value, written signed or unsigned
+checkWord :: Int -> Either LinkError Int
+checkWord v
+  | v < lo || v > hi = Left (ImmOutOfRange "32-bit value" lo hi v)
+  | otherwise = Right v
+  where
+    lo = negate (bit 31)
+    hi = bit 32 - 1
 
 resolveReloc :: LinkEnv -> Unit -> Int -> RelocKind -> Expr -> Either LinkError Int
 resolveReloc env unit pc kind e = case kind of
-  HiAbs -> absHi <$> value
-  LoAbs -> absLo <$> value
+  HiAbs -> absHi <$> (value >>= checkWord)
+  LoAbs -> absLo <$> (value >>= checkWord)
   HiPcrel -> pcrelHi pc <$> value
   LoPcrel -> pcrelLo pc <$> value
   -- the expression names the label of the paired auipc; the low bits come

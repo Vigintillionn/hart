@@ -59,8 +59,8 @@ describe("formatLinkError", () => {
       formatLinkError({
         kind: "ImmOutOfRange",
         context: "addi immediate",
-        lo: -2048,
-        hi: 2047,
+        lo: -2048n,
+        hi: 2047n,
         value: 5000n,
       }),
     ).toBe("addi immediate out of range [-2048, 2047]: 5000");

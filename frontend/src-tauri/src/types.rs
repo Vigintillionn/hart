@@ -76,8 +76,8 @@ pub enum LinkError {
     },
     ImmOutOfRange {
         context: String,
-        lo: i32,
-        hi: i32,
+        lo: i64,
+        hi: i64,
         value: i64,
     },
     MisalignedTarget {
