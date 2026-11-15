@@ -12,7 +12,7 @@ import Data.Word (Word32)
 import Error
 import Loc (renderLoc)
 import Numeric (showHex)
-import Preprocess (PreprocessError (..))
+import Preprocess (PreprocessError, includeFault)
 
 hex :: Word32 -> String
 hex w = "0x" ++ showHex w ""
@@ -42,18 +42,35 @@ renderLinkError = go
     go e = case e of
       LocatedLink loc inner -> renderLoc loc ++ ": " ++ go inner
       DuplicateLabel l -> "duplicate label `" ++ l ++ "`"
+      MultipleDefinition l -> "`" ++ l ++ "` is defined globally in more than one file"
       UndefinedLabel l -> "undefined label `" ++ l ++ "`"
       ShiftOutOfRange v -> "shift amount out of range (0-31): " ++ show v
       ImmOutOfRange ctx lo hi v ->
         ctx ++ " out of range [" ++ show lo ++ ", " ++ show hi ++ "]: " ++ show v
       MisalignedTarget ctx v -> ctx ++ " target is not 2-byte aligned: " ++ show v
       NegativeValue ctx v -> ctx ++ " must not be negative: " ++ show v
+      AlignNotPowerOfTwo v -> "alignment must be a power of two: " ++ show v
+      AddressDependentLayout ->
+        "a size or alignment must not depend on a symbol's address (only constants and differences of labels in one section)"
       DivByZero -> "division by zero in an expression"
       CircularConstant n -> "circular constant definition: `" ++ n ++ "`"
+      RegionOverflow region end limit ->
+        "the "
+          ++ region
+          ++ " region ends at 0x"
+          ++ showHex end ""
+          ++ ", past its limit 0x"
+          ++ showHex limit ""
+      MissingPcrelHi addr ->
+        "%pcrel_lo refers to 0x" ++ showHex addr "" ++ ", but no %pcrel_hi is placed there"
+      NoEntrySymbol ->
+        "no entry symbol: define a global `_start` or `main` (mark it with .globl)"
 
 renderEmulatorError :: EmulatorError -> String
 renderEmulatorError e = case e of
-  ELocated ln inner -> "line " ++ show ln ++ ": " ++ renderEmulatorError inner
+  ELocated ln f inner -> at ++ ": " ++ renderEmulatorError inner
+    where
+      at = if null f then "line " ++ show ln else f ++ ":" ++ show ln
   EParse a -> "Parse error: " ++ renderAssemblyError a
   ELink l -> "Link error: " ++ renderLinkError l
   EDecode pc raw -> "Invalid instruction at " ++ hex pc ++ " (raw: " ++ hex raw ++ ")"
@@ -86,10 +103,11 @@ renderEmulatorError e = case e of
       ++ ext
       ++ " extension, which is disabled"
 
+  EIncludeNotFound p -> "cannot find included file `" ++ p ++ "`"
+  EIncludeCycle p -> "circular .include of `" ++ p ++ "`"
+
 renderPreprocessError :: PreprocessError -> String
-renderPreprocessError e = case e of
-  IncludeNotFound loc p -> renderLoc loc ++ ": cannot find included file `" ++ p ++ "`"
-  IncludeCycle loc p -> renderLoc loc ++ ": circular .include of `" ++ p ++ "`"
+renderPreprocessError = renderEmulatorError . includeFault
 
 renderNotice :: Notice -> String
 renderNotice n = case n of

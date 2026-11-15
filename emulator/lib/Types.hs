@@ -67,13 +67,23 @@ data Operand
   | OpReloc RelocKind Expr
   deriving (Show, Eq)
 
-data RelocKind = HiAbs | LoAbs | HiPcrel | LoPcrel
+data RelocKind
+  = HiAbs
+  | LoAbs
+  | HiPcrel
+  | LoPcrel
+  | -- | user-facing @%pcrel_lo@: the expression names the *label of the paired
+    -- @auipc@* carrying the @%pcrel_hi@, not the target symbol itself
+    LoPcrelRef
   deriving (Show, Eq, Enum, Bounded)
 
 data Expr
   = EInt Int
   | ESym String
   | ECur
+  | -- | a named constant frozen at its value where it was used, so a later
+    -- @.set@ of the same name does not change it. Never produced by the parser.
+    ESnapshot String Int
   | EUn UnOp Expr
   | EBin BinOp Expr Expr
   deriving (Show, Eq)
@@ -105,6 +115,8 @@ foldConst :: Expr -> Maybe Int
 foldConst (EInt n) = Just n
 foldConst (ESym _) = Nothing
 foldConst ECur = Nothing
+-- a named constant stays symbolic, exactly like the 'ESym' it replaces
+foldConst (ESnapshot _ _) = Nothing
 foldConst (EUn op e) = applyUnOp op <$> foldConst e
 foldConst (EBin op a b) = do
   x <- foldConst a
@@ -264,10 +276,10 @@ data Section = Section
   deriving (Show, Eq, Ord)
 
 textSection, dataSection, rodataSection, bssSection, commonSection :: Section
-textSection = Section "text" SecText
-dataSection = Section "data" SecData
-rodataSection = Section "rodata" SecRodata
-bssSection = Section "bss" SecBss
+textSection = Section ".text" SecText
+dataSection = Section ".data" SecData
+rodataSection = Section ".rodata" SecRodata
+bssSection = Section ".bss" SecBss
 
 -- | the synthetic section that @.comm@/@.lcomm@ common symbols accumulate into
 commonSection = Section "COMMON" SecBss

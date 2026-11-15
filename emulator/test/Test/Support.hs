@@ -2,10 +2,14 @@ module Test.Support
   ( -- * Assembling
     assemble,
     link,
+    assembleFiles,
+    linkFiles,
+    linkRoots,
 
     -- * Execution
     runProgram,
     runProgramInput,
+    runFiles,
     regU,
     regS,
     csr,
@@ -25,6 +29,7 @@ where
 import CPU (loadProgram, step)
 import Control.Monad (when)
 import Control.Monad.State.Strict (execStateT)
+import Data.Functor.Identity (runIdentity)
 import Data.Int (Int32)
 import Data.IntMap.Strict qualified as M
 import Data.Vector.Unboxed qualified as V
@@ -33,7 +38,8 @@ import Error (AssemblyError (..), LinkError (..))
 import Extension (defaultExtensions)
 import Linker (Executable (..), resolve)
 import Machine
-import Parser (parse)
+import Parser (parse, parseWithLocs)
+import Preprocess (Expanded (..), IncludeFailure (..), expandMany, locAt)
 import Types
 
 assemble :: String -> Executable
@@ -46,17 +52,45 @@ link src = case parse defaultExtensions src of
   Left e -> error ("parse error: " ++ show e)
   Right p -> resolve p
 
+assembleFiles :: [(FilePath, String)] -> Executable
+assembleFiles files = case linkFiles files of
+  Left e -> error ("link error: " ++ show e)
+  Right exe -> exe
+
+-- | link several files, each a translation unit of its own
+linkFiles :: [(FilePath, String)] -> Either LinkError Executable
+linkFiles files = linkRoots files (map fst files)
+
+-- | link the @roots@ as translation units, resolving @.include@ against @pool@
+linkRoots :: [(FilePath, String)] -> [FilePath] -> Either LinkError Executable
+linkRoots pool roots =
+  case runIdentity (expandMany resolver [(n, c) | n <- roots, Just c <- [lookup n pool]]) of
+    Left e -> error ("preprocess error: " ++ show e)
+    Right ex -> case parseWithLocs defaultExtensions (locAt ex) (expSource ex) of
+      Left e -> error ("parse error: " ++ show e)
+      Right p -> resolve p
+  where
+    resolver _ req = pure $ case lookup req pool of
+      Just content -> Right (req, content)
+      Nothing -> Left NotFound
+
 runProgram :: String -> IO CPU
-runProgram = runFrom emptyCPU
+runProgram = runFrom emptyCPU . assemble
 
 runProgramInput :: String -> String -> IO CPU
-runProgramInput input = runFrom emptyCPU {inputBuffer = Just input}
+runProgramInput input = runFrom emptyCPU {inputBuffer = Just input} . assemble
 
-runFrom :: CPU -> String -> IO CPU
-runFrom cpu0 src = execStateT (runEmulator go) cpu0
+-- | link the @roots@ against @pool@ (as 'linkRoots') and run the result
+runFiles :: [(FilePath, String)] -> [FilePath] -> IO CPU
+runFiles pool roots = case linkRoots pool roots of
+  Left e -> error ("link error: " ++ show e)
+  Right exe -> runFrom emptyCPU exe
+
+runFrom :: CPU -> Executable -> IO CPU
+runFrom cpu0 exe = execStateT (runEmulator go) cpu0
   where
     go = do
-      loadProgram (assemble src)
+      loadProgram exe
       setStatus Running
       loop (100000 :: Int)
     loop 0 = pure ()

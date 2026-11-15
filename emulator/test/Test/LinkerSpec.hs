@@ -13,6 +13,11 @@ linkErr src = case link src of
   Left e -> underlyingLink e
   Right _ -> error "expected the program to fail linking"
 
+linkFilesErr :: [(FilePath, String)] -> LinkError
+linkFilesErr files = case linkFiles files of
+  Left e -> underlyingLink e
+  Right _ -> error "expected the program to fail linking"
+
 spec :: Spec
 spec = do
   describe "label resolution" $ do
@@ -116,6 +121,140 @@ spec = do
 
     it "reports a circular constant definition" $
       linkErr ".equ A, B\n.equ B, A\naddi a0, a0, A\n" `shouldBe` CircularConstant "A"
+
+  describe "symbol binding across files (.globl/.local/.weak)" $ do
+    it "keeps a label private to its file unless exported" $
+      linkFilesErr [("a.s", "foo: nop\n"), ("b.s", "j foo\n")]
+        `shouldBe` UndefinedLabel "foo"
+
+    it "lets two files define the same local label" $ do
+      let exe = assembleFiles [("a.s", "loop: nop\nj loop\n"), ("b.s", "loop: nop\nj loop\n")]
+      -- each jump targets its own file's label: both at offset -4
+      case execProgram exe of
+        [_, SomeInstruction (JType JAL a), _, SomeInstruction (JType JAL b)] -> do
+          j_imm a `shouldBe` -4
+          j_imm b `shouldBe` -4
+        _ -> expectationFailure "expected nop, jal, nop, jal"
+
+    it "resolves a .globl symbol from another file" $ do
+      let exe = assembleFiles [("a.s", ".globl shared\nshared: nop\n"), ("b.s", "call shared\n")]
+      length (execProgram exe) `shouldBe` 3
+
+    it "applies a .globl declared after the reference and definition" $ do
+      let exe = assembleFiles [("a.s", "shared: nop\n.globl shared\n"), ("b.s", "j shared\n")]
+      length (execProgram exe) `shouldBe` 2
+
+    it "makes .local override an earlier .globl (last declaration wins)" $
+      linkFilesErr [("a.s", ".globl foo\n.local foo\nfoo: nop\n"), ("b.s", "j foo\n")]
+        `shouldBe` UndefinedLabel "foo"
+
+    it "rejects the same name exported strongly from two files" $
+      linkFilesErr [("a.s", ".globl f\nf: nop\n"), ("b.s", ".globl f\nf: nop\n")]
+        `shouldBe` MultipleDefinition "f"
+
+    it "rejects the same .comm from two files (one-definition rule, no ld-style merging)" $
+      linkFilesErr [("a.s", ".comm buf, 4\n"), ("b.s", ".comm buf, 16\n")]
+        `shouldBe` MultipleDefinition "buf"
+
+    it "lets a strong definition override a weak one" $ do
+      -- weak impl at 0, strong impl at 8; the jump in a.s (pc 4) must bind to
+      -- the strong definition, even though a.s defines the weak one
+      let exe = assembleFiles [("a.s", ".weak impl\nimpl: nop\nj impl\n"), ("b.s", ".globl impl\nimpl: nop\n")]
+      case execProgram exe of
+        [_, SomeInstruction (JType JAL args), _] -> j_imm args `shouldBe` 4
+        _ -> expectationFailure "expected nop, jal, nop"
+
+    it "binds to a weak definition when no strong one exists" $ do
+      let exe = assembleFiles [("a.s", ".weak impl\nimpl: nop\n"), ("b.s", "j impl\n")]
+      case execProgram exe of
+        [_, SomeInstruction (JType JAL args)] -> j_imm args `shouldBe` -4
+        _ -> expectationFailure "expected nop, jal"
+
+    it "keeps the first of two weak definitions" $ do
+      let exe =
+            assembleFiles
+              [ ("a.s", ".weak w\nw: nop\n"),
+                ("b.s", ".weak w\nw: nop\n"),
+                ("c.s", "j w\n")
+              ]
+      case execProgram exe of
+        [_, _, SomeInstruction (JType JAL args)] -> j_imm args `shouldBe` -8
+        _ -> expectationFailure "expected nop, nop, jal"
+
+    it "resolves an undefined weak symbol to 0" $ do
+      let exe = assembleFiles [("a.s", ".weak missing\nla a0, missing\n")]
+      case execProgram exe of
+        [SomeInstruction (UType AUIPC hi), SomeInstruction (ArithI ADDI lo)] ->
+          (u_imm hi `shiftL` 12) + i_imm lo `shouldBe` 0
+        _ -> expectationFailure "expected la to lower to auipc + addi"
+
+    it "shares a .globl constant across files" $ do
+      let exe = assembleFiles [("a.s", ".globl N\n.equ N, 42\n"), ("b.s", "addi a0, a0, N\n")]
+      case execProgram exe of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` 42
+        _ -> expectationFailure "expected a single addi"
+
+    it "lets a local definition shadow another file's global" $ do
+      -- b.s has its own local x; its reference must bind to it, not a.s's global
+      let dm =
+            execDataMem
+              ( assembleFiles
+                  [ ("a.s", ".globl x\n.data\nx: .word 1\n"),
+                    ("b.s", ".data\nx: .word 2\nptr: .word x\n")
+                  ]
+              )
+      -- a.s's x at 0x10000000, b.s's at 0x10000004, ptr at 0x10000008
+      map (`IM.lookup` dm) [0x10000008 .. 0x1000000b]
+        `shouldBe` [Just 0x04, Just 0x00, Just 0x00, Just 0x10]
+
+    it "scopes an .include'd label to the including file's unit" $ do
+      let pool =
+            [ ("main.s", ".include \"lib.inc\"\nj helper\n"),
+              ("lib.inc", "helper: nop\n")
+            ]
+      case linkRoots pool ["main.s"] of
+        Left e -> expectationFailure ("unexpected link error: " ++ show e)
+        Right exe -> length (execProgram exe) `shouldBe` 2
+
+  describe "entry symbol (_start/main)" $ do
+    it "resolves a global main as the entry point" $
+      execEntry (assemble "nop\n.globl main\nmain: nop\n") `shouldBe` Just ("main", 4)
+
+    it "prefers _start over main" $
+      execEntry (assemble ".globl main, _start\nmain: nop\n_start: nop\n")
+        `shouldBe` Just ("_start", 4)
+
+    it "has no entry when neither symbol is exported" $
+      execEntry (assemble "main: nop\n") `shouldBe` Nothing
+
+    it "finds the entry in a later file" $
+      execEntry (assembleFiles [("a.s", "helper: nop\nnop\n"), ("b.s", ".globl main\nmain: nop\n")])
+        `shouldBe` Just ("main", 8)
+
+  describe "region overflow" $ do
+    it "rejects text spilling into the data region" $
+      linkErr ".text\n.space 0x10000000\nnop\n"
+        `shouldBe` RegionOverflow "text" 0x10000004 0x10000000
+
+    it "rejects data/bss reaching the heap" $
+      linkErr ".bss\n.space 0x10000004\n"
+        `shouldBe` RegionOverflow "data" 0x20000004 0x20000000
+
+  describe "%pcrel_hi / %pcrel_lo" $ do
+    it "reconstructs an address via auipc %pcrel_hi + addi %pcrel_lo" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nsite: auipc a0, %pcrel_hi(x)\naddi a0, a0, %pcrel_lo(site)\n") of
+        [SomeInstruction (UType AUIPC hi), SomeInstruction (ArithI ADDI lo)] -> do
+          u_imm hi `shouldBe` 0x10000
+          i_imm lo `shouldBe` 0
+        _ -> expectationFailure "expected auipc + addi"
+
+    it "accepts %pcrel_lo in a load offset" $
+      case execProgram (assemble ".data\nx: .word 0\n.text\nsite: auipc a0, %pcrel_hi(x)\nlw a1, %pcrel_lo(site)(a0)\n") of
+        [_, SomeInstruction (LoadI LW args)] -> i_imm args `shouldBe` 0
+        _ -> expectationFailure "expected auipc + lw"
+
+    it "reports a %pcrel_lo whose label holds no %pcrel_hi" $
+      linkErr "site: nop\naddi a0, a0, %pcrel_lo(site)\n" `shouldBe` MissingPcrelHi 0
 
   describe "data emission" $ do
     it "emits .half as two little-endian bytes" $ do
@@ -273,3 +412,83 @@ spec = do
       -- one byte, then .p2align 3 pads to 2^3 = 8
       let dm = execDataMem (assemble ".data\n.byte 1\n.p2align 3\n.byte 2\n")
       IM.lookup 0x10000008 dm `shouldBe` Just 2
+
+  describe "translation-unit boundaries" $ do
+    it "starts each file in .text, whatever section the previous one ended in" $
+      case execSourceMap (assembleFiles [("a.s", "nop\n.data\n.byte 1\n"), ("b.s", "nop\n")]) of
+        [(_, _, _), (addr, _, file)] -> (addr, file) `shouldBe` (4, "b.s")
+        _ -> expectationFailure "expected two instructions"
+
+    it "word-aligns each file's contribution to a shared section" $ do
+      let dm = execDataMem (assembleFiles [("a.s", ".data\n.byte 1\n"), ("b.s", ".data\n.word 0xAABBCCDD\n")])
+      map (`IM.lookup` dm) [0x10000001, 0x10000004] `shouldBe` [Nothing, Just 0xDD]
+
+    it "does not bind a .equ to another file's global when its own file defines the name later" $ do
+      let files = [("a.s", ".globl foo\nfoo: nop\nnop\n"), ("b.s", ".equ X, foo\naddi a0, x0, X\nfoo: nop\n")]
+      case execProgram (assembleFiles files) of
+        [_, _, SomeInstruction (ArithI ADDI args), _] -> i_imm args `shouldBe` 12
+        _ -> expectationFailure "expected four instructions"
+
+  describe "section names" $ do
+    it "treats .section .text as the .text section" $
+      map (\(addr, line, _) -> (addr, line)) (execSourceMap (assemble "nop\n.section .text\nnop\n.text\nnop\n"))
+        `shouldBe` [(0, 1), (4, 3), (8, 5)]
+
+    it "treats .section .data as the .data section" $ do
+      let dm = execDataMem (assemble ".data\n.byte 1\n.section .data\n.byte 2\n")
+      map (`IM.lookup` dm) [0x10000000, 0x10000001] `shouldBe` [Just 1, Just 2]
+
+  describe "li with full 32-bit values" $ do
+    it "accepts an unsigned 32-bit literal that fits in 12 signed bits" $
+      case execProgram (assemble "li a0, 0xFFFFFFFF\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` -1
+        _ -> expectationFailure "expected a single addi"
+
+    it "accepts a named constant with the top bit set" $
+      case execProgram (assemble ".equ K, 0xFFFFF000\nli a0, K\n") of
+        [SomeInstruction (UType LUI hi), SomeInstruction (ArithI ADDI lo)] -> do
+          u_imm hi `shouldBe` 0xFFFFF
+          i_imm lo `shouldBe` 0
+        _ -> expectationFailure "expected lui + addi"
+
+  describe "point-of-use constants" $ do
+    it "uses the .set value in force at each instruction" $
+      case execProgram (assemble ".set X, 1\naddi a0, x0, X\n.set X, 2\naddi a1, x0, X\n") of
+        [SomeInstruction (ArithI ADDI a), SomeInstruction (ArithI ADDI b)] ->
+          (i_imm a, i_imm b) `shouldBe` (1, 2)
+        _ -> expectationFailure "expected two addis"
+
+    it "uses the .set value in force at each data directive" $ do
+      let dm = execDataMem (assemble ".data\n.set X, 1\n.byte X\n.set X, 2\n.byte X\n")
+      map (`IM.lookup` dm) [0x10000000, 0x10000001] `shouldBe` [Just 1, Just 2]
+
+    it "still treats a named constant as an absolute branch target" $
+      case execProgram (assemble ".equ T, 8\nnop\nj T\nnop\n") of
+        [_, SomeInstruction (JType JAL args), _] -> j_imm args `shouldBe` 4
+        _ -> expectationFailure "expected three instructions"
+
+  describe "layout validation" $ do
+    it "rejects a size that depends on a section's load address" $
+      linkErr ".data\na: .byte 1\n.space a\n" `shouldBe` AddressDependentLayout
+
+    it "still accepts a size that is a difference of labels" $ do
+      let dm = execDataMem (assemble ".data\na: .byte 1, 2\nb: .space b - a\n.byte 9\n")
+      IM.lookup 0x10000004 dm `shouldBe` Just 9
+
+    it "rejects a .balign that is not a power of two" $
+      linkErr ".data\n.balign 3\n" `shouldBe` AlignNotPowerOfTwo 3
+
+    it "rejects an alignment exponent too large to represent" $
+      linkErr ".data\n.align 64\n" `shouldBe` ImmOutOfRange "alignment exponent" 0 31 64
+
+    it "rejects a negative .comm size" $
+      linkErr ".comm buf, (0 - 4)\n" `shouldBe` NegativeValue ".comm size" (-4)
+
+    it "reports an undefined symbol in a .bss data directive" $
+      linkErr ".bss\n.word nosuch\n" `shouldBe` UndefinedLabel "nosuch"
+
+  describe "low relocation halves" $ do
+    it "sign-extends %lo so the disassembly shows a signed offset" $
+      case execProgram (assemble "addi a0, a0, %lo(0xFFE)\n") of
+        [SomeInstruction (ArithI ADDI args)] -> i_imm args `shouldBe` -2
+        _ -> expectationFailure "expected a single addi"

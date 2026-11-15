@@ -3,10 +3,11 @@ module Parser (parse, parseWithLocs) where
 import Control.Applicative
 import Control.Monad (void)
 import Data.Bifunctor (first, second)
-import Data.Bits (bit, shiftR)
+import Data.Bits (bit)
 import Data.Char (isAlpha, isAlphaNum, isDigit, isHexDigit, ord)
+import Data.List (find)
 import Data.Map.Strict qualified as M
-import Data.Maybe (mapMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Error (AssemblyError (..))
 import Extension (Extension (..), ExtensionSet, extensionCode, isEnabled)
 import Extension.Classify (HasExtension (..))
@@ -222,7 +223,12 @@ register = lexeme $ do
     xName _ = Nothing
 
 operand :: Parser Operand
-operand = reloc "%hi" HiAbs <|> reloc "%lo" LoAbs <|> (OpExpr <$> expr)
+operand =
+  reloc "%pcrel_hi" HiPcrel
+    <|> reloc "%pcrel_lo" LoPcrelRef
+    <|> reloc "%hi" HiAbs
+    <|> reloc "%lo" LoAbs
+    <|> (OpExpr <$> expr)
   where
     reloc name k =
       OpReloc k <$> (lexeme (string name) *> symbolOp "(" *> expr <* symbolOp ")")
@@ -464,9 +470,8 @@ parseLi = do
     _ -> return ()
   return (P_LI rd op)
   where
-    liFits v =
-      let hi = (v + 0x800) `shiftR` 12
-       in hi >= negate (bit 19) && hi <= bit 20 - 1
+    -- any 32-bit pattern, written signed or unsigned
+    liFits v = v >= negate (bit 31) && v < bit 32
 
 parseLa :: Parser PseudoOp
 parseLa = P_LA <$> register <* comma <*> identifier
@@ -700,8 +705,11 @@ parseSectionArgs :: Parser Directive
 parseSectionArgs = do
   name <- lexeme (some (satisfy isSectionChar))
   flags <- optional (comma *> stringLiteral)
-  pure (DirSection (Section name (classify name flags)))
+  pure (DirSection (fromMaybe (Section name (classify name flags)) (predefined name)))
   where
+    -- @.section .text@ is the same section as @.text@, whatever its flags say
+    predefined name =
+      find ((== name) . secName) [textSection, dataSection, rodataSection, bssSection]
     classify name Nothing = classOfName name
     classify _ (Just fs)
       | 'x' `elem` fs = SecText

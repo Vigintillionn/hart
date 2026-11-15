@@ -5,16 +5,20 @@ module Loc
   )
 where
 
+-- | where a source line came from: the translation unit (root buffer) it
+-- belongs to, and the file and line it was written in. Unit and file differ
+-- only inside an @.include@d file, whose lines belong to the includer's unit.
 data Loc = Loc
-  { locFile :: !FilePath,
+  { locUnit :: !FilePath,
+    locFile :: !FilePath,
     locLine :: !Int
   }
   deriving (Show, Eq, Ord)
 
 rootLoc :: Int -> Loc
-rootLoc = Loc ""
+rootLoc = Loc "" ""
 
 renderLoc :: Loc -> String
-renderLoc (Loc f n)
+renderLoc (Loc _ f n)
   | null f = "line " ++ show n
   | otherwise = f ++ ":" ++ show n

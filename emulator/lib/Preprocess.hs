@@ -7,6 +7,7 @@ module Preprocess
     expandMany,
     locAt,
     includeTarget,
+    includeFault,
   )
 where
 
@@ -15,6 +16,7 @@ import Control.Monad.Trans.Class (lift)
 import Data.Char (isSpace)
 import Data.IntMap.Strict qualified as IM
 import Data.List (stripPrefix)
+import Error (EmulatorError (..))
 import Loc (Loc (..))
 
 -- | a flattened source buffer plus, for each 1-based flattened line, the
@@ -26,7 +28,7 @@ data Expanded = Expanded
   deriving (Show, Eq)
 
 locAt :: Expanded -> Int -> Loc
-locAt ex n = IM.findWithDefault (Loc "" n) n (expLocs ex)
+locAt ex n = IM.findWithDefault (Loc "" "" n) n (expLocs ex)
 
 data IncludeFailure
   = -- | the file was searched for but not found
@@ -40,6 +42,14 @@ data PreprocessError
     IncludeCycle Loc FilePath
   deriving (Show, Eq)
 
+-- | the typed, located fault a failed @.include@ is reported as
+includeFault :: PreprocessError -> EmulatorError
+includeFault e = case e of
+  IncludeNotFound loc p -> at loc (EIncludeNotFound p)
+  IncludeCycle loc p -> at loc (EIncludeCycle p)
+  where
+    at loc = ELocated (locLine loc) (locFile loc)
+
 type Resolver m = FilePath -> FilePath -> m (Either IncludeFailure (FilePath, String))
 
 expand ::
@@ -51,27 +61,29 @@ expand resolver rootPath rootContent = expandMany resolver [(rootPath, rootConte
 expandMany ::
   (Monad m) => Resolver m -> [(FilePath, String)] -> m (Either PreprocessError Expanded)
 expandMany resolver roots = runExceptT $ do
-  pairs <- concat <$> traverse (\(p, c) -> expandPairs resolver [p] p c) roots
+  pairs <- concat <$> traverse (\(p, c) -> expandPairs resolver p [p] p c) roots
   pure
     Expanded
       { expSource = unlines (map snd pairs),
         expLocs = IM.fromList (zip [1 ..] (map fst pairs))
       }
 
--- | expand one file into @(origin, line)@ pairs. @activ@ is the stack of files
+-- | expand one file into @(origin, line)@ pairs. Every line belongs to the
+-- translation unit @unit@ (the root buffer); @active@ is the stack of files
 -- currently being expanded, for cycle detection
 expandPairs ::
   (Monad m) =>
   Resolver m ->
+  FilePath ->
   [FilePath] ->
   FilePath ->
   String ->
   ExceptT PreprocessError m [(Loc, String)]
-expandPairs resolver active path content =
+expandPairs resolver unit active path content =
   concat <$> traverse expandLine (zip [1 ..] (lines content))
   where
     expandLine (n, line) =
-      let loc = Loc path n
+      let loc = Loc unit path n
        in case includeTarget line of
             Nothing -> pure [(loc, line)]
             Just req -> do
@@ -80,7 +92,7 @@ expandPairs resolver active path content =
                 Left NotFound -> throwError (IncludeNotFound loc req)
                 Right (canon, content')
                   | canon `elem` active -> throwError (IncludeCycle loc canon)
-                  | otherwise -> expandPairs resolver (canon : active) canon content'
+                  | otherwise -> expandPairs resolver unit (canon : active) canon content'
 
 includeTarget :: String -> Maybe FilePath
 includeTarget line = case stripPrefix ".include" (dropWhile isSpace line) of

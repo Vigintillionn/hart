@@ -88,16 +88,37 @@ rpcSpec bin = do
     -- includes resolve against the set of open files sent with `load`; one that
     -- names a file not in that set is a clear "cannot find" error.
     resp <- runIO (runSession bin [loadCmd ".include \"x.s\"\n.text\n_start: nop\n", quitCmd])
-    it "reports a missing included file (resolved against the open files)" $ do
-      let messages = mapMaybe (look "message" >=> asString) (errorResponses resp)
-      messages `shouldSatisfy` any ("included file" `isInfixOf`)
+    it "reports a missing included file as a typed, located fault" $ do
+      let located = mapMaybe (look "error") (errorResponses resp)
+      mapMaybe (look "error" >=> look "kind" >=> asString) located `shouldBe` ["IncludeNotFound"]
+      mapMaybe (look "error" >=> look "path" >=> asString) located `shouldBe` ["x.s"]
+
+  describe "files that share a name" $ do
+    -- both tabs are called util.s; the build keys on their ids, so each stays
+    -- a unit of its own and the source map tells them apart
+    let sameName =
+          object
+            [ "command" .= ("load" :: String),
+              "data"
+                .= object
+                  [ "files"
+                      .= [ object ["id" .= ("f1" :: String), "name" .= ("util.s" :: String), "content" .= (".globl _start\n_start: nop\n" :: String)],
+                           object ["id" .= ("f2" :: String), "name" .= ("util.s" :: String), "content" .= ("nop\n" :: String)]
+                         ]
+                  ]
+            ]
+    resp <- runIO (runSession bin [sameName, quitCmd])
+    it "links both and tags the source map with their ids" $ do
+      let smap = fromMaybe [] (lastLoaded resp >>= look "sourceMap" >>= asList)
+          fileOf e = case asList e of Just (_ : _ : f : _) -> asString f; _ -> Nothing
+      mapMaybe fileOf smap `shouldBe` ["f1", "f2"]
 
   describe "multi-file load (assemble + link several files)" $ do
-    -- main.s calls into helper.s, which lives in a separate file; the linker's
-    -- shared symbol table resolves the cross-file `jal`.
+    -- main.s calls into helper.s, which lives in a separate file; the `jal`
+    -- resolves because helper.s exports the symbol with .globl
     let files =
           [ ("main.s", ".text\n_start:\n  jal helper\n  li a7, 10\n  ecall\n"),
-            ("helper.s", ".text\nhelper:\n  li a0, 42\n  ret\n")
+            ("helper.s", ".text\n.globl helper\nhelper:\n  li a0, 42\n  ret\n")
           ]
     resp <- runIO (runSession bin [loadFilesCmd files ["main.s", "helper.s"], runCmd, quitCmd])
     it "links cross-file references and runs without faults" $
@@ -109,6 +130,21 @@ rpcSpec bin = do
           fileOf e = case asList e of Just (_ : _ : f : _) -> asString f; _ -> Nothing
           fileNames = mapMaybe fileOf smap
       fileNames `shouldSatisfy` (\fs -> "main.s" `elem` fs && "helper.s" `elem` fs)
+
+  describe "entry-symbol enforcement (fallbackToZero: false)" $ do
+    let strictLoad =
+          object
+            [ "command" .= ("load" :: String),
+              "data"
+                .= object
+                  [ "files" .= [object ["name" .= ("m.s" :: String), "content" .= (".text\nnop\n" :: String)]],
+                    "fallbackToZero" .= False
+                  ]
+            ]
+    resp <- runIO (runSession bin [strictLoad, quitCmd])
+    it "reports a missing entry symbol as a link error" $ do
+      let kinds = mapMaybe (look "error" >=> look "error" >=> look "kind" >=> asString) (errorResponses resp)
+      kinds `shouldSatisfy` elem "NoEntrySymbol"
 
 exampleCase :: FilePath -> String -> [Value] -> (String -> Expectation) -> Spec
 exampleCase bin name extra checkOutput = do
