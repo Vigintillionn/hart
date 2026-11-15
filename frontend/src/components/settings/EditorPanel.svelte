@@ -108,6 +108,13 @@
   <SettingRow id="editor.minimap">
     <Toggle bind:checked={editorPrefs.minimap} label="Minimap" />
   </SettingRow>
+
+  <SettingRow id="editor.followExecution">
+    <Toggle
+      bind:checked={editorPrefs.followExecution}
+      label="Follow execution across files"
+    />
+  </SettingRow>
 </SettingsSection>
 
 <SettingsSection title="Editor hover">

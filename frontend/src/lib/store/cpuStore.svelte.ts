@@ -11,6 +11,7 @@ import type {
 } from "../types";
 import { terminalStore } from "./terminalStore.svelte";
 import { logStore, type LogLevel } from "./logStore.svelte";
+import { editorPrefs } from "./editorPrefs.svelte";
 import { fileStore } from "./fileStore.svelte";
 import { buildStore } from "./buildStore.svelte";
 import { extensionStore } from "./extensionStore.svelte";
@@ -57,6 +58,8 @@ class CpuStore {
   sourceLineMap = $derived(new Map(this.sourceMap.map(([a, l]) => [a, l])));
   sourceFileMap = $derived(new Map(this.sourceMap.map(([a, , f]) => [a, f])));
   disasmTextMap = $derived(new Map(this.disasmMap));
+  /** Every file with code in the loaded program, `.include`d ones too. */
+  private loadedFileIds = $derived(new Set(this.sourceFileMap.values()));
   breakpoints = $state(new Set<number>());
   // the source map names files by id, so highlighting/breakpoints scope to
   // the editor's file even when another open file has the same name
@@ -161,11 +164,16 @@ class CpuStore {
     if (!snap) return false;
     const f = fileStore.activeFile;
     if (!f) return false;
-    if (f.id !== snap.fileId) return true; // entry changed
     if (buildStore.fallbackToZero !== snap.fallbackToZero) return true;
-    const entry = buildStore.buildFiles().map((bf) => bf.id);
-    if (entry.length !== snap.entry.length) return true;
-    if (entry.some((n, i) => n !== snap.entry[i])) return true;
+    // looking at another file of the loaded program (the debugger follows
+    // execution there) is not a request to build that file instead
+    if (f.id !== snap.fileId) {
+      if (!this.loadedFileIds.has(f.id)) return true;
+    } else {
+      const entry = buildStore.buildFiles().map((bf) => bf.id);
+      if (entry.length !== snap.entry.length) return true;
+      if (entry.some((n, i) => n !== snap.entry[i])) return true;
+    }
     const pool = fileStore.openFiles;
     if (pool.length !== snap.files.length) return true;
     return pool.some(
@@ -317,6 +325,16 @@ class CpuStore {
     if (out) terminalStore.program.set(out);
     else terminalStore.program.clear();
     this.mirrorSystemLog();
+    if (state.status === "Paused") this.followExecution(state.pc);
+  }
+
+  /** Show the file that owns the instruction execution stopped at. */
+  private followExecution(pc: number) {
+    if (!editorPrefs.followExecution) return;
+    const fileId = this.sourceFileMap.get(pc);
+    if (fileId === undefined || fileId === fileStore.activeFileId) return;
+    if (fileStore.openFiles.some((f) => f.id === fileId))
+      fileStore.setActiveFileId(fileId);
   }
 
   /** The display name of a file the emulator refers to by id. */
