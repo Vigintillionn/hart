@@ -163,7 +163,7 @@ class CpuStore {
     if (!f) return false;
     if (f.id !== snap.fileId) return true; // entry changed
     if (buildStore.fallbackToZero !== snap.fallbackToZero) return true;
-    const entry = buildStore.resolveBuildFiles().map((bf) => bf.id);
+    const entry = buildStore.buildFiles().map((bf) => bf.id);
     if (entry.length !== snap.entry.length) return true;
     if (entry.some((n, i) => n !== snap.entry[i])) return true;
     const pool = fileStore.openFiles;
@@ -365,7 +365,7 @@ class CpuStore {
   }
 
   public handleLoadProgram() {
-    const buildFiles = buildStore.resolveBuildFiles();
+    const buildFiles = buildStore.buildFiles();
     const entryFile = buildFiles[0];
     if (!entryFile) {
       logStore.log("error", "BUILD", "No file open to compile.");

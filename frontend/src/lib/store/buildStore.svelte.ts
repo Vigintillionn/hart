@@ -49,8 +49,12 @@ class BuildStore {
     this.selected = next;
   }
 
-  /** The files the user picked to build: active first, then the rest in editor order. */
-  private candidates(): OpenFile[] {
+  /**
+   * The files sent to the emulator to assemble and link: active first, then
+   * the rest in editor order. The emulator itself leaves out any that another
+   * build file pulls in via `.include`.
+   */
+  public buildFiles(): OpenFile[] {
     const active = fileStore.activeFile;
     if (!active) return [];
     const rest = fileStore.openFiles.filter(
@@ -61,8 +65,8 @@ class BuildStore {
 
   /**
    * Names of files that the given files pull in via `.include`, directly or
-   * through a chain of includes. The chain is followed through every open
-   * file, as the emulator does, not just the ones in the build.
+   * through a chain of includes. Only a preview for the Build popover: the
+   * emulator decides what is really included when it builds.
    */
   private includeTargetsOf(files: OpenFile[]): Set<string> {
     const targets = new Set<string>();
@@ -81,16 +85,17 @@ class BuildStore {
 
   /** Names of build files that are reached via `.include` */
   public includedDeps(): Set<string> {
-    return this.includeTargetsOf(this.candidates());
+    return this.includeTargetsOf(this.buildFiles());
   }
 
-  /** Drops the files that are included via `.include` from the build list. */
-  public resolveBuildFiles(): OpenFile[] {
+  /** How many files will be linked as units of their own, for the badge. */
+  public linkedCount(): number {
     const active = fileStore.activeFile;
-    if (!active) return [];
-    const cands = this.candidates();
-    const deps = this.includeTargetsOf(cands);
-    return cands.filter((f) => f.id === active.id || !deps.has(f.name));
+    if (!active) return 0;
+    const deps = this.includedDeps();
+    return this.buildFiles().filter(
+      (f) => f.id === active.id || !deps.has(f.name),
+    ).length;
   }
 }
 

@@ -11,7 +11,7 @@
   let { disabled = false }: { disabled?: boolean } = $props();
 
   const dirty = $derived(cpuStore.isDirty);
-  const buildCount = $derived(buildStore.resolveBuildFiles().length);
+  const buildCount = $derived(buildStore.linkedCount());
   const activeId = $derived(fileStore.activeFileId);
   const includedDeps = $derived(buildStore.includedDeps());
 

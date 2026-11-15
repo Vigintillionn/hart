@@ -266,7 +266,7 @@ compileAndLoad exts files entry entryPolicy = do
               return Nothing
             else do
               readyCpu <- execStateT (runEmulator $ loadProgram executable) emptyCPU {enabledExts = exts}
-              let nFiles = length entryFiles
+              let nFiles = length (expUnits ex)
                   filesNote = if nFiles > 1 then " from " ++ show nFiles ++ " files" else ""
                   entryNote = case execEntry executable of
                     Just (name, addr) -> " · entry " ++ name ++ " @ 0x" ++ showHex addr ""

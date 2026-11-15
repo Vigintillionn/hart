@@ -429,6 +429,10 @@ spec = do
         [_, _, SomeInstruction (ArithI ADDI args), _] -> i_imm args `shouldBe` 12
         _ -> expectationFailure "expected four instructions"
 
+    it "does not link a file on its own when another file in the build includes it" $ do
+      let pool = [("main.s", ".include \"util.s\"\nj helper\n"), ("util.s", "helper: nop\n")]
+      fmap (length . execProgram) (linkRoots pool ["main.s", "util.s"]) `shouldBe` Right 2
+
   describe "section names" $ do
     it "treats .section .text as the .text section" $
       map (\(addr, line, _) -> (addr, line)) (execSourceMap (assemble "nop\n.section .text\nnop\n.text\nnop\n"))
