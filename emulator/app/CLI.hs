@@ -9,7 +9,7 @@ import Preprocess
   ( Expanded (..),
     IncludeFailure (..),
     Resolver,
-    expand,
+    expandMany,
     locAt,
   )
 import Render (renderAssemblyError, renderLinkError, renderPreprocessError)
@@ -35,14 +35,16 @@ fsResolver dir req = go [dir </> req, req]
 -- | Run the interactive CLI. @maxCycles@ bounds how many cycles the program
 -- may execute before it is force-halted (guards against infinite loops); a
 -- value @<= 0@ means unbounded.
-runCLI :: Int -> FilePath -> IO ()
-runCLI maxCycles filepath = do
-  sourceCode <- readFile filepath
-  rootPath <- canonicalizePath filepath
+--
+-- Each file is assembled as a translation unit of its own and they are linked
+-- together, in the order given.
+runCLI :: Int -> [FilePath] -> IO ()
+runCLI maxCycles filepaths = do
+  roots <- traverse (\fp -> (,) <$> canonicalizePath fp <*> readFile fp) filepaths
 
   let cycleLimit = if maxCycles <= 0 then Nothing else Just maxCycles
 
-  expanded <- expand fsResolver rootPath sourceCode
+  expanded <- expandMany fsResolver roots
   case expanded of
     Left perr -> putStrLn $ "Include error: " ++ renderPreprocessError perr
     Right ex -> case parseWithLocs defaultExtensions (locAt ex) (expSource ex) of

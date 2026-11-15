@@ -15,26 +15,26 @@ main = do
     ("--rpc" : rest) -> case rest of
       [filepath] -> runRPC filepath
       _ -> usage
-    _ -> case parseCliArgs defaultMaxCycles Nothing args of
-      Just (limit, filepath) -> runCLI limit filepath
+    _ -> case parseCliArgs defaultMaxCycles [] args of
+      Just (limit, filepaths) -> runCLI limit filepaths
       Nothing -> usage
 
-parseCliArgs :: Int -> Maybe FilePath -> [String] -> Maybe (Int, FilePath)
-parseCliArgs lim (Just fp) [] = Just (lim, fp)
-parseCliArgs _ Nothing [] = Nothing
-parseCliArgs _ mfp (flag : n : rest)
+parseCliArgs :: Int -> [FilePath] -> [String] -> Maybe (Int, [FilePath])
+parseCliArgs _ [] [] = Nothing
+parseCliArgs lim fps [] = Just (lim, reverse fps)
+parseCliArgs _ fps (flag : n : rest)
   | flag `elem` ["--max-cycles", "-c"],
     [(v, "")] <- reads n =
-      parseCliArgs v mfp rest
-parseCliArgs lim Nothing (a : rest)
-  | not ("-" `isPrefixOf` a) = parseCliArgs lim (Just a) rest
+      parseCliArgs v fps rest
+parseCliArgs lim fps (a : rest)
+  | not ("-" `isPrefixOf` a) = parseCliArgs lim (a : fps) rest
 parseCliArgs _ _ _ = Nothing
 
 usage :: IO ()
 usage = do
   putStrLn "RISC-V Emulator"
   putStrLn "Usage:"
-  putStrLn "  Interactive CLI: emulator <file.s> [--max-cycles N]"
+  putStrLn "  Interactive CLI: emulator <file.s>... [--max-cycles N]"
   putStrLn "  RPC Daemon:      emulator --rpc <file.s>"
   putStrLn ""
   putStrLn
