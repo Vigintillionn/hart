@@ -34,6 +34,10 @@ module Types
     Section (..),
     SecClass (..),
     AlignMode (..),
+    SymBinding (..),
+    DataDirective (..),
+    IntWidth (..),
+    intWidthBytes,
     textSection,
     dataSection,
     rodataSection,
@@ -71,9 +75,8 @@ data RelocKind
   = HiAbs
   | LoAbs
   | HiPcrel
-  | LoPcrel
-  | -- | user-facing @%pcrel_lo@: the expression names the *label of the paired
-    -- @auipc@* carrying the @%pcrel_hi@, not the target symbol itself
+  | -- | @%pcrel_lo@: the expression names the *address of the paired @auipc@*
+    -- carrying the @%pcrel_hi@, not the target symbol itself
     LoPcrelRef
   deriving (Show, Eq, Enum, Bounded)
 
@@ -289,18 +292,33 @@ commonSection = Section "COMMON" SecBss
 data AlignMode = AlignPow2 | AlignBytes
   deriving (Show, Eq)
 
+data SymBinding = Local | Global | Weak
+  deriving (Show, Eq)
+
+data IntWidth = IntByte | IntHalf | IntWord
+  deriving (Show, Eq)
+
+intWidthBytes :: IntWidth -> Int
+intWidthBytes IntByte = 1
+intWidthBytes IntHalf = 2
+intWidthBytes IntWord = 4
+
+-- | the directives that put bytes into the current section
+data DataDirective
+  = -- | @.string@/@.asciz@: the text followed by a NUL
+    DataString String
+  | DataAscii String
+  | DataInts IntWidth [Expr]
+  deriving (Show, Eq)
+
 data Directive
   = DirSection Section
-  | DirString String
-  | DirAscii String
-  | DirByte [Expr]
-  | DirHalf [Expr]
-  | DirWord [Expr]
+  | DirData DataDirective
   | DirSpace Expr
   | DirAlign AlignMode Expr
-  | -- | a common symbol reserved in bss: whether it is local (@.lcomm@ vs
-    -- @.comm@), its name, byte size, and optional alignment
-    DirComm Bool String Expr (Maybe Expr)
+  | -- | a common symbol reserved in bss: its default binding (@.comm@ is
+    -- global, @.lcomm@ local), name, byte size, and optional alignment
+    DirComm SymBinding String Expr (Maybe Expr)
   | DirEqu String Expr
   | DirEquiv String Expr
   | DirGlobl [String]

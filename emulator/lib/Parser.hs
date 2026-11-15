@@ -735,28 +735,31 @@ alignDir :: AlignMode -> Parser Directive
 alignDir mode = DirAlign mode <$> expr <* many (comma *> expr)
 
 -- | @.comm@/@.lcomm name, size [, align]@.
-commDir :: Bool -> Parser Directive
-commDir isLocal =
-  DirComm isLocal <$> symbolName <* comma <*> expr <*> optional (comma *> expr)
+commDir :: SymBinding -> Parser Directive
+commDir binding =
+  DirComm binding <$> symbolName <* comma <*> expr <*> optional (comma *> expr)
+
+intData :: IntWidth -> Parser Directive
+intData width = DirData . DataInts width <$> sepBy1 expr comma
 
 parseDirective :: Parser Directive
 parseDirective =
   choice
     [ parseSection,
-      lexeme (string ".string") *> (DirString <$> stringLiteral),
-      lexeme (string ".asciz") *> (DirString <$> stringLiteral),
-      lexeme (string ".ascii") *> (DirAscii <$> stringLiteral),
-      lexeme (string ".byte") *> (DirByte <$> sepBy1 expr comma),
-      lexeme (string ".half") *> (DirHalf <$> sepBy1 expr comma),
-      lexeme (string ".short") *> (DirHalf <$> sepBy1 expr comma),
-      lexeme (string ".word") *> (DirWord <$> sepBy1 expr comma),
+      lexeme (string ".string") *> (DirData . DataString <$> stringLiteral),
+      lexeme (string ".asciz") *> (DirData . DataString <$> stringLiteral),
+      lexeme (string ".ascii") *> (DirData . DataAscii <$> stringLiteral),
+      lexeme (string ".byte") *> intData IntByte,
+      lexeme (string ".half") *> intData IntHalf,
+      lexeme (string ".short") *> intData IntHalf,
+      lexeme (string ".word") *> intData IntWord,
       lexeme (string ".space") *> (DirSpace <$> expr),
       lexeme (string ".zero") *> (DirSpace <$> expr),
       lexeme (string ".p2align") *> alignDir AlignPow2,
       lexeme (string ".balign") *> alignDir AlignBytes,
       lexeme (string ".align") *> alignDir AlignPow2,
-      lexeme (string ".comm") *> commDir False,
-      lexeme (string ".lcomm") *> commDir True,
+      lexeme (string ".comm") *> commDir Global,
+      lexeme (string ".lcomm") *> commDir Local,
       lexeme (string ".equiv") *> parseSymbolValue DirEquiv,
       lexeme (string ".equ") *> parseSymbolValue DirEqu,
       lexeme (string ".set") *> parseSymbolValue DirEqu,

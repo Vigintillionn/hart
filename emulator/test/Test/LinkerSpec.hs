@@ -224,6 +224,10 @@ spec = do
       execEntry (assemble ".globl main, _start\nmain: nop\n_start: nop\n")
         `shouldBe` Just ("_start", 4)
 
+    it "resolves an entry symbol that is a constant naming a later label" $
+      execEntry (assemble "nop\n.globl main\n.equ main, later\nnop\nlater: nop\n")
+        `shouldBe` Just ("main", 8)
+
     it "has no entry when neither symbol is exported" $
       execEntry (assemble "main: nop\n") `shouldBe` Nothing
 

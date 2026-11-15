@@ -1,8 +1,5 @@
 module Linker
   ( Executable (..),
-    Symbol (..),
-    SymType (..),
-    SymBinding (..),
     EntryPolicy (..),
     resolve,
     resolveWith,
@@ -11,7 +8,9 @@ where
 
 import Control.Applicative ((<|>))
 import Control.Monad (foldM, unless, when, (>=>))
-import Control.Monad.State.Strict (StateT, execStateT, get, gets, lift, modify')
+import Control.Monad.Except (liftEither, throwError)
+import Control.Monad.Reader (ReaderT, ask, asks, runReaderT)
+import Control.Monad.State.Strict (StateT, execStateT, get, gets, modify')
 import Data.Bifunctor (first)
 import Data.Bits (Bits (..))
 import Data.Char (ord)
@@ -32,27 +31,19 @@ import Types
 -- @.include@ carry the unit of the file that included them.
 type Unit = FilePath
 
-data SymType
-  = -- | a label: 'symValue' is its section-relative offset
-    AddrSym
-  | -- | a constant whose value is already known: 'symValue' holds it
-    ConstSym
+data SymDef
+  = -- | a label: its section and its offset within it
+    Label Section Int
+  | -- | a constant (@.equ@/@.set@/@.equiv@) whose value is known
+    Const Int
   | -- | a constant whose definition (with @.@ already substituted) still refers
     -- to a symbol that was forward at definition time; it is resolved lazily,
     -- against the complete table, the first time its value is needed
-    DeferredSym Expr
-  deriving (Show, Eq)
-
-data SymBinding = Local | Global | Weak
+    Deferred Expr
   deriving (Show, Eq)
 
 data Symbol = Symbol
-  { -- | the section the symbol is defined in, or 'Nothing' for an absolute
-    -- constant (@.equ@/@.set@/@.equiv@)
-    symSection :: !(Maybe Section),
-    -- | a section-relative offset for a label, or the absolute value for a constant
-    symValue :: !Int,
-    symType :: !SymType,
+  { symDef :: !SymDef,
     symBinding :: !SymBinding
   }
   deriving (Show, Eq)
@@ -117,29 +108,24 @@ type SectionBases = M.Map Section Int
 baseOf :: SectionBases -> Section -> Int
 baseOf bases sec = M.findWithDefault 0 sec bases
 
--- | the absolute address of a symbol given the assigned section bases
-symAbsolute :: SectionBases -> Symbol -> Int
-symAbsolute bases sym = case symSection sym of
-  Just sec -> baseOf bases sec + symValue sym
-  Nothing -> symValue sym
-
--- | everything expression evaluation needs once placement is finished
+-- | everything expression evaluation needs
 data LinkEnv = LinkEnv
   { envBases :: !SectionBases,
     envSyms :: !Symbols,
     -- | target expression (with its unit scope) of every placed
     -- @auipc %pcrel_hi@, keyed by its address; consulted by @%pcrel_lo@
     envPcrelHi :: !(M.Map Int (Unit, Expr)),
-    -- | names a unit defines itself but has not reached yet. Until it does,
-    -- another unit's export of the same name must not stand in for it, or the
-    -- result would depend on link order. Empty once placement is finished.
-    envPending :: !(S.Set (Unit, String))
+    -- | whether a unit defines this name itself but has not reached it yet.
+    -- Until it does, another unit's export of the same name must not stand in
+    -- for it, or the result would depend on link order. Never true once
+    -- placement is finished.
+    envPending :: (Unit, String) -> Bool
   }
 
 -- | the definition of @name@ that a reference in @unit@ binds to right now
 visibleSym :: LinkEnv -> Unit -> String -> Maybe (Unit, Symbol)
 visibleSym env unit name = case lookupSym (envSyms env) unit name of
-  Just (defUnit, _) | defUnit /= unit, S.member (unit, name) (envPending env) -> Nothing
+  Just (defUnit, _) | defUnit /= unit, envPending env (unit, name) -> Nothing
   found -> found
 
 data Executable = Executable
@@ -156,9 +142,12 @@ data Executable = Executable
 litOp :: Int -> Operand
 litOp = OpExpr . EInt
 
-hiOp, loOp :: String -> Operand
+hiOp :: String -> Operand
 hiOp = OpReloc HiPcrel . ESym
-loOp = OpReloc LoPcrel . ESym
+
+-- | the low half of a lowered pair: its @auipc@ is the instruction before it
+pairedLo :: Operand
+pairedLo = OpReloc LoPcrelRef (EBin Sub ECur (EInt 4))
 
 -- | split a value into the @(hi20, lo12)@ pair, with @lo@ sign-extended into [-2048, 2047]
 hiLo12 :: Int -> (Int, Int)
@@ -195,13 +184,13 @@ lower (PseudoInstr op) = case op of
   P_RET -> pure $ SomeInstruction $ JumpI JALR (ITypeArgs x0 x1 (litOp 0))
   P_LA rd lbl ->
     SomeInstruction (UType AUIPC (UTypeArgs rd (hiOp lbl)))
-      :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd (loOp lbl)))]
+      :| [SomeInstruction (ArithI ADDI (ITypeArgs rd rd pairedLo))]
   P_LOAD_GL lop rd lbl ->
     SomeInstruction (UType AUIPC (UTypeArgs rd (hiOp lbl)))
-      :| [SomeInstruction (LoadI lop (ITypeArgs rd rd (loOp lbl)))]
+      :| [SomeInstruction (LoadI lop (ITypeArgs rd rd pairedLo))]
   P_STORE_GL sop src lbl temp ->
     SomeInstruction (UType AUIPC (UTypeArgs temp (hiOp lbl)))
-      :| [SomeInstruction (SType sop (STypeArgs temp src (loOp lbl)))]
+      :| [SomeInstruction (SType sop (STypeArgs temp src pairedLo))]
   P_SEQZ rd rs -> pure $ SomeInstruction $ ArithI SLTIU (ITypeArgs rd rs (litOp 1))
   P_SNEZ rd rs -> pure $ SomeInstruction $ RType SLTU (RTypeArgs rd x0 rs)
   P_SLTZ rd rs -> pure $ SomeInstruction $ RType SLT (RTypeArgs rd rs x0)
@@ -218,10 +207,10 @@ lower (PseudoInstr op) = case op of
   P_BLEU rs rt off -> pure $ SomeInstruction $ BType BGEU (BTypeArgs rt rs off)
   P_CALL lbl ->
     SomeInstruction (UType AUIPC (UTypeArgs x1 (hiOp lbl)))
-      :| [SomeInstruction (JumpI JALR (ITypeArgs x1 x1 (loOp lbl)))]
+      :| [SomeInstruction (JumpI JALR (ITypeArgs x1 x1 pairedLo))]
   P_TAIL lbl ->
     SomeInstruction (UType AUIPC (UTypeArgs x6 (hiOp lbl)))
-      :| [SomeInstruction (JumpI JALR (ITypeArgs x0 x6 (loOp lbl)))]
+      :| [SomeInstruction (JumpI JALR (ITypeArgs x0 x6 pairedLo))]
   P_CSRR rd csr -> pure $ SomeInstruction $ System CSRRS (SysArgs rd csr x0)
   P_CSRW csr rs -> pure $ SomeInstruction $ System CSRRW (SysArgs x0 csr rs)
   P_CSRS csr rs -> pure $ SomeInstruction $ System CSRRS (SysArgs x0 csr rs)
@@ -229,9 +218,6 @@ lower (PseudoInstr op) = case op of
   P_CSRWI csr imm -> pure $ SomeInstruction $ SystemI CSRRWI (SysIArgs x0 csr imm)
   P_CSRSI csr imm -> pure $ SomeInstruction $ SystemI CSRRSI (SysIArgs x0 csr imm)
   P_CSRCI csr imm -> pure $ SomeInstruction $ SystemI CSRRCI (SysIArgs x0 csr imm)
-
-dataBase :: Int
-dataBase = 0x10000000
 
 -- | Round @x@ up to the next multiple of @a@
 alignUp :: Int -> Int -> Int
@@ -248,22 +234,11 @@ sectionAlign = 4
 atLoc :: Loc -> Either LinkError a -> Either LinkError a
 atLoc loc = first (LocatedLink loc)
 
-dataSize :: Directive -> Int
+dataSize :: DataDirective -> Int
 dataSize d = case d of
-  DirString s -> length s + 1
-  DirAscii s -> length s
-  DirByte es -> length es
-  DirHalf es -> length es * 2
-  DirWord es -> length es * 4
-  DirSection {} -> 0
-  DirSpace {} -> 0
-  DirAlign {} -> 0
-  DirComm {} -> 0
-  DirEqu {} -> 0
-  DirEquiv {} -> 0
-  DirGlobl {} -> 0
-  DirLocal {} -> 0
-  DirWeak {} -> 0
+  DataString s -> length s + 1
+  DataAscii s -> length s
+  DataInts width es -> length es * intWidthBytes width
 
 -- | the padding needed to bring @addr@ up to a multiple of @a@ bytes
 padTo :: Int -> Int -> Int
@@ -297,14 +272,17 @@ defaultCommAlign size
   | size >= 2 = 2
   | otherwise = 1
 
+-- | what a placement walk is given and never changes
+data PlaceEnv = PlaceEnv
+  { -- | the section bases in force (empty while sizes are being measured, so every section sits at base 0)
+    peBases :: !SectionBases,
+    peBinds :: !Bindings,
+    -- | every name each unit defines itself
+    peOwnDefs :: !(S.Set (Unit, String))
+  }
+
 data Place = Place
-  { -- | the section bases in force for this walk (empty while sizes are being measured, so every section sits at base 0)
-    pBases :: !SectionBases,
-    -- | declared bindings, collected from the whole program before the walk
-    pBinds :: !Bindings,
-    -- | every name each unit defines itself, collected before the walk
-    pOwnDefs :: !(S.Set (Unit, String)),
-    -- | the unit being walked
+  { -- | the unit being walked
     pUnit :: !(Maybe Unit),
     -- | every size and alignment evaluated so far, in reverse order. The two
     -- walks must agree on them, or the measured layout is not the real one.
@@ -323,19 +301,16 @@ data Place = Place
     pLocked :: !(S.Set (Unit, String)),
     -- | expanded instructions in reverse order: (address, source loc, instr)
     pInstrs :: ![(Int, Loc, SomeInstruction Operand)],
-    -- | emitting data directives in reverse order: (address, source loc, section, dir),
+    -- | data directives in reverse order: (address, source loc, section, dir),
     -- their bytes are produced in a second pass, once every symbol is known, so
     -- that data may reference forward symbols (e.g. @.word later_label@)
-    pDataDirs :: ![(Int, Loc, Section, Directive)]
+    pData :: ![(Int, Loc, Section, DataDirective)]
   }
 
-initPlace :: Bindings -> S.Set (Unit, String) -> SectionBases -> Place
-initPlace binds ownDefs bases =
+initPlace :: Place
+initPlace =
   Place
-    { pBases = bases,
-      pBinds = binds,
-      pOwnDefs = ownDefs,
-      pUnit = Nothing,
+    { pUnit = Nothing,
       pLayoutVals = [],
       pOffsets = M.singleton textSection 0,
       pAligns = M.empty,
@@ -345,13 +320,10 @@ initPlace binds ownDefs bases =
       pDefined = S.empty,
       pLocked = S.empty,
       pInstrs = [],
-      pDataDirs = []
+      pData = []
     }
 
-type PlaceM = StateT Place (Either LinkError)
-
-throw :: LinkError -> PlaceM a
-throw = lift . Left
+type PlaceM = ReaderT PlaceEnv (StateT Place (Either LinkError))
 
 -- | the current byte offset within @sec@ (0 if it has not been visited yet)
 offsetOf :: Section -> Place -> Int
@@ -361,8 +333,10 @@ curOffset :: Place -> Int
 curOffset p = offsetOf (pCur p) p
 
 -- | the absolute address of the current point in the current section
-placeAddr :: Place -> Int
-placeAddr p = baseOf (pBases p) (pCur p) + curOffset p
+placeAddr :: PlaceM Int
+placeAddr = do
+  bases <- asks peBases
+  gets (\p -> baseOf bases (pCur p) + curOffset p)
 
 -- | advance the current section's offset by @n@ bytes
 advance :: Int -> PlaceM ()
@@ -385,21 +359,26 @@ visitSection sec p
 setSection :: Section -> Place -> Place
 setSection sec p = (visitSection sec p) {pCur = sec}
 
+-- | whether a later @.equ@/@.set@ may give the name a new value
+data Redefinition = Redefinable | Fixed
+  deriving (Eq)
+
 -- | define a symbol under its declared binding (the 'symBinding' on the given
 -- symbol is the default when none was declared). Local symbols go into their
 -- unit's scope; global and weak ones are exported.
-defineSym :: Loc -> String -> Bool -> Symbol -> PlaceM ()
-defineSym loc name redefinable sym = do
+defineSym :: Loc -> String -> Redefinition -> Symbol -> PlaceM ()
+defineSym loc name redefinition sym = do
   let unit = locUnit loc
       key = (unit, name)
+  binds <- asks peBinds
   p <- get
-  let taken = S.member key (if redefinable then pLocked p else pDefined p)
-  when taken $ throw (LocatedLink loc (DuplicateLabel name))
-  let sym' = sym {symBinding = M.findWithDefault (symBinding sym) key (pBinds p)}
+  let taken = S.member key (if redefinition == Redefinable then pLocked p else pDefined p)
+  when taken $ throwError (LocatedLink loc (DuplicateLabel name))
+  let sym' = sym {symBinding = M.findWithDefault (symBinding sym) key binds}
   modify' $ \q ->
     q
       { pDefined = S.insert key (pDefined q),
-        pLocked = (if redefinable then id else S.insert key) (pLocked q)
+        pLocked = (if redefinition == Redefinable then id else S.insert key) (pLocked q)
       }
   case symBinding sym' of
     Local -> modify' $ \q -> q {pSyms = insertLocal key sym' (pSyms q)}
@@ -415,7 +394,7 @@ exportSym loc unit name sym = do
   case existing of
     Just (defUnit, old)
       | defUnit /= unit, strong old, strong sym ->
-          throw (LocatedLink loc (MultipleDefinition name))
+          throwError (LocatedLink loc (MultipleDefinition name))
       | defUnit /= unit, not (strong sym) -> pure ()
     _ -> modify' $ \p -> p {pSyms = insertGlobal name (unit, sym) (pSyms p)}
   where
@@ -424,18 +403,17 @@ exportSym loc unit name sym = do
 defLabel :: Loc -> String -> PlaceM ()
 defLabel loc name = do
   p <- get
-  defineSym loc name False (Symbol (Just (pCur p)) (curOffset p) AddrSym Local)
+  defineSym loc name Fixed (Symbol (Label (pCur p) (curOffset p)) Local)
 
 -- | reserve a @.comm@/@.lcomm@ common symbol, does not change the current
 -- section. Deliberately no ld-style merging of same-named commons: a name
 -- exported strongly twice is a 'MultipleDefinition', per the one-definition rule.
-reserveCommon :: Loc -> Bool -> String -> Int -> Int -> PlaceM ()
-reserveCommon loc isLocal name size align = do
+reserveCommon :: Loc -> SymBinding -> String -> Int -> Int -> PlaceM ()
+reserveCommon loc binding name size align = do
   let a = max 1 align
-      bind = if isLocal then Local else Global
   modify' (noteAlign commonSection a . visitSection commonSection)
   aligned <- gets (alignUp a . offsetOf commonSection)
-  defineSym loc name False (Symbol (Just commonSection) aligned AddrSym bind)
+  defineSym loc name Fixed (Symbol (Label commonSection aligned) binding)
   modify' $ \p -> p {pOffsets = M.insert commonSection (aligned + size) (pOffsets p)}
 
 -- | replace the location counter @.@ in an expression with a literal
@@ -453,7 +431,7 @@ snapshotConsts :: LinkEnv -> Unit -> Expr -> Expr
 snapshotConsts env unit = go
   where
     go (ESym s)
-      | Just (_, Symbol {symType = ConstSym, symValue = v}) <- visibleSym env unit s = ESnapshot s v
+      | Just (_, Symbol {symDef = Const v}) <- visibleSym env unit s = ESnapshot s v
     go (EUn o e) = EUn o (go e)
     go (EBin o a b) = EBin o (go a) (go b)
     go e = e
@@ -462,18 +440,18 @@ mapOperandExpr :: (Expr -> Expr) -> Operand -> Operand
 mapOperandExpr f (OpExpr e) = OpExpr (f e)
 mapOperandExpr f (OpReloc k e) = OpReloc k (f e)
 
-mapDataExprs :: (Expr -> Expr) -> Directive -> Directive
-mapDataExprs f dir = case dir of
-  DirByte es -> DirByte (map f es)
-  DirHalf es -> DirHalf (map f es)
-  DirWord es -> DirWord (map f es)
-  _ -> dir
+mapDataExprs :: (Expr -> Expr) -> DataDirective -> DataDirective
+mapDataExprs f (DataInts width es) = DataInts width (map f es)
+mapDataExprs _ text = text
 
 -- | the symbols visible at this point of the walk
-layoutEnv :: Place -> LinkEnv
-layoutEnv p =
+layoutEnv :: PlaceM LinkEnv
+layoutEnv = do
+  env <- ask
+  p <- get
+  let pending key = S.member key (peOwnDefs env) && S.notMember key (pDefined p)
   -- layout-time evaluation never sees a %pcrel operand, so no index is needed
-  LinkEnv (pBases p) (pSyms p) M.empty (pOwnDefs p `S.difference` pDefined p)
+  pure (LinkEnv (peBases env) (pSyms p) M.empty pending)
 
 -- | each root file starts in @.text@, at a word boundary in every section, as
 -- if it had been assembled on its own
@@ -492,35 +470,11 @@ placeStep :: (Loc, SourceLine) -> PlaceM ()
 placeStep (loc, (mLabel, mStmt)) = do
   enterUnit (locUnit loc)
   mapM_ (defLabel loc) mLabel
-  here <- gets placeAddr
+  here <- placeAddr
   mapM_ (placeStmt loc here) mStmt
 
 placeStmt :: Loc -> Int -> Statement -> PlaceM ()
 placeStmt loc here stmt = case stmt of
-  StmtDirective (DirSection sec) -> modify' (setSection sec)
-  StmtDirective (DirEqu name e) -> defineConst True name e
-  StmtDirective (DirEquiv name e) -> defineConst False name e
-  -- bindings were collected before the walk
-  StmtDirective (DirGlobl _) -> pure ()
-  StmtDirective (DirLocal _) -> pure ()
-  StmtDirective (DirWeak _) -> pure ()
-  StmtDirective (DirSpace e) -> do
-    n <- layoutVal e >>= requireNonNeg ".space size"
-    advance n
-  StmtDirective (DirAlign mode e) -> do
-    v <- layoutVal e >>= requireNonNeg (alignCtx mode)
-    a <- lift (atLoc loc (alignBytes mode v))
-    cur <- gets pCur
-    modify' (noteAlign cur a)
-    advance (padTo a here)
-  StmtDirective (DirComm isLocal name sizeE mAlignE) -> do
-    size <- layoutVal sizeE >>= requireNonNeg ".comm size"
-    align <- maybe (pure (defaultCommAlign size)) (layoutVal >=> requireNonNeg ".comm alignment") mAlignE
-    reserveCommon loc isLocal name size align
-  StmtDirective dir -> do
-    snap <- snapshot
-    modify' $ \p -> p {pDataDirs = (here, loc, pCur p, mapDataExprs snap dir) : pDataDirs p}
-    advance (dataSize dir)
   StmtInstr i -> do
     snap <- snapshot
     let subs = NE.toList (lower i)
@@ -528,57 +482,71 @@ placeStmt loc here stmt = case stmt of
         placed = zipWith (\k sub -> (here + 4 * k, loc, frozen sub)) [0 ..] subs
     modify' $ \p -> p {pInstrs = reverse placed ++ pInstrs p}
     advance (4 * length subs)
+  StmtDirective dir -> case dir of
+    DirSection sec -> modify' (setSection sec)
+    DirEqu name e -> defineConst Redefinable name e
+    DirEquiv name e -> defineConst Fixed name e
+    -- bindings were collected before the walk
+    DirGlobl _ -> pure ()
+    DirLocal _ -> pure ()
+    DirWeak _ -> pure ()
+    DirSpace e -> layoutVal e >>= requireNonNeg ".space size" >>= advance
+    DirAlign mode e -> do
+      v <- layoutVal e >>= requireNonNeg (alignCtx mode)
+      a <- liftEither (atLoc loc (alignBytes mode v))
+      modify' (\p -> noteAlign (pCur p) a p)
+      advance (padTo a here)
+    DirComm binding name sizeE mAlignE -> do
+      size <- layoutVal sizeE >>= requireNonNeg ".comm size"
+      align <- maybe (pure (defaultCommAlign size)) (layoutVal >=> requireNonNeg ".comm alignment") mAlignE
+      reserveCommon loc binding name size align
+    DirData d -> do
+      snap <- snapshot
+      modify' $ \p -> p {pData = (here, loc, pCur p, mapDataExprs snap d) : pData p}
+      advance (dataSize d)
   where
-    snapshot = gets (\p -> snapshotConsts (layoutEnv p) (locUnit loc))
+    unit = locUnit loc
+    snapshot = (`snapshotConsts` unit) <$> layoutEnv
     layoutVal e = do
-      p <- get
-      v <- lift (atLoc loc (evalExpr (layoutEnv p) (locUnit loc) here e))
-      modify' $ \q -> q {pLayoutVals = (loc, v) : pLayoutVals q}
+      env <- layoutEnv
+      v <- liftEither (atLoc loc (evalExpr env unit here e))
+      modify' $ \p -> p {pLayoutVals = (loc, v) : pLayoutVals p}
       pure v
     requireNonNeg ctx v
-      | v < 0 = throw (LocatedLink loc (NegativeValue ctx v))
+      | v < 0 = throwError (LocatedLink loc (NegativeValue ctx v))
       | otherwise = pure v
     -- a constant is evaluated eagerly when every symbol it names is already defined
-    defineConst redefinable name e0 = do
-      p <- get
-      let e = snapshotConsts (layoutEnv p) (locUnit loc) (substCur here e0)
-      case evalExpr (layoutEnv p) (locUnit loc) here e of
-        Right v -> defineSym loc name redefinable (Symbol Nothing v ConstSym Local)
-        Left (UndefinedLabel _) ->
-          defineSym loc name redefinable (Symbol Nothing 0 (DeferredSym e) Local)
-        Left err -> throw (LocatedLink loc err)
+    defineConst redefinition name e0 = do
+      env <- layoutEnv
+      let e = snapshotConsts env unit (substCur here e0)
+      case evalExpr env unit here e of
+        Right v -> defineSym loc name redefinition (Symbol (Const v) Local)
+        Left (UndefinedLabel _) -> defineSym loc name redefinition (Symbol (Deferred e) Local)
+        Left err -> throwError (LocatedLink loc err)
 
 -- | The @n@ little-endian bytes of @x@
 leBytes :: Int -> Int -> [Word8]
 leBytes n x = [fromIntegral ((x `shiftR` (8 * k)) .&. 0xFF) | k <- [0 .. n - 1]]
 
-emitDirective :: LinkEnv -> Unit -> Int -> Directive -> Either LinkError [(Int, Word8)]
-emitDirective env unit base dir = case dir of
-  DirString str -> Right (zip [base ..] (map (fromIntegral . ord) (str ++ "\0")))
-  DirAscii str -> Right (zip [base ..] (map (fromIntegral . ord) str))
-  DirByte es -> emitInts 1 ".byte value" es
-  DirHalf es -> emitInts 2 ".half value" es
-  DirWord es -> emitInts 4 ".word value" es
-  DirSection {} -> Right []
-  DirSpace {} -> Right []
-  DirAlign {} -> Right []
-  DirComm {} -> Right []
-  DirEqu {} -> Right []
-  DirEquiv {} -> Right []
-  DirGlobl {} -> Right []
-  DirLocal {} -> Right []
-  DirWeak {} -> Right []
-  where
-    emitInts width ctx es =
-      concat <$> traverse one (zip [base, base + width ..] es)
-      where
-        lo = negate (bit (8 * width - 1))
-        hi = bit (8 * width) - 1
-        one (addr, e) = do
-          v <- evalExpr env unit addr e
-          if v < lo || v > hi
-            then Left (ImmOutOfRange ctx lo hi v)
-            else Right (zip [addr ..] (leBytes width v))
+intCtx :: IntWidth -> String
+intCtx IntByte = ".byte value"
+intCtx IntHalf = ".half value"
+intCtx IntWord = ".word value"
+
+emitData :: LinkEnv -> Unit -> Int -> DataDirective -> Either LinkError [(Int, Word8)]
+emitData env unit base d = case d of
+  DataString str -> Right (zip [base ..] (map (fromIntegral . ord) (str ++ "\0")))
+  DataAscii str -> Right (zip [base ..] (map (fromIntegral . ord) str))
+  DataInts width es -> concat <$> traverse one (zip [base, base + size ..] es)
+    where
+      size = intWidthBytes width
+      lo = negate (bit (8 * size - 1))
+      hi = bit (8 * size) - 1
+      one (addr, e) = do
+        v <- evalExpr env unit addr e
+        if v < lo || v > hi
+          then Left (ImmOutOfRange (intCtx width) lo hi v)
+          else Right (zip [addr ..] (leBytes size v))
 
 -- | an undefined symbol declared @.weak@ resolves to 0, per ELF semantics
 weakStubs :: Bindings -> Symbols -> Symbols
@@ -586,7 +554,7 @@ weakStubs binds syms = foldl' add syms (M.toList binds)
   where
     add acc ((unit, name), Weak)
       | Nothing <- lookupSym acc unit name =
-          insertLocal (unit, name) (Symbol Nothing 0 ConstSym Weak) acc
+          insertLocal (unit, name) (Symbol (Const 0) Weak) acc
     add acc _ = acc
 
 -- | assign each section a final base address from its measured size
@@ -607,7 +575,7 @@ assignBases sizes aligns order = M.unions [textB, rodB, datB, bssB]
           let b = alignUp (alignOf s) cur
            in (M.insert s b m, b + sizeOf s)
     (textB, _) = layoutRegion (fromIntegral entryPoint) (inClass SecText)
-    (rodB, afterRod) = layoutRegion dataBase (inClass SecRodata)
+    (rodB, afterRod) = layoutRegion (fromIntegral dataBase) (inClass SecRodata)
     (datB, afterDat) = layoutRegion afterRod (inClass SecData)
     bssStart = alignUp bssPageAlign afterDat
     (bssB, _) = layoutRegion bssStart (inClass SecBss)
@@ -616,7 +584,7 @@ assignBases sizes aligns order = M.unions [textB, rodB, datB, bssB]
 -- reaches the heap
 checkRegions :: M.Map Section Int -> SectionBases -> Either LinkError ()
 checkRegions sizes bases = do
-  check "text" (endOf ((== SecText) . secClass)) dataBase
+  check "text" (endOf ((== SecText) . secClass)) (fromIntegral dataBase)
   check "data" (endOf ((/= SecText) . secClass)) (fromIntegral heapBase)
   where
     endOf inRegion =
@@ -626,13 +594,15 @@ checkRegions sizes bases = do
       | otherwise = Right ()
 
 -- | the entry symbol: @_start@, else @main@, looked up among the exported globals
-entrySymbol :: SectionBases -> Symbols -> Maybe (String, Word32)
-entrySymbol bases syms =
-  listToMaybe
-    [ (name, fromIntegral (symAbsolute bases sym))
-      | name <- ["_start", "main"],
-        Just (_, sym) <- [M.lookup name (symGlobals syms)]
-    ]
+entrySymbol :: LinkEnv -> Either LinkError (Maybe (String, Word32))
+entrySymbol env = traverse address (listToMaybe exported)
+  where
+    exported =
+      [ (name, unit)
+        | name <- ["_start", "main"],
+          Just (unit, _) <- [M.lookup name (symGlobals (envSyms env))]
+      ]
+    address (name, unit) = (,) name . fromIntegral <$> evalExpr env unit 0 (ESym name)
 
 -- | what to do with a build that exports neither @_start@ nor @main@
 data EntryPolicy
@@ -648,27 +618,27 @@ resolve = resolveWith FallBackToZero
 resolveWith :: EntryPolicy -> ParsedProgram -> Either LinkError Executable
 resolveWith policy prog = do
   -- walk with every section at base 0 purely to measure sizes
-  measured <- execStateT walk (initPlace binds ownDefs M.empty)
+  measured <- walk M.empty
   let sizes = pOffsets measured
       bases = assignBases sizes (pAligns measured) (reverse (pOrder measured))
   checkRegions sizes bases
   -- walk again with real bases, so every recorded address, and any @.equ@ referencing a label, is already absolute
-  placed <- execStateT walk (initPlace binds ownDefs bases)
+  placed <- walk bases
   checkStableLayout measured placed
   let instrs = reverse (pInstrs placed)
       syms = weakStubs binds (pSyms placed)
-      env = LinkEnv bases syms (pcrelHiIndex instrs) S.empty
-      entry = entrySymbol bases syms
+      env = LinkEnv bases syms (pcrelHiIndex instrs) (const False)
+  entry <- entrySymbol env
   when (policy == RequireEntry && null entry) $ Left NoEntrySymbol
-  dataMem <- foldM (emitInto env) IM.empty (reverse (pDataDirs placed))
+  dataMem <- foldM (emitInto env) IM.empty (reverse (pData placed))
   resolved <- traverse (resolveOne env) instrs
   return $ Executable (map fst resolved) dataMem (map snd resolved) entry
   where
     binds = collectBindings prog
     ownDefs = collectOwnDefs prog
-    walk = mapM_ placeStep prog
-    emitInto env mem (addr, loc, sec, dir) = do
-      bytes <- atLoc loc (emitDirective env (locUnit loc) addr dir)
+    walk bases = execStateT (runReaderT (mapM_ placeStep prog) (PlaceEnv bases binds ownDefs)) initPlace
+    emitInto env mem (addr, loc, sec, d) = do
+      bytes <- atLoc loc (emitData env (locUnit loc) addr d)
       -- bss is NOBITS: its directives are still evaluated, but carry no bytes
       Right $
         if secClass sec == SecBss
@@ -743,16 +713,16 @@ evalExpr env unit0 here = go S.empty unit0
       maybe (Left DivByZero) Right (applyBinOp o x y)
     resolveSym seen unit s = case visibleSym env unit s of
       Nothing -> Left (UndefinedLabel s)
-      Just (defUnit, sym) -> case symType sym of
+      Just (defUnit, sym) -> case symDef sym of
+        Label sec offset -> Right (baseOf (envBases env) sec + offset)
+        Const v -> Right v
         -- a deferred constant evaluates in the scope of the unit that defined it
-        DeferredSym e
+        Deferred e
           | S.member (defUnit, s) seen -> Left (CircularConstant s)
           | otherwise -> go (S.insert (defUnit, s) seen) defUnit e
-        _ -> Right (symAbsolute (envBases env) sym)
 
-pcrelHi, pcrelLo :: Int -> Int -> Int
+pcrelHi :: Int -> Int -> Int
 pcrelHi pc t = fst (hiLo12 (t - pc))
-pcrelLo pc t = snd (hiLo12 (t - pc + 4))
 
 -- the hi part is masked to its 20-bit field, so an unsigned value with the
 -- top bit set reads as that field rather than as bit 20 spilling over
@@ -774,8 +744,7 @@ resolveReloc env unit pc kind e = case kind of
   HiAbs -> absHi <$> (value >>= checkWord)
   LoAbs -> absLo <$> (value >>= checkWord)
   HiPcrel -> pcrelHi pc <$> value
-  LoPcrel -> pcrelLo pc <$> value
-  -- the expression names the label of the paired auipc; the low bits come
+  -- the expression names the address of the paired auipc; the low bits come
   -- from that auipc's own target and pc
   LoPcrelRef -> do
     site <- value

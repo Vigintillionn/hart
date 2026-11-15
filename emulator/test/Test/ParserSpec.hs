@@ -60,20 +60,20 @@ spec = do
       realInstrOf "/* a\n   b */\naddi a0, zero, 1\n" `shouldBe` addi
 
     it "does not treat /* inside a string literal as a comment" $
-      directiveOf ".string \"a /* b\"\n" `shouldBe` DirString "a /* b"
+      directiveOf ".string \"a /* b\"\n" `shouldBe` DirData (DataString "a /* b")
 
     it "does not treat // inside a string literal as a comment" $
-      directiveOf ".string \"http://x\"\n" `shouldBe` DirString "http://x"
+      directiveOf ".string \"http://x\"\n" `shouldBe` DirData (DataString "http://x")
 
     it "reports an unterminated block comment" $
       parseErr defaultExtensions "addi a0, zero, 1 /* oops\n" `shouldBe` EOF
 
   describe "directives" $ do
     it "parses a .word list" $
-      directiveOf ".word 1, 2, 3\n" `shouldBe` DirWord [EInt 1, EInt 2, EInt 3]
+      directiveOf ".word 1, 2, 3\n" `shouldBe` DirData (DataInts IntWord [EInt 1, EInt 2, EInt 3])
 
     it "parses a .string literal with escapes" $
-      directiveOf ".string \"hi\\n\"\n" `shouldBe` DirString "hi\n"
+      directiveOf ".string \"hi\\n\"\n" `shouldBe` DirData (DataString "hi\n")
 
     it "parses .equ and .set as constant definitions" $ do
       directiveOf ".equ SIZE, 16\n" `shouldBe` DirEqu "SIZE" (EInt 16)
@@ -107,20 +107,20 @@ spec = do
       directiveOf ".align 2\n" `shouldBe` DirAlign AlignPow2 (EInt 2)
 
     it "parses .comm and .lcomm with an optional alignment" $ do
-      directiveOf ".comm buf, 16\n" `shouldBe` DirComm False "buf" (EInt 16) Nothing
-      directiveOf ".lcomm scratch, 8, 4\n" `shouldBe` DirComm True "scratch" (EInt 8) (Just (EInt 4))
+      directiveOf ".comm buf, 16\n" `shouldBe` DirComm Global "buf" (EInt 16) Nothing
+      directiveOf ".lcomm scratch, 8, 4\n" `shouldBe` DirComm Local "scratch" (EInt 8) (Just (EInt 4))
 
   describe "expressions" $ do
     it "parses a symbol in a .word" $
-      directiveOf ".word foo\n" `shouldBe` DirWord [ESym "foo"]
+      directiveOf ".word foo\n" `shouldBe` DirData (DataInts IntWord [ESym "foo"])
 
     it "parses a difference of symbols" $
       directiveOf ".word end - start\n"
-        `shouldBe` DirWord [EBin Sub (ESym "end") (ESym "start")]
+        `shouldBe` DirData (DataInts IntWord [EBin Sub (ESym "end") (ESym "start")])
 
     it "honours precedence (+ binds tighter than <<)" $
       directiveOf ".word 1 + 2 << 3\n"
-        `shouldBe` DirWord [EBin Shl (EBin Add (EInt 1) (EInt 2)) (EInt 3)]
+        `shouldBe` DirData (DataInts IntWord [EBin Shl (EBin Add (EInt 1) (EInt 2)) (EInt 3)])
 
     it "parses a parenthesised expression operand" $
       realInstrOf "addi a0, a0, (1 + 2) * 4\n"

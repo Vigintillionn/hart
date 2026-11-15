@@ -36,6 +36,7 @@ module Machine
     mtval,
     mtvec,
     entryPoint,
+    dataBase,
     stackTop,
     heapBase,
     extractByte,
@@ -331,6 +332,9 @@ entryPoint = 0x0
 
 stackTop :: Word32
 stackTop = 0x7FFFFFF0
+
+dataBase :: Word32
+dataBase = 0x10000000
 
 heapBase :: Word32
 heapBase = 0x20000000
