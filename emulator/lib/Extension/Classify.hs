@@ -32,6 +32,9 @@ instance HasExtension ROp where
     DIVU -> MExt
     REM -> MExt
     REMU -> MExt
+    -- Zicond: integer conditional
+    CZERO_EQZ -> ZicondExt
+    CZERO_NEZ -> ZicondExt
 
 instance HasExtension IArithOp where
   extensionOf op = case op of

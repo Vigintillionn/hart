@@ -5,6 +5,7 @@ module Extension
     baseExtensions,
     defaultExtensions,
     mkExtensionSet,
+    withRequirements,
     isEnabled,
     extensionCode,
     readExtensionCode,
@@ -14,6 +15,7 @@ module Extension
   )
 where
 
+import Data.List (foldl')
 import Data.Set (Set)
 import Data.Set qualified as Set
 
@@ -22,6 +24,8 @@ data Extension
     IExt
   | -- | RV32M - integer multiply / divide
     MExt
+  | -- | Zicond - integer conditional operations
+    ZicondExt
   | -- | Zicsr - control and status register access
     ZicsrExt
   deriving (Show, Eq, Ord, Enum, Bounded)
@@ -38,7 +42,15 @@ defaultExtensions :: ExtensionSet
 defaultExtensions = allExtensions
 
 mkExtensionSet :: [Extension] -> ExtensionSet
-mkExtensionSet xs = Set.union baseExtensions (Set.fromList xs)
+mkExtensionSet xs = Set.union baseExtensions (withRequirements (extRequires . extensionInfo) xs)
+
+-- | The given extensions plus everything they transitively require.
+withRequirements :: (Ord a) => (a -> [a]) -> [a] -> Set a
+withRequirements requirementsOf = foldl' include Set.empty
+  where
+    include enabled x
+      | Set.member x enabled = enabled
+      | otherwise = foldl' include (Set.insert x enabled) (requirementsOf x)
 
 isEnabled :: Extension -> ExtensionSet -> Bool
 isEnabled = Set.member
@@ -54,7 +66,8 @@ data ExtensionInfo = ExtensionInfo
   { extCode :: String,
     extName :: String,
     extSummary :: String,
-    extMandatory :: Bool
+    extMandatory :: Bool,
+    extRequires :: [Extension]
   }
   deriving (Show, Eq)
 
@@ -66,7 +79,8 @@ extensionInfo IExt =
       extSummary =
         "Core integer arithmetic, control flow, loads/stores and system "
           ++ "instructions. Mandatory - always enabled.",
-      extMandatory = True
+      extMandatory = True,
+      extRequires = []
     }
 extensionInfo MExt =
   ExtensionInfo
@@ -75,7 +89,18 @@ extensionInfo MExt =
       extSummary =
         "Hardware multiplication, division and remainder "
           ++ "(mul, mulh, mulhsu, mulhu, div, divu, rem, remu).",
-      extMandatory = False
+      extMandatory = False,
+      extRequires = []
+    }
+extensionInfo ZicondExt =
+  ExtensionInfo
+    { extCode = "Zicond",
+      extName = "Integer Conditional",
+      extSummary =
+        "Conditional zeroing for branchless selects "
+          ++ "(czero.eqz, czero.nez).",
+      extMandatory = False,
+      extRequires = []
     }
 extensionInfo ZicsrExt =
   ExtensionInfo
@@ -84,7 +109,8 @@ extensionInfo ZicsrExt =
       extSummary =
         "Atomic read/modify/write access to control and status registers "
           ++ "(csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci).",
-      extMandatory = False
+      extMandatory = False,
+      extRequires = []
     }
 
 extensionCatalogue :: [Extension]

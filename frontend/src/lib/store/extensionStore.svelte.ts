@@ -1,6 +1,7 @@
 import type { ExtensionInfo } from "../../bindings/ExtensionInfo";
 import { sendToHaskell } from "../util";
 import { loadJSON, saveJSON } from "../persist";
+import { toggleExtension } from "../extensionToggle";
 
 const STORAGE_KEY = "extensions:enabled";
 
@@ -66,9 +67,7 @@ class ExtensionStore {
     const ext = this.catalogue.find((e) => e.code === code);
     if (!ext || ext.mandatory) return false;
 
-    const next = this.catalogue.map((e) =>
-      e.code === code ? { ...e, enabled: !e.enabled } : e,
-    );
+    const next = toggleExtension(this.catalogue, code);
     this.catalogue = next;
 
     const codes = next.filter((e) => e.enabled).map((e) => e.code);

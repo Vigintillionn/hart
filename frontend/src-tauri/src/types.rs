@@ -196,6 +196,8 @@ pub struct ExtensionInfo {
     pub name: String,
     pub summary: String,
     pub mandatory: bool,
+    #[serde(default)]
+    pub requires: Vec<String>,
     pub enabled: bool,
 }
 
