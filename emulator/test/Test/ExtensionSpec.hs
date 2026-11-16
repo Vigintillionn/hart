@@ -1,6 +1,7 @@
 module Test.ExtensionSpec (spec) where
 
 import Assembler (assembleSome)
+import Data.Set qualified as Set
 import Data.Word (Word32)
 import Decoder (decodeWord)
 import Error (EmulatorError (..))
@@ -31,6 +32,21 @@ spec = do
 
     it "treats Zicsr as optional, off by default" $
       isEnabled ZicsrExt (mkExtensionSet []) `shouldBe` False
+
+  describe "extension requirements" $ do
+    let requirementsOf :: Char -> String
+        requirementsOf 'd' = "f"
+        requirementsOf 'f' = "z"
+        requirementsOf _ = ""
+
+    it "enables what a requested extension requires, transitively" $
+      withRequirements requirementsOf "d" `shouldBe` Set.fromList "dfz"
+
+    it "adds nothing for an extension without requirements" $
+      withRequirements requirementsOf "m" `shouldBe` Set.fromList "m"
+
+    it "terminates on a requirement cycle" $
+      withRequirements (\c -> if c == 'a' then "b" else "a") "a" `shouldBe` Set.fromList "ab"
 
   describe "decoder gating" $ do
     it "rejects a disabled-extension instruction" $

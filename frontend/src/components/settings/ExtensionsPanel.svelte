@@ -45,6 +45,11 @@
         <p class="mt-0.5 text-[11.5px] leading-snug text-text-dim">
           {ext.summary}
         </p>
+        {#if ext.requires.length}
+          <p class="mt-0.5 text-[11px] leading-snug text-text-faint">
+            Requires {ext.requires.join(", ")}
+          </p>
+        {/if}
       </div>
 
       <div class="flex justify-end border-b border-border-soft py-3 pl-3">

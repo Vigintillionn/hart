@@ -23,6 +23,7 @@ import Extension
     ExtensionSet,
     defaultExtensions,
     extensionCatalogue,
+    extensionCode,
     extensionInfo,
     isEnabled,
     mkExtensionSet,
@@ -150,6 +151,7 @@ instance ToJSON Response where
                 "name" .= extName i,
                 "summary" .= extSummary i,
                 "mandatory" .= extMandatory i,
+                "requires" .= map extensionCode (extRequires i),
                 "enabled" .= isEnabled e exts
               ]
   toJSON ResInstructionSet =
