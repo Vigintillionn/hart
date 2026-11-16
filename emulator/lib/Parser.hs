@@ -478,7 +478,9 @@ rOpTable =
     ("div", DIV),
     ("divu", DIVU),
     ("rem", REM),
-    ("remu", REMU)
+    ("remu", REMU),
+    ("czero.eqz", CZERO_EQZ),
+    ("czero.nez", CZERO_NEZ)
   ]
 
 iArithTable :: [(String, IArithOp)]
@@ -659,7 +661,9 @@ parseStatement exts =
     <|> unknownInstr
 
 mnemonicLike :: Parser String
-mnemonicLike = (:) <$> satisfy isAlpha <*> many (satisfy isIdentChar)
+mnemonicLike = (:) <$> satisfy isAlpha <*> many (satisfy isMnemonicChar)
+  where
+    isMnemonicChar c = isIdentChar c || c == '.'
 
 unknownInstr :: Parser Statement
 unknownInstr = lookAhead mnemonicLike >>= failHard . UnknownInstruction

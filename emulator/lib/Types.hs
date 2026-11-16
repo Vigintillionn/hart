@@ -77,6 +77,8 @@ data ROp
   | DIVU
   | REM
   | REMU
+  | CZERO_EQZ
+  | CZERO_NEZ
   deriving (Show, Eq, Enum, Bounded)
 
 data IArithOp

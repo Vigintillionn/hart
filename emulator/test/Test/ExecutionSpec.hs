@@ -63,6 +63,30 @@ spec = do
       cpu <- runProgram "li a0, -1\nli a1, -1\nmulhu a2, a0, a1\n"
       regU cpu a2 `shouldBe` 0xFFFFFFFE
 
+  describe "conditional zero (Zicond)" $ do
+    it "CZERO.EQZ zeroes rd when the condition is zero" $ do
+      cpu <- runProgram "li a0, 7\nli a1, 0\nczero.eqz a2, a0, a1\n"
+      regU cpu a2 `shouldBe` 0
+
+    it "CZERO.EQZ copies rs1 when the condition is non-zero" $ do
+      cpu <- runProgram "li a0, 7\nli a1, 3\nczero.eqz a2, a0, a1\n"
+      regU cpu a2 `shouldBe` 7
+
+    it "CZERO.NEZ zeroes rd when the condition is non-zero" $ do
+      cpu <- runProgram "li a0, 7\nli a1, 3\nczero.nez a2, a0, a1\n"
+      regU cpu a2 `shouldBe` 0
+
+    it "CZERO.NEZ copies rs1 when the condition is zero" $ do
+      cpu <- runProgram "li a0, 7\nli a1, 0\nczero.nez a2, a0, a1\n"
+      regU cpu a2 `shouldBe` 7
+
+    it "the pair selects between two values without branching" $ do
+      -- a2 = (a2 != 0) ? a0 : a1
+      cpu <-
+        runProgram
+          "li a0, 11\nli a1, 22\nli a2, 1\nczero.eqz t0, a0, a2\nczero.nez t1, a1, a2\nor a2, t0, t1\n"
+      regU cpu a2 `shouldBe` 11
+
   describe "division edge cases" $ do
     it "signed division overflow (INT_MIN / -1) wraps to INT_MIN" $ do
       cpu <- runProgram "li a0, 0x80000000\nli a1, -1\ndiv a2, a0, a1\n"

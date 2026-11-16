@@ -17,9 +17,10 @@ export function buildRiscvLanguageDef(
         // Directives
         [/\.[a-zA-Z_]\w*/, "custom-directive"],
 
-        // Identifiers (could be keywords, registers or CSR names)
+        // Identifiers (could be keywords, registers or CSR names). Dotted
+        // so mnemonics like czero.eqz stay one token.
         [
-          /[a-zA-Z_]\w*/,
+          /[a-zA-Z_]\w*(?:\.\w+)*/,
           {
             cases: {
               "@keywords": "custom-keyword",
@@ -66,6 +67,7 @@ export function buildRiscvLanguageDef(
 }
 
 export const riscvLanguageConfig: monaco.languages.LanguageConfiguration = {
+  wordPattern: /[a-zA-Z_]\w*(?:\.\w+)*|\d\w*/,
   comments: {
     lineComment: "#",
     blockComment: ["/*", "*/"],

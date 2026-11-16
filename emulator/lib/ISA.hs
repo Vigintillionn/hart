@@ -45,6 +45,8 @@ instance RISCVEncoding ROp where
     DIVU -> 0x5
     REM -> 0x6
     REMU -> 0x7
+    CZERO_EQZ -> 0x5
+    CZERO_NEZ -> 0x7
   getFunct7 op = case op of
     SUB -> 0x20
     SRA -> 0x20
@@ -56,6 +58,8 @@ instance RISCVEncoding ROp where
     DIVU -> 0x01
     REM -> 0x01
     REMU -> 0x01
+    CZERO_EQZ -> 0x07
+    CZERO_NEZ -> 0x07
     _ -> 0x00
 
 instance RISCVEncoding IArithOp where
