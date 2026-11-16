@@ -24,6 +24,8 @@ data Extension
     IExt
   | -- | RV32M - integer multiply / divide
     MExt
+  | -- | Zicond - integer conditional operations
+    ZicondExt
   | -- | Zicsr - control and status register access
     ZicsrExt
   deriving (Show, Eq, Ord, Enum, Bounded)
@@ -87,6 +89,16 @@ extensionInfo MExt =
       extSummary =
         "Hardware multiplication, division and remainder "
           ++ "(mul, mulh, mulhsu, mulhu, div, divu, rem, remu).",
+      extMandatory = False,
+      extRequires = []
+    }
+extensionInfo ZicondExt =
+  ExtensionInfo
+    { extCode = "Zicond",
+      extName = "Integer Conditional",
+      extSummary =
+        "Conditional zeroing for branchless selects "
+          ++ "(czero.eqz, czero.nez).",
       extMandatory = False,
       extRequires = []
     }

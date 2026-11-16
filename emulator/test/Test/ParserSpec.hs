@@ -84,6 +84,10 @@ spec = do
       parseErr (mkExtensionSet []) "mul a0, a1, a2\n"
         `shouldBe` ExtensionDisabled "M" "mul"
 
+    it "reports a dotted mnemonic from a disabled extension" $
+      parseErr (mkExtensionSet []) "czero.eqz a0, a1, a2\n"
+        `shouldBe` ExtensionDisabled "Zicond" "czero.eqz"
+
     it "reports a CSR pseudo from a disabled extension" $
       -- with Zicsr off, csrr is recognised but reported as disabled, not unknown
       parseErr (mkExtensionSet []) "csrr a0, mscratch\n"

@@ -18,6 +18,10 @@ mulWord = assembleSome (SomeInstruction (RType MUL (RTypeArgs (reg 10) (reg 11) 
 csrWord :: Word32
 csrWord = assembleSome (SomeInstruction (System CSRRW (SysArgs (reg 10) 0x340 (reg 11))))
 
+-- | A pre-assembled @czero.eqz a0, a1, a2@ word (a Zicond instruction).
+czeroWord :: Word32
+czeroWord = assembleSome (SomeInstruction (RType CZERO_EQZ (RTypeArgs (reg 10) (reg 11) (reg 12))))
+
 spec :: Spec
 spec = do
   describe "mkExtensionSet" $ do
@@ -68,3 +72,17 @@ spec = do
       case decodeWord (mkExtensionSet [ZicsrExt]) csrWord of
         Right (SomeInstruction (System CSRRW _)) -> pure ()
         other -> expectationFailure ("expected a decoded CSRRW, got: " ++ show other)
+
+    it "rejects a Zicond instruction when Zicond is disabled" $
+      case decodeWord (mkExtensionSet []) czeroWord of
+        Left (EDisabledExtension _ _ code) -> code `shouldBe` "Zicond"
+        other -> expectationFailure ("expected EDisabledExtension, got: " ++ show other)
+
+    it "accepts a Zicond instruction once Zicond is enabled" $
+      case decodeWord (mkExtensionSet [ZicondExt]) czeroWord of
+        Right (SomeInstruction (RType CZERO_EQZ _)) -> pure ()
+        other -> expectationFailure ("expected a decoded CZERO_EQZ, got: " ++ show other)
+
+  describe "Zicond encoding" $
+    it "matches the reference encoding of czero.eqz a0, a1, a2" $
+      czeroWord `shouldBe` 0x0EC5D533

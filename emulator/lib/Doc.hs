@@ -326,6 +326,8 @@ instance OpDoc ROp where
     DIVU -> "rd = rs1 ÷ᵤ rs2"
     REM -> "rd = rs1 % rs2"
     REMU -> "rd = rs1 %ᵤ rs2"
+    CZERO_EQZ -> "rd = (rs2 == 0) ? 0 : rs1"
+    CZERO_NEZ -> "rd = (rs2 != 0) ? 0 : rs1"
   opDescription op = case op of
     ADD -> "Adds the two source registers and writes the sum to rd. Overflow wraps around modulo 2³² and is not flagged."
     SUB -> "Subtracts rs2 from rs1. Like add, any overflow wraps silently."
@@ -345,6 +347,12 @@ instance OpDoc ROp where
     DIVU -> "Unsigned division. Dividing by zero yields the all-ones value (2³²-1)."
     REM -> "Signed remainder; the result takes the sign of the dividend. Remainder by zero yields rs1 unchanged."
     REMU -> "Unsigned remainder. Remainder by zero yields rs1 unchanged."
+    CZERO_EQZ -> "Conditional zero: writes 0 to rd when rs2 is zero, otherwise copies rs1. Paired with czero.nez it builds a branchless select."
+    CZERO_NEZ -> "Conditional zero: writes 0 to rd when rs2 is non-zero, otherwise copies rs1."
+  opMnemonic op = case op of
+    CZERO_EQZ -> "czero.eqz"
+    CZERO_NEZ -> "czero.nez"
+    _ -> map toLower (show op)
 
 instance OpDoc IArithOp where
   opFormat op = case op of

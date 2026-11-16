@@ -109,6 +109,11 @@ loadProgram (Executable instr dataMem srcMap) = do
 
   traverse_ (\(addr, val) -> storeByte (fromIntegral addr) (fromIntegral val)) (M.toList dataMem)
 
+zeroWhen :: (Word32 -> Bool) -> Word32 -> Word32 -> Word32
+zeroWhen condition value test
+  | condition test = 0
+  | otherwise = value
+
 runBinaryOp :: (MonadCPU m) => (Word32 -> Word32 -> Word32) -> RTypeArgs -> m ()
 runBinaryOp op args = do
   l <- getReg $ r_rs1 args
@@ -136,6 +141,8 @@ executeRType (RType op args) = do
     DIVU -> runBinaryOp divUnsigned args
     REM -> runBinaryOp remSigned args
     REMU -> runBinaryOp remUnsigned args
+    CZERO_EQZ -> runBinaryOp (zeroWhen (== 0)) args
+    CZERO_NEZ -> runBinaryOp (zeroWhen (/= 0)) args
   return Advance
 
 runImmediateOp :: (MonadCPU m) => (Word32 -> Word32 -> Word32) -> ITypeArgs Int -> m ()

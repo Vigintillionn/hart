@@ -19,6 +19,7 @@ instance Arbitrary ROp where
     arbitrary = elements
         [ ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU      -- base I
         , MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU         -- M extension
+        , CZERO_EQZ, CZERO_NEZ                                   -- Zicond
         ]
 
 instance Arbitrary IArithOp where
