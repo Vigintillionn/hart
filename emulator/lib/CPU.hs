@@ -1,8 +1,8 @@
 module CPU (loadProgram, step, fetch, haltCycleLimit) where
 
 import Assembler (assembleSome)
-import Data.Bits (Bits (..))
-import Data.Foldable (traverse_)
+import Data.Bits (Bits (..), FiniteBits (countLeadingZeros, countTrailingZeros))
+import Data.Foldable (foldl', traverse_)
 import Data.Int
 import Data.IntMap.Strict qualified as M
 import Data.Word
@@ -33,6 +33,34 @@ srl a b = a `shiftR` shamt b
 
 sra :: Word32 -> Word32 -> Word32
 sra a b = shiftRA a (shamt b)
+
+shiftAdd :: Int -> Word32 -> Word32 -> Word32
+shiftAdd amount a b = b + (a `shiftL` amount)
+
+signed :: (Int32 -> Int32 -> Int32) -> Word32 -> Word32 -> Word32
+signed op a b = fromIntegral (fromIntegral a `op` fromIntegral b)
+
+rol :: Word32 -> Word32 -> Word32
+rol a b = a `rotateL` shamt b
+
+ror :: Word32 -> Word32 -> Word32
+ror a b = a `rotateR` shamt b
+
+bclr :: Word32 -> Word32 -> Word32
+bclr a b = a `clearBit` shamt b
+
+bext :: Word32 -> Word32 -> Word32
+bext a b = (a `shiftR` shamt b) .&. 1
+
+binv :: Word32 -> Word32 -> Word32
+binv a b = a `complementBit` shamt b
+
+bset :: Word32 -> Word32 -> Word32
+bset a b = a `setBit` shamt b
+
+orCombineBytes :: Word32 -> Word32
+orCombineBytes w =
+  foldl' (.|.) 0 [0xFF `shiftL` s | s <- [0, 8, 16, 24], (w `shiftR` s) .&. 0xFF /= 0]
 
 mulh :: Word32 -> Word32 -> Word32
 mulh a b =
@@ -143,6 +171,22 @@ executeRType (RType op args) = do
     REMU -> runBinaryOp remUnsigned args
     CZERO_EQZ -> runBinaryOp (zeroWhen (== 0)) args
     CZERO_NEZ -> runBinaryOp (zeroWhen (/= 0)) args
+    SH1ADD -> runBinaryOp (shiftAdd 1) args
+    SH2ADD -> runBinaryOp (shiftAdd 2) args
+    SH3ADD -> runBinaryOp (shiftAdd 3) args
+    ANDN -> runBinaryOp (\a b -> a .&. complement b) args
+    ORN -> runBinaryOp (\a b -> a .|. complement b) args
+    XNOR -> runBinaryOp (\a b -> complement (a `xor` b)) args
+    MAX -> runBinaryOp (signed max) args
+    MAXU -> runBinaryOp max args
+    MIN -> runBinaryOp (signed min) args
+    MINU -> runBinaryOp min args
+    ROL -> runBinaryOp rol args
+    ROR -> runBinaryOp ror args
+    BCLR -> runBinaryOp bclr args
+    BEXT -> runBinaryOp bext args
+    BINV -> runBinaryOp binv args
+    BSET -> runBinaryOp bset args
   return Advance
 
 runImmediateOp :: (MonadCPU m) => (Word32 -> Word32 -> Word32) -> ITypeArgs Int -> m ()
@@ -191,6 +235,23 @@ executeIType (ArithI op args) = do
     SRAI -> runImmediateOp sra args
     SLTI -> runImmediateOp lessThanSigned args
     SLTIU -> runImmediateOp lessThanUnsigned args
+    RORI -> runImmediateOp ror args
+    BCLRI -> runImmediateOp bclr args
+    BEXTI -> runImmediateOp bext args
+    BINVI -> runImmediateOp binv args
+    BSETI -> runImmediateOp bset args
+  return Advance
+executeIType (Unary op args) = do
+  value <- getReg (n_rs1 args)
+  setReg (n_rd args) $ case op of
+    CLZ -> fromIntegral (countLeadingZeros value)
+    CTZ -> fromIntegral (countTrailingZeros value)
+    CPOP -> fromIntegral (popCount value)
+    SEXT_B -> signExt8 (fromIntegral value)
+    SEXT_H -> signExt16 (fromIntegral value)
+    ZEXT_H -> value .&. 0xFFFF
+    ORC_B -> orCombineBytes value
+    REV8 -> byteSwap32 value
   return Advance
 executeIType (LoadI op args) = runLoadOp op args
 executeIType (JumpI JALR args) = do
@@ -318,6 +379,7 @@ execute (SomeInstruction inst@(RType _ _)) = executeRType inst
 execute (SomeInstruction inst@(ArithI _ _)) = executeIType inst
 execute (SomeInstruction inst@(LoadI _ _)) = executeIType inst
 execute (SomeInstruction inst@(JumpI _ _)) = executeIType inst
+execute (SomeInstruction inst@(Unary _ _)) = executeIType inst
 execute (SomeInstruction inst@(BType _ _)) = executeBType inst
 execute (SomeInstruction inst@(SType _ _)) = executeSType inst
 execute (SomeInstruction inst@(UType _ _)) = executeUType inst

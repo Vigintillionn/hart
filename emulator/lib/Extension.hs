@@ -28,6 +28,12 @@ data Extension
     ZicondExt
   | -- | Zicsr - control and status register access
     ZicsrExt
+  | -- | Zba - address generation
+    ZbaExt
+  | -- | Zbb - basic bit manipulation
+    ZbbExt
+  | -- | Zbs - single-bit operations
+    ZbsExt
   deriving (Show, Eq, Ord, Enum, Bounded)
 
 type ExtensionSet = Set Extension
@@ -109,6 +115,36 @@ extensionInfo ZicsrExt =
       extSummary =
         "Atomic read/modify/write access to control and status registers "
           ++ "(csrrw, csrrs, csrrc, csrrwi, csrrsi, csrrci).",
+      extMandatory = False,
+      extRequires = []
+    }
+extensionInfo ZbaExt =
+  ExtensionInfo
+    { extCode = "Zba",
+      extName = "Address Generation",
+      extSummary =
+        "Shift-and-add for indexing arrays of 2, 4 and 8 byte elements "
+          ++ "(sh1add, sh2add, sh3add).",
+      extMandatory = False,
+      extRequires = []
+    }
+extensionInfo ZbbExt =
+  ExtensionInfo
+    { extCode = "Zbb",
+      extName = "Basic Bit Manipulation",
+      extSummary =
+        "Logic with negate, bit counting, min/max, sign and zero extension, "
+          ++ "rotates and byte reversal (andn, clz, cpop, max, sext.b, rol, rev8, ...).",
+      extMandatory = False,
+      extRequires = []
+    }
+extensionInfo ZbsExt =
+  ExtensionInfo
+    { extCode = "Zbs",
+      extName = "Single-Bit Operations",
+      extSummary =
+        "Clear, set, invert or extract one bit "
+          ++ "(bclr, bset, binv, bext and their immediate forms).",
       extMandatory = False,
       extRequires = []
     }

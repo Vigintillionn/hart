@@ -20,10 +20,20 @@ instance Arbitrary ROp where
         [ ADD, SUB, XOR, OR, AND, SLL, SRL, SRA, SLT, SLTU      -- base I
         , MUL, MULH, MULHSU, MULHU, DIV, DIVU, REM, REMU         -- M extension
         , CZERO_EQZ, CZERO_NEZ                                   -- Zicond
+        , SH1ADD, SH2ADD, SH3ADD                                 -- Zba
+        , ANDN, ORN, XNOR, MAX, MAXU, MIN, MINU, ROL, ROR        -- Zbb
+        , BCLR, BEXT, BINV, BSET                                 -- Zbs
         ]
 
 instance Arbitrary IArithOp where
-    arbitrary = elements [ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU]
+    arbitrary = elements
+        [ ADDI, XORI, ORI, ANDI, SLLI, SRLI, SRAI, SLTI, SLTIU
+        , RORI                                                   -- Zbb
+        , BCLRI, BEXTI, BINVI, BSETI                             -- Zbs
+        ]
+
+instance Arbitrary UnaryOp where
+    arbitrary = elements [CLZ, CTZ, CPOP, SEXT_B, SEXT_H, ZEXT_H, ORC_B, REV8]
 
 instance Arbitrary ILoadOp where
     arbitrary = elements [LB, LH, LW, LBU, LHU]
@@ -59,6 +69,7 @@ instance Arbitrary (SomeInstruction Int) where
     arbitrary = oneof
         [ genRType
         , genITypeArith
+        , genUnary
         , genITypeLoad
         , genITypeJump
         , genBType
@@ -77,11 +88,16 @@ instance Arbitrary (SomeInstruction Int) where
 
         genITypeArith = do
             op <- arbitrary
-            let imm = if op `elem` [SLLI, SRLI, SRAI]
+            let imm = if isShiftImm op
                  then choose (0, 31)
                  else genImm 12
             args <- ITypeArgs <$> arbitrary <*> arbitrary <*> imm
             return $ SomeInstruction (ArithI op args)
+
+        genUnary = do
+            op <- arbitrary
+            args <- UnaryArgs <$> arbitrary <*> arbitrary
+            return $ SomeInstruction (Unary op args)
 
         genITypeLoad = do
             op <- arbitrary

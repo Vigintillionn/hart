@@ -191,7 +191,7 @@ resolve l = do
 
 checkShiftBounds :: IArithOp -> Int -> Either LinkError Int
 checkShiftBounds op val
-  | op `elem` [SLLI, SRLI, SRAI] && (val < 0 || val > 31) =
+  | isShiftImm op && (val < 0 || val > 31) =
       Left (ShiftOutOfRange val)
   | otherwise = Right val
 
@@ -284,7 +284,7 @@ resolveOperand pc table (SomeInstruction (JumpI op args)) = do
 resolveOperand pc table (SomeInstruction (ArithI op args)) = do
   val <- resolveRelative pc table (i_imm args)
   validVal <-
-    if op `elem` [SLLI, SRLI, SRAI]
+    if isShiftImm op
       then checkShiftBounds op val
       else checkSigned "immediate" 12 False (i_imm args) val
   return $ SomeInstruction $ ArithI op (args {i_imm = validVal})

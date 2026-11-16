@@ -275,6 +275,9 @@ parseRTypeOperands =
     <* comma
     <*> register
 
+parseUnaryOperands :: Parser UnaryArgs
+parseUnaryOperands = UnaryArgs <$> register <* comma <*> register
+
 parseIArithTypeOperands :: Parser (ITypeArgs Operand)
 parseIArithTypeOperands =
   ITypeArgs
@@ -342,6 +345,9 @@ parseJTypeOperands = explicit <|> implicit
 
 rType :: String -> (RTypeArgs -> Instruction 'R Operand) -> Parser (ArchInstr 'Parsed)
 rType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseRTypeOperands
+
+unaryType :: String -> (UnaryArgs -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
+unaryType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseUnaryOperands
 
 iArithType :: String -> (ITypeArgs Operand -> Instruction 'I Operand) -> Parser (ArchInstr 'Parsed)
 iArithType n c = RealInstr . SomeInstruction . c <$ keyword n <*> commit parseIArithTypeOperands
@@ -480,7 +486,23 @@ rOpTable =
     ("rem", REM),
     ("remu", REMU),
     ("czero.eqz", CZERO_EQZ),
-    ("czero.nez", CZERO_NEZ)
+    ("czero.nez", CZERO_NEZ),
+    ("sh1add", SH1ADD),
+    ("sh2add", SH2ADD),
+    ("sh3add", SH3ADD),
+    ("andn", ANDN),
+    ("orn", ORN),
+    ("xnor", XNOR),
+    ("max", MAX),
+    ("maxu", MAXU),
+    ("min", MIN),
+    ("minu", MINU),
+    ("rol", ROL),
+    ("ror", ROR),
+    ("bclr", BCLR),
+    ("bext", BEXT),
+    ("binv", BINV),
+    ("bset", BSET)
   ]
 
 iArithTable :: [(String, IArithOp)]
@@ -493,7 +515,24 @@ iArithTable =
     ("srli", SRLI),
     ("srai", SRAI),
     ("slti", SLTI),
-    ("sltiu", SLTIU)
+    ("sltiu", SLTIU),
+    ("rori", RORI),
+    ("bclri", BCLRI),
+    ("bexti", BEXTI),
+    ("binvi", BINVI),
+    ("bseti", BSETI)
+  ]
+
+unaryTable :: [(String, UnaryOp)]
+unaryTable =
+  [ ("clz", CLZ),
+    ("ctz", CTZ),
+    ("cpop", CPOP),
+    ("sext.b", SEXT_B),
+    ("sext.h", SEXT_H),
+    ("zext.h", ZEXT_H),
+    ("orc.b", ORC_B),
+    ("rev8", REV8)
   ]
 
 iLoadTable :: [(String, ILoadOp)]
@@ -555,6 +594,7 @@ classifiedMnemonics =
   concat
     [ tag rOpTable,
       tag iArithTable,
+      tag unaryTable,
       tag iLoadTable,
       tag iJmpTable,
       tag bTable,
@@ -576,6 +616,7 @@ parseInstruction exts =
     concat
       [ map (\(n, op) -> rType n (RType op)) (keep rOpTable),
         map (\(n, op) -> iArithType n (ArithI op)) (keep iArithTable),
+        map (\(n, op) -> unaryType n (Unary op)) (keep unaryTable),
         map (\(n, op) -> iLoadType n (LoadI op)) (keep iLoadTable),
         map (\(n, op) -> iJmpType n (JumpI op)) (keep iJmpTable),
         map (\(n, op) -> bType n (BType op)) (keep bTable),

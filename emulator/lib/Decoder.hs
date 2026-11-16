@@ -1,6 +1,6 @@
 module Decoder (decodeWord) where
 
-import Control.Applicative (liftA3)
+import Control.Applicative (liftA3, (<|>))
 import Control.Monad
 import Data.Bits (Bits (shiftL, shiftR, (.&.), (.|.)))
 import Data.Int (Int32)
@@ -53,6 +53,13 @@ decodeRType w = do
   rs2 <- mkRegister (getRs2 w)
   return $ RType op (RTypeArgs rd rs1 rs2)
 
+decodeUnary :: Word32 -> Maybe (Instruction 'I Int)
+decodeUnary w = do
+  op <- matchUnary (getOpc w) (getF3 w) (slice immMask w)
+  rd <- mkRegister (getRd w)
+  rs1 <- mkRegister (getRs1 w)
+  return $ Unary op (UnaryArgs rd rs1)
+
 decodeIType :: Word32 -> Word32 -> Maybe (Instruction 'I Int)
 decodeIType 0x13 w = do
   let f3 = getF3 w
@@ -65,7 +72,7 @@ decodeIType 0x13 w = do
   let rawImm = slice immMask w
 
   let imm =
-        if op `elem` [SLLI, SRLI, SRAI]
+        if isShiftImm op
           then fromIntegral (rawImm .&. 0x1F)
           else signExtend 12 rawImm
   return $ ArithI op (ITypeArgs rd rs1 imm)
@@ -167,8 +174,8 @@ decodeSome :: Word32 -> Maybe (SomeInstruction Int)
 decodeSome w =
   let opcode = getOpc w
       instr = case opcode of
-        0x33 -> SomeInstruction <$> decodeRType w -- Arithmatic
-        0x13 -> SomeInstruction <$> decodeIType opcode w -- Immediate
+        0x33 -> (SomeInstruction <$> decodeUnary w) <|> (SomeInstruction <$> decodeRType w) -- Arithmatic
+        0x13 -> (SomeInstruction <$> decodeUnary w) <|> (SomeInstruction <$> decodeIType opcode w) -- Immediate
         0x03 -> SomeInstruction <$> decodeIType opcode w -- Load
         0x67 -> SomeInstruction <$> decodeIType opcode w -- Jump
         0x63 -> SomeInstruction <$> decodeBType w -- Branch

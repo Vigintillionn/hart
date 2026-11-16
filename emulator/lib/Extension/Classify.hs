@@ -35,6 +35,25 @@ instance HasExtension ROp where
     -- Zicond: integer conditional
     CZERO_EQZ -> ZicondExt
     CZERO_NEZ -> ZicondExt
+    -- Zba: address generation
+    SH1ADD -> ZbaExt
+    SH2ADD -> ZbaExt
+    SH3ADD -> ZbaExt
+    -- Zbb: basic bit manipulation
+    ANDN -> ZbbExt
+    ORN -> ZbbExt
+    XNOR -> ZbbExt
+    MAX -> ZbbExt
+    MAXU -> ZbbExt
+    MIN -> ZbbExt
+    MINU -> ZbbExt
+    ROL -> ZbbExt
+    ROR -> ZbbExt
+    -- Zbs: single-bit operations
+    BCLR -> ZbsExt
+    BEXT -> ZbsExt
+    BINV -> ZbsExt
+    BSET -> ZbsExt
 
 instance HasExtension IArithOp where
   extensionOf op = case op of
@@ -47,6 +66,22 @@ instance HasExtension IArithOp where
     SRAI -> IExt
     SLTI -> IExt
     SLTIU -> IExt
+    RORI -> ZbbExt
+    BCLRI -> ZbsExt
+    BEXTI -> ZbsExt
+    BINVI -> ZbsExt
+    BSETI -> ZbsExt
+
+instance HasExtension UnaryOp where
+  extensionOf op = case op of
+    CLZ -> ZbbExt
+    CTZ -> ZbbExt
+    CPOP -> ZbbExt
+    SEXT_B -> ZbbExt
+    SEXT_H -> ZbbExt
+    ZEXT_H -> ZbbExt
+    ORC_B -> ZbbExt
+    REV8 -> ZbbExt
 
 instance HasExtension ILoadOp where
   extensionOf op = case op of
@@ -106,6 +141,7 @@ instructionExtension (SomeInstruction i) = case i of
   ArithI op _ -> extensionOf op
   LoadI op _ -> extensionOf op
   JumpI op _ -> extensionOf op
+  Unary op _ -> extensionOf op
   BType op _ -> extensionOf op
   SType op _ -> extensionOf op
   UType op _ -> extensionOf op

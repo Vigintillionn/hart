@@ -40,6 +40,7 @@ data FormatKind
   = FmtR
   | FmtI
   | FmtShift
+  | FmtUnary
   | FmtLoad
   | FmtS
   | FmtB
@@ -139,6 +140,22 @@ formatInfo FmtShift =
       opcodeF
     ]
     "Shift rs1 by a constant amount held in the immediate field. Only the low 5 bits are meaningful, so the shift is always 0-31."
+formatInfo FmtUnary =
+  FormatInfo
+    "unary"
+    "I-type (unary)"
+    "Single-register"
+    "rd, rs1"
+    [ OperandDoc "rd" "destination register",
+      OperandDoc "rs1" "source register"
+    ]
+    [ functF "funct12" 31 20,
+      regF "rs1" 19,
+      functF "funct3" 14 12,
+      regF "rd" 11,
+      opcodeF
+    ]
+    "Transform one source register and write the result to rd. The immediate field is fixed and selects the operation."
 formatInfo FmtLoad =
   FormatInfo
     "load"
@@ -328,6 +345,22 @@ instance OpDoc ROp where
     REMU -> "rd = rs1 %ᵤ rs2"
     CZERO_EQZ -> "rd = (rs2 == 0) ? 0 : rs1"
     CZERO_NEZ -> "rd = (rs2 != 0) ? 0 : rs1"
+    SH1ADD -> "rd = rs2 + (rs1 << 1)"
+    SH2ADD -> "rd = rs2 + (rs1 << 2)"
+    SH3ADD -> "rd = rs2 + (rs1 << 3)"
+    ANDN -> "rd = rs1 & ~rs2"
+    ORN -> "rd = rs1 | ~rs2"
+    XNOR -> "rd = ~(rs1 ^ rs2)"
+    MAX -> "rd = max(rs1, rs2)"
+    MAXU -> "rd = maxᵤ(rs1, rs2)"
+    MIN -> "rd = min(rs1, rs2)"
+    MINU -> "rd = minᵤ(rs1, rs2)"
+    ROL -> "rd = rs1 rotl rs2"
+    ROR -> "rd = rs1 rotr rs2"
+    BCLR -> "rd = rs1 & ~(1 << rs2)"
+    BEXT -> "rd = (rs1 >> rs2) & 1"
+    BINV -> "rd = rs1 ^ (1 << rs2)"
+    BSET -> "rd = rs1 | (1 << rs2)"
   opDescription op = case op of
     ADD -> "Adds the two source registers and writes the sum to rd. Overflow wraps around modulo 2³² and is not flagged."
     SUB -> "Subtracts rs2 from rs1. Like add, any overflow wraps silently."
@@ -349,17 +382,31 @@ instance OpDoc ROp where
     REMU -> "Unsigned remainder. Remainder by zero yields rs1 unchanged."
     CZERO_EQZ -> "Conditional zero: writes 0 to rd when rs2 is zero, otherwise copies rs1. Paired with czero.nez it builds a branchless select."
     CZERO_NEZ -> "Conditional zero: writes 0 to rd when rs2 is non-zero, otherwise copies rs1."
+    SH1ADD -> "Shifts rs1 left by 1 and adds rs2: the address of element rs1 in an array of 2-byte items at rs2."
+    SH2ADD -> "Shifts rs1 left by 2 and adds rs2: the address of element rs1 in an array of 4-byte items at rs2."
+    SH3ADD -> "Shifts rs1 left by 3 and adds rs2: the address of element rs1 in an array of 8-byte items at rs2."
+    ANDN -> "Bitwise AND of rs1 with the inverse of rs2: clears in rs1 every bit that is set in rs2."
+    ORN -> "Bitwise OR of rs1 with the inverse of rs2."
+    XNOR -> "Bitwise exclusive-NOR: a result bit is 1 where the two operands agree."
+    MAX -> "Writes the larger of the two registers, compared as signed values."
+    MAXU -> "Writes the larger of the two registers, compared as unsigned values."
+    MIN -> "Writes the smaller of the two registers, compared as signed values."
+    MINU -> "Writes the smaller of the two registers, compared as unsigned values."
+    ROL -> "Rotates rs1 left by the low 5 bits of rs2; bits shifted out on the left re-enter on the right."
+    ROR -> "Rotates rs1 right by the low 5 bits of rs2; bits shifted out on the right re-enter on the left."
+    BCLR -> "Clears the single bit of rs1 whose index is the low 5 bits of rs2."
+    BEXT -> "Extracts the single bit of rs1 whose index is the low 5 bits of rs2, giving 0 or 1."
+    BINV -> "Inverts the single bit of rs1 whose index is the low 5 bits of rs2."
+    BSET -> "Sets the single bit of rs1 whose index is the low 5 bits of rs2."
   opMnemonic op = case op of
     CZERO_EQZ -> "czero.eqz"
     CZERO_NEZ -> "czero.nez"
     _ -> map toLower (show op)
 
 instance OpDoc IArithOp where
-  opFormat op = case op of
-    SLLI -> FmtShift
-    SRLI -> FmtShift
-    SRAI -> FmtShift
-    _ -> FmtI
+  opFormat op
+    | isShiftImm op = FmtShift
+    | otherwise = FmtI
   opOperation op = case op of
     ADDI -> "rd = rs1 + imm"
     XORI -> "rd = rs1 ^ imm"
@@ -370,6 +417,11 @@ instance OpDoc IArithOp where
     SLLI -> "rd = rs1 << shamt"
     SRLI -> "rd = rs1 >>ᵤ shamt"
     SRAI -> "rd = rs1 >>ₛ shamt"
+    RORI -> "rd = rs1 rotr shamt"
+    BCLRI -> "rd = rs1 & ~(1 << shamt)"
+    BEXTI -> "rd = (rs1 >> shamt) & 1"
+    BINVI -> "rd = rs1 ^ (1 << shamt)"
+    BSETI -> "rd = rs1 | (1 << shamt)"
   opDescription op = case op of
     ADDI -> "Adds a sign-extended 12-bit immediate to rs1."
     XORI -> "Bitwise XOR with a sign-extended immediate."
@@ -380,6 +432,38 @@ instance OpDoc IArithOp where
     SLLI -> "Logical left shift by a constant 0-31, shifting in zeros."
     SRLI -> "Logical right shift by a constant, shifting in zeros."
     SRAI -> "Arithmetic right shift by a constant; the sign bit is replicated."
+    RORI -> "Rotates rs1 right by a constant 0-31."
+    BCLRI -> "Clears the single bit of rs1 at a constant index 0-31."
+    BEXTI -> "Extracts the single bit of rs1 at a constant index 0-31, giving 0 or 1."
+    BINVI -> "Inverts the single bit of rs1 at a constant index 0-31."
+    BSETI -> "Sets the single bit of rs1 at a constant index 0-31."
+
+instance OpDoc UnaryOp where
+  opFormat _ = FmtUnary
+  opOperation op = case op of
+    CLZ -> "rd = count of leading zeros in rs1"
+    CTZ -> "rd = count of trailing zeros in rs1"
+    CPOP -> "rd = count of set bits in rs1"
+    SEXT_B -> "rd = sext(rs1[7:0])"
+    SEXT_H -> "rd = sext(rs1[15:0])"
+    ZEXT_H -> "rd = zext(rs1[15:0])"
+    ORC_B -> "rd = each byte of rs1 → 0xFF if non-zero, else 0x00"
+    REV8 -> "rd = bytes of rs1 in reverse order"
+  opDescription op = case op of
+    CLZ -> "Counts the zero bits above the most significant set bit. Yields 32 when rs1 is zero."
+    CTZ -> "Counts the zero bits below the least significant set bit. Yields 32 when rs1 is zero."
+    CPOP -> "Population count: the number of bits set to 1 in rs1."
+    SEXT_B -> "Sign-extends the low byte of rs1 to the full register width."
+    SEXT_H -> "Sign-extends the low 16 bits of rs1 to the full register width."
+    ZEXT_H -> "Zero-extends the low 16 bits of rs1, clearing the upper half."
+    ORC_B -> "OR-combine within each byte: a byte becomes all ones if any of its bits is set. Useful for finding the zero byte that ends a string."
+    REV8 -> "Reverses the byte order of rs1, converting between little-endian and big-endian."
+  opMnemonic op = case op of
+    SEXT_B -> "sext.b"
+    SEXT_H -> "sext.h"
+    ZEXT_H -> "zext.h"
+    ORC_B -> "orc.b"
+    _ -> map toLower (show op)
 
 instance OpDoc ILoadOp where
   opFormat _ = FmtLoad
@@ -500,6 +584,7 @@ instructionCatalogue =
   concat
     [ docsFor @ROp,
       docsFor @IArithOp,
+      docsFor @UnaryOp,
       docsFor @ILoadOp,
       docsFor @IJmpOp,
       docsFor @BOp,

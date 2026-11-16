@@ -18,7 +18,7 @@ where
 import CPU
 import Control.Monad (when)
 import Control.Monad.State.Strict
-import Data.Char (chr, isPrint, toLower)
+import Data.Char (chr, isPrint)
 import Data.Foldable (toList)
 import Data.Int (Int32)
 import Data.IntMap.Strict qualified as M
@@ -32,6 +32,7 @@ import Data.Sequence qualified as Seq
 import Data.Vector.Unboxed qualified as V
 import Data.Word (Word32)
 import Decoder (decodeWord)
+import Doc (OpDoc (..))
 import Error (Notice (..))
 import Linker (Executable)
 import Machine (CPU (..), Emulator (..), MonadCPU (..), Register (unReg), RunStatus (..), StopReason (..), incPC)
@@ -294,6 +295,8 @@ disassemble (SomeInstruction i) = case i of
     printf "%s %s, %d(%s)" (low op) (f $ i_rd args) (i_imm args) (f $ i_rs1 args)
   JumpI op args ->
     printf "%s %s, %s, %d" (low op) (f $ i_rd args) (f $ i_rs1 args) (i_imm args)
+  Unary op args ->
+    printf "%s %s, %s" (low op) (f $ n_rd args) (f $ n_rs1 args)
   BType op args ->
     printf "%s %s, %s, %d" (low op) (f $ b_rs1 args) (f $ b_rs2 args) (b_imm args)
   SType op args ->
@@ -308,6 +311,6 @@ disassemble (SomeInstruction i) = case i of
     printf "%s %s, %s, %d" (low op) (f $ ci_rd args) (decodeCSRName $ ci_csr args) (ci_uimm args)
   Trap op -> low op
   where
-    low :: (Show a) => a -> String
-    low = map toLower . show
+    low :: (OpDoc a) => a -> String
+    low = opMnemonic
     f = formatReg
