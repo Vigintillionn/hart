@@ -4,6 +4,8 @@ module Types
     ImmOf,
     ROp (..),
     IArithOp (..),
+    isShiftImm,
+    UnaryOp (..),
     ILoadOp (..),
     IJmpOp (..),
     BOp (..),
@@ -15,6 +17,7 @@ module Types
     TrapOp (..),
     RTypeArgs (..),
     ITypeArgs (..),
+    UnaryArgs (..),
     BTypeArgs (..),
     STypeArgs (..),
     UTypeArgs (..),
@@ -79,6 +82,22 @@ data ROp
   | REMU
   | CZERO_EQZ
   | CZERO_NEZ
+  | SH1ADD
+  | SH2ADD
+  | SH3ADD
+  | ANDN
+  | ORN
+  | XNOR
+  | MAX
+  | MAXU
+  | MIN
+  | MINU
+  | ROL
+  | ROR
+  | BCLR
+  | BEXT
+  | BINV
+  | BSET
   deriving (Show, Eq, Enum, Bounded)
 
 data IArithOp
@@ -91,6 +110,41 @@ data IArithOp
   | SRAI
   | SLTI
   | SLTIU
+  | RORI
+  | BCLRI
+  | BEXTI
+  | BINVI
+  | BSETI
+  deriving (Show, Eq, Enum, Bounded)
+
+-- | Whether the immediate is a 5-bit amount with funct7 above it, rather
+-- than a 12-bit signed value.
+isShiftImm :: IArithOp -> Bool
+isShiftImm op = case op of
+  ADDI -> False
+  XORI -> False
+  ORI -> False
+  ANDI -> False
+  SLTI -> False
+  SLTIU -> False
+  SLLI -> True
+  SRLI -> True
+  SRAI -> True
+  RORI -> True
+  BCLRI -> True
+  BEXTI -> True
+  BINVI -> True
+  BSETI -> True
+
+data UnaryOp
+  = CLZ
+  | CTZ
+  | CPOP
+  | SEXT_B
+  | SEXT_H
+  | ZEXT_H
+  | ORC_B
+  | REV8
   deriving (Show, Eq, Enum, Bounded)
 
 data ILoadOp = LB | LH | LW | LBU | LHU deriving (Show, Eq, Enum, Bounded)
@@ -124,6 +178,9 @@ data RTypeArgs = RTypeArgs {r_rd :: Register, r_rs1 :: Register, r_rs2 :: Regist
 data ITypeArgs a = ITypeArgs {i_rd :: Register, i_rs1 :: Register, i_imm :: a}
   deriving (Show, Eq, Functor, Foldable, Traversable)
 
+data UnaryArgs = UnaryArgs {n_rd :: Register, n_rs1 :: Register}
+  deriving (Show, Eq)
+
 data BTypeArgs a = BTypeArgs {b_rs1 :: Register, b_rs2 :: Register, b_imm :: a}
   deriving (Show, Eq, Functor, Foldable, Traversable)
 
@@ -149,6 +206,7 @@ data Instruction (k :: InstrKind) a where
   ArithI :: IArithOp -> ITypeArgs a -> Instruction 'I a
   LoadI :: ILoadOp -> ITypeArgs a -> Instruction 'I a
   JumpI :: IJmpOp -> ITypeArgs a -> Instruction 'I a
+  Unary :: UnaryOp -> UnaryArgs -> Instruction 'I a
   BType :: BOp -> BTypeArgs a -> Instruction 'B a
   SType :: SOp -> STypeArgs a -> Instruction 'S a
   UType :: UOp -> UTypeArgs a -> Instruction 'U a
@@ -220,6 +278,7 @@ instance Functor (Instruction k) where
   fmap f (ArithI op args) = ArithI op (args {i_imm = f (i_imm args)})
   fmap f (LoadI op args) = LoadI op (args {i_imm = f (i_imm args)})
   fmap f (JumpI op args) = JumpI op (args {i_imm = f (i_imm args)})
+  fmap _ (Unary op args) = Unary op args
   fmap f (BType op args) = BType op (args {b_imm = f (b_imm args)})
   fmap f (SType op args) = SType op (args {s_imm = f (s_imm args)})
   fmap f (UType op args) = UType op (args {u_imm = f (u_imm args)})
@@ -233,6 +292,7 @@ instance Foldable (Instruction k) where
   foldMap f (ArithI _ a) = foldMap f a
   foldMap f (LoadI _ a) = foldMap f a
   foldMap f (JumpI _ a) = foldMap f a
+  foldMap _ (Unary _ _) = mempty
   foldMap f (BType _ a) = foldMap f a
   foldMap f (SType _ a) = foldMap f a
   foldMap f (UType _ a) = foldMap f a
@@ -246,6 +306,7 @@ instance Traversable (Instruction k) where
   traverse f (ArithI op args) = ArithI op <$> traverse f args
   traverse f (LoadI op args) = LoadI op <$> traverse f args
   traverse f (JumpI op args) = JumpI op <$> traverse f args
+  traverse _ (Unary op args) = pure (Unary op args)
   traverse f (BType op args) = BType op <$> traverse f args
   traverse f (SType op args) = SType op <$> traverse f args
   traverse f (UType op args) = UType op <$> traverse f args
@@ -268,6 +329,7 @@ instance (Eq a) => Eq (SomeInstruction a) where
   (SomeInstruction (ArithI o1 a1)) == (SomeInstruction (ArithI o2 a2)) = o1 == o2 && a1 == a2
   (SomeInstruction (LoadI o1 a1)) == (SomeInstruction (LoadI o2 a2)) = o1 == o2 && a1 == a2
   (SomeInstruction (JumpI o1 a1)) == (SomeInstruction (JumpI o2 a2)) = o1 == o2 && a1 == a2
+  (SomeInstruction (Unary o1 a1)) == (SomeInstruction (Unary o2 a2)) = o1 == o2 && a1 == a2
   (SomeInstruction (BType o1 a1)) == (SomeInstruction (BType o2 a2)) = o1 == o2 && a1 == a2
   (SomeInstruction (SType o1 a1)) == (SomeInstruction (SType o2 a2)) = o1 == o2 && a1 == a2
   (SomeInstruction (UType o1 a1)) == (SomeInstruction (UType o2 a2)) = o1 == o2 && a1 == a2

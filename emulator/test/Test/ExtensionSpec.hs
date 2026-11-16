@@ -86,3 +86,35 @@ spec = do
   describe "Zicond encoding" $
     it "matches the reference encoding of czero.eqz a0, a1, a2" $
       czeroWord `shouldBe` 0x0EC5D533
+
+  describe "bit manipulation (Zba, Zbb, Zbs)" $ do
+    let rType op = assembleSome (SomeInstruction (RType op (RTypeArgs (reg 10) (reg 11) (reg 12))))
+        unary op = assembleSome (SomeInstruction (Unary op (UnaryArgs (reg 10) (reg 11))))
+        bseti5 = assembleSome (SomeInstruction (ArithI BSETI (ITypeArgs (reg 10) (reg 11) 5)))
+
+    it "matches the reference encodings" $ do
+      rType SH1ADD `shouldBe` 0x20C5A533
+      unary CLZ `shouldBe` 0x60059513
+      unary ZEXT_H `shouldBe` 0x0805C533
+      unary ORC_B `shouldBe` 0x2875D513
+      unary REV8 `shouldBe` 0x6985D513
+      bseti5 `shouldBe` 0x28559513
+
+    it "tells unary ops that share funct7 apart" $
+      map (fmap instructionOp . decodeWord allExtensions . unary) [CLZ, CTZ, CPOP, SEXT_B, SEXT_H]
+        `shouldBe` map (Right . Just) [CLZ, CTZ, CPOP, SEXT_B, SEXT_H]
+
+    it "gates each instruction on its own extension" $ do
+      disabledCode (mkExtensionSet [ZbbExt, ZbsExt]) (rType SH1ADD) `shouldBe` Just "Zba"
+      disabledCode (mkExtensionSet [ZbaExt, ZbsExt]) (unary CLZ) `shouldBe` Just "Zbb"
+      disabledCode (mkExtensionSet [ZbaExt, ZbbExt]) bseti5 `shouldBe` Just "Zbs"
+      disabledCode allExtensions (unary CLZ) `shouldBe` Nothing
+
+instructionOp :: SomeInstruction Int -> Maybe UnaryOp
+instructionOp (SomeInstruction (Unary op _)) = Just op
+instructionOp _ = Nothing
+
+disabledCode :: ExtensionSet -> Word32 -> Maybe String
+disabledCode exts word = case decodeWord exts word of
+  Left (EDisabledExtension _ _ code) -> Just code
+  _ -> Nothing

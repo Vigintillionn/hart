@@ -74,3 +74,6 @@ spec = do
 
     it "rejects an out-of-range shift amount" $
       linkErr "slli a0, a0, 40\n" `shouldBe` ShiftOutOfRange 40
+
+    it "rejects an out-of-range bit index" $
+      linkErr "bseti a0, a0, 32\n" `shouldBe` ShiftOutOfRange 32

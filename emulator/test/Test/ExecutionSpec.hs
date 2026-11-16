@@ -1,5 +1,6 @@
 module Test.ExecutionSpec (spec) where
 
+import Data.Word (Word32)
 import Test.Hspec
 import Test.Support
 
@@ -86,6 +87,50 @@ spec = do
         runProgram
           "li a0, 11\nli a1, 22\nli a2, 1\nczero.eqz t0, a0, a2\nczero.nez t1, a1, a2\nor a2, t0, t1\n"
       regU cpu a2 `shouldBe` 11
+
+  describe "address generation (Zba)" $ do
+    binaryCase "sh1add" "3" "100" 106
+    binaryCase "sh2add" "3" "100" 112
+    binaryCase "sh3add" "3" "100" 124
+
+  describe "basic bit manipulation (Zbb)" $ do
+    binaryCase "andn" "0xFF" "0x0F" 0xF0
+    binaryCase "orn" "0xF0" "0x0F" 0xFFFFFFF0
+    binaryCase "xnor" "0xFF" "0x0F" 0xFFFFFF0F
+    binaryCase "max" "-1" "1" 1
+    binaryCase "maxu" "-1" "1" 0xFFFFFFFF
+    binaryCase "min" "-1" "1" 0xFFFFFFFF
+    binaryCase "minu" "-1" "1" 1
+    binaryCase "rol" "0x80000001" "1" 0x00000003
+    binaryCase "ror" "0x80000001" "1" 0xC0000000
+    -- only the low 5 bits of the rotate amount count
+    binaryCase "rol" "0x80000001" "33" 0x00000003
+    immediateCase "rori" "1" "4" 0x10000000
+    unaryCase "clz" "1" 31
+    unaryCase "clz" "0" 32
+    unaryCase "clz" "-1" 0
+    unaryCase "ctz" "8" 3
+    unaryCase "ctz" "0" 32
+    unaryCase "cpop" "0xF0F0" 8
+    unaryCase "sext.b" "0x80" 0xFFFFFF80
+    unaryCase "sext.b" "0x17F" 0x7F
+    unaryCase "sext.h" "0x8000" 0xFFFF8000
+    unaryCase "zext.h" "0x12345678" 0x5678
+    unaryCase "orc.b" "0x00120034" 0x00FF00FF
+    unaryCase "rev8" "0x12345678" 0x78563412
+
+  describe "single-bit operations (Zbs)" $ do
+    binaryCase "bclr" "0xFF" "0" 0xFE
+    binaryCase "bset" "0" "31" 0x80000000
+    binaryCase "binv" "0xFF" "4" 0xEF
+    binaryCase "bext" "0x10" "4" 1
+    -- only the low 5 bits of the bit index count
+    binaryCase "bset" "0" "33" 2
+    immediateCase "bclri" "0xFF" "7" 0x7F
+    immediateCase "bseti" "0" "5" 0x20
+    immediateCase "binvi" "0" "0" 1
+    immediateCase "bexti" "0x10" "3" 0
+    immediateCase "bexti" "0x10" "4" 1
 
   describe "division edge cases" $ do
     it "signed division overflow (INT_MIN / -1) wraps to INT_MIN" $ do
@@ -174,3 +219,21 @@ spec = do
               "end:"
             ]
       regU cpu a0 `shouldBe` 15
+
+binaryCase :: String -> String -> String -> Word32 -> Spec
+binaryCase mnemonic lhs rhs expected =
+  it (unwords [mnemonic, lhs ++ ",", rhs]) $ do
+    cpu <- runProgram (unlines ["li a0, " ++ lhs, "li a1, " ++ rhs, mnemonic ++ " a2, a0, a1"])
+    regU cpu a2 `shouldBe` expected
+
+immediateCase :: String -> String -> String -> Word32 -> Spec
+immediateCase mnemonic lhs imm expected =
+  it (unwords [mnemonic, lhs ++ ",", imm]) $ do
+    cpu <- runProgram (unlines ["li a0, " ++ lhs, mnemonic ++ " a2, a0, " ++ imm])
+    regU cpu a2 `shouldBe` expected
+
+unaryCase :: String -> String -> Word32 -> Spec
+unaryCase mnemonic input expected =
+  it (unwords [mnemonic, input]) $ do
+    cpu <- runProgram (unlines ["li a0, " ++ input, mnemonic ++ " a2, a0"])
+    regU cpu a2 `shouldBe` expected

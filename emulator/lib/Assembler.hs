@@ -41,6 +41,14 @@ packIType opc f3 f7 args =
     mask = f7 `shiftL` 5
     imm = rawImm .|. mask
 
+assembleUnary :: UnaryOp -> UnaryArgs -> Word32
+assembleUnary op args =
+  getOpcode op
+    .|. packRd (n_rd args)
+    .|. packRs1 (n_rs1 args)
+    .|. (getFunct3 op `shiftL` 12)
+    .|. (getFunct12 op `shiftL` 20)
+
 packBImm :: Int -> Word32
 packBImm v =
   let i = fromIntegral v :: Word32
@@ -137,13 +145,14 @@ assembleSome :: SomeInstruction Int -> Word32
 assembleSome (SomeInstruction instr@(RType _ _)) = assembleRType instr
 assembleSome (SomeInstruction (ArithI op args)) =
   let safeImm =
-        if op `elem` [SLLI, SRLI, SRAI]
+        if isShiftImm op
           then i_imm args .&. 0x1F
           else i_imm args
       safeArgs = args {i_imm = safeImm}
    in packIType (getOpcode op) (getFunct3 op) (getFunct7 op) safeArgs
 assembleSome (SomeInstruction (LoadI op args)) = packIType (getOpcode op) (getFunct3 op) 0x00 args
 assembleSome (SomeInstruction (JumpI op args)) = packIType (getOpcode op) (getFunct3 op) 0x00 args
+assembleSome (SomeInstruction (Unary op args)) = assembleUnary op args
 assembleSome (SomeInstruction instr@(BType _ _)) = assembleBType instr
 assembleSome (SomeInstruction instr@(SType _ _)) = assembleSType instr
 assembleSome (SomeInstruction instr@(UType _ _)) = assembleUType instr
